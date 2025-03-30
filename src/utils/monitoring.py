@@ -14,7 +14,7 @@ _nvml_lock = threading.Lock()  # Lock for thread-safe init/shutdown
 _gpu_handles: Dict[int, pynvml.c_nvmlDevice_t] = {}
 
 
-def init_nvml() -> bool:  # Added return type hint
+def init_nvml() -> bool:
     """Initializes the NVML library if not already done (thread-safe). Returns True if successful or already initialized."""
     global _nvml_initialized
     # Quick check without lock first for performance
@@ -131,7 +131,9 @@ def get_gpu_power_usage(handle: pynvml.c_nvmlDevice_t) -> Optional[float]:
         elif error.value == pynvml.NVMLError_Uninitialized:
             logger.error("NVML uninitialized during power query.")
         else:
-            logger.error(f"Failed to get power usage: {error}", exc_info=True)
+            # Don't log excessive errors if power reading fails often
+            # Consider logging less frequently or only once
+            pass  # logger.error(f"Failed to get power usage: {error}")
         return None
 
 
@@ -167,25 +169,9 @@ def get_gpu_memory_usage(
 class GPUEnergyMonitor:
     """
     Monitors GPU energy consumption using background thread sampling.
-
-    Usage:
-        monitor = GPUEnergyMonitor(device_index=0, interval_sec=0.2)
-        with monitor:
-            # Run your GPU-intensive code here (e.g., training loop)
-            time.sleep(5) # Simulate work
-        total_energy = monitor.get_total_energy_joules() # Use specific getter
-        if total_energy is not None:
-            print(f"Total energy consumed: {total_energy:.2f} Joules")
     """
 
     def __init__(self, device_index: int = 0, interval_sec: float = 0.2):
-        """
-        Initializes the energy monitor.
-
-        Args:
-            device_index: The index of the GPU to monitor.
-            interval_sec: Sampling interval in seconds. Must be positive.
-        """
         if interval_sec <= 0:
             raise ValueError("Sampling interval must be positive.")
 
@@ -194,16 +180,16 @@ class GPUEnergyMonitor:
         self._handle: Optional[pynvml.c_nvmlDevice_t] = None
         self._monitoring_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._samples: List[Tuple[float, float]] = (
+        self._samples: List[Tuple[float, Optional[float]]] = (
             []
-        )  # List of (timestamp, power_watts)
-        self._samples_lock = threading.Lock()  # Lock for accessing samples list
+        )  # Store None if reading fails
+        self._samples_lock = threading.Lock()
         self._is_running = False
         self._total_energy_joules: Optional[float] = None
         self._start_time: Optional[float] = None
         self._end_time: Optional[float] = None
+        self._power_error_logged = False  # Flag to log power reading error only once
 
-        # Ensure NVML is initialized and get handle
         if init_nvml():
             self._handle = get_gpu_handle(self._device_index)
             if self._handle is None:
@@ -216,81 +202,80 @@ class GPUEnergyMonitor:
             )
 
     def _monitor_energy(self):
-        """Target function for the background monitoring thread."""
-        logger.debug("Energy monitoring thread started.")
-        last_sample_time = time.time()  # Track time for interval accuracy
+        logger.debug(f"Energy monitoring thread started for GPU {self._device_index}.")
+        last_sample_time = time.time()
 
         while not self._stop_event.is_set():
             current_time = time.time()
-
-            # --- Sample Power ---
             power_watts = None
             if self._handle:
                 power_watts = get_gpu_power_usage(self._handle)
+                if power_watts is None and not self._power_error_logged:
+                    logger.warning(
+                        f"EnergyMonitor: Failed to get power reading for GPU {self._device_index}. Will store None."
+                    )
+                    self._power_error_logged = True  # Log only once per start
 
-            # --- Store Sample (even if None, to mark time) ---
-            if power_watts is not None:
-                with self._samples_lock:
-                    self._samples.append((current_time, power_watts))
-            else:
-                # Store timestamp with None power if reading fails
-                with self._samples_lock:
-                    self._samples.append((current_time, None))
-                if self._handle:  # Only log warning if handle was valid
-                    logger.warning("Failed to get power reading in monitoring thread.")
+            # Store timestamp and power (even if None)
+            with self._samples_lock:
+                self._samples.append((current_time, power_watts))
 
-            # --- Sleep Logic ---
-            # Calculate time elapsed since last intended sample time
-            elapsed_since_last_intended = current_time - last_sample_time
-            # Calculate desired next sample time
-            next_intended_sample_time = last_sample_time + self._interval_sec
-            # Calculate sleep duration needed to reach next intended time
-            sleep_duration = next_intended_sample_time - time.time()
-
+            # Sleep accurately
+            elapsed = time.time() - last_sample_time
+            sleep_duration = self._interval_sec - elapsed
             if sleep_duration > 0:
                 time.sleep(sleep_duration)
-                last_sample_time = (
-                    next_intended_sample_time  # Update base for next interval
-                )
-            else:
-                # Sampling took longer than interval, don't sleep, update last_sample_time
-                logger.debug(
-                    f"Energy sampling took longer than interval: {elapsed_since_last_intended:.4f}s"
-                )
-                last_sample_time = current_time
+            # Update last_sample_time based on when it *should* have woken up
+            last_sample_time += self._interval_sec
 
-        logger.debug("Energy monitoring thread stopped.")
+        logger.debug(f"Energy monitoring thread stopped for GPU {self._device_index}.")
 
     def _calculate_energy(self) -> Optional[float]:
         """Calculates total energy using the trapezoidal rule, handling None values."""
-        with self._samples_lock:  # Access samples safely
-            valid_samples = [(t, p) for t, p in self._samples if p is not None]
-
-            if len(valid_samples) < 2:
+        with self._samples_lock:
+            if len(self._samples) < 2:
                 logger.warning(
-                    "Not enough valid power samples collected to calculate energy."
+                    f"EnergyMonitor GPU {self._device_index}: Not enough samples ({len(self._samples)}) collected to calculate energy."
                 )
                 return None
 
             total_energy = 0.0
-            # Ensure samples are sorted by time (should be, but safety check)
-            sorted_samples = sorted(valid_samples, key=lambda x: x[0])
+            # Ensure samples are sorted (should be by design)
+            # sorted_samples = sorted(self._samples, key=lambda x: x[0]) # Usually not needed
 
-            for i in range(len(sorted_samples) - 1):
-                t1, p1 = sorted_samples[i]
-                t2, p2 = sorted_samples[i + 1]
+            for i in range(len(self._samples) - 1):
+                t1, p1 = self._samples[i]
+                t2, p2 = self._samples[i + 1]
 
                 time_delta = t2 - t1
                 if time_delta <= 0:
-                    logger.warning(
-                        f"Skipping energy segment due to non-positive time delta: {time_delta}"
-                    )
+                    # This might happen with timer precision issues, skip segment
                     continue
 
-                # Simple trapezoidal rule: avg power * time duration
-                avg_power = (p1 + p2) / 2.0
-                energy_segment = avg_power * time_delta  # Joules = Watts * seconds
+                # Handle None power values: assume power is constant from the last valid reading
+                # or average of neighbors if both are valid. Use 0 if no valid reading available.
+                p1_valid = p1 if p1 is not None else (p2 if p2 is not None else 0.0)
+                p2_valid = p2 if p2 is not None else (p1 if p1 is not None else 0.0)
+
+                if p1 is None and p2 is None:
+                    avg_power = 0.0  # Or potentially use a running average? Simple approach for now.
+                    if (
+                        not self._power_error_logged
+                    ):  # Log warning if power reading failed for segment
+                        logger.warning(
+                            f"EnergyMonitor GPU {self._device_index}: Missing power data for time segment [{t1:.2f}, {t2:.2f}]. Assuming 0W."
+                        )
+                        self._power_error_logged = True  # Log only once
+                else:
+                    avg_power = (p1_valid + p2_valid) / 2.0
+
+                energy_segment = avg_power * time_delta
                 total_energy += energy_segment
+
+            if total_energy == 0 and self._power_error_logged:
+                logger.warning(
+                    f"EnergyMonitor GPU {self._device_index}: Calculated total energy is 0 Joules, likely due to persistent power reading failures."
+                )
 
             self._total_energy_joules = total_energy
             return total_energy
@@ -298,22 +283,27 @@ class GPUEnergyMonitor:
     def start(self):
         """Starts the energy monitoring thread."""
         if self._is_running:
-            logger.warning("Energy monitor is already running.")
+            logger.warning(
+                f"Energy monitor for GPU {self._device_index} is already running."
+            )
             return
         if not self._handle:
-            logger.error("Cannot start energy monitor: No valid GPU handle.")
+            logger.error(
+                f"Cannot start energy monitor for GPU {self._device_index}: No valid GPU handle."
+            )
             return
 
         with self._samples_lock:
-            self._samples = []  # Clear previous samples
+            self._samples = []
         self._stop_event.clear()
-        self._total_energy_joules = None  # Reset calculated energy
-        self._start_time = time.time()  # Record start time
+        self._total_energy_joules = None
+        self._start_time = time.time()
         self._end_time = None
+        self._power_error_logged = False  # Reset error log flag
 
         self._monitoring_thread = threading.Thread(
             target=self._monitor_energy,
-            daemon=True,  # Daemon thread exits if main program exits
+            daemon=True,
         )
         self._monitoring_thread.start()
         self._is_running = True
@@ -324,27 +314,24 @@ class GPUEnergyMonitor:
     def stop(self) -> Optional[float]:
         """Stops the monitoring thread and calculates the total energy. Returns energy in Joules."""
         if not self._is_running:
-            logger.info("Energy monitor is not running.")
-            return (
-                self._total_energy_joules
-            )  # Return previously calculated value if any
+            logger.info(f"Energy monitor for GPU {self._device_index} is not running.")
+            return self._total_energy_joules
 
         self._stop_event.set()
-        self._end_time = time.time()  # Record end time
+        self._end_time = time.time()
         if self._monitoring_thread:
-            # Wait briefly for the thread to finish processing last sample and exit
             self._monitoring_thread.join(timeout=self._interval_sec * 2 + 1)
             if self._monitoring_thread.is_alive():
-                logger.warning("Energy monitoring thread did not stop gracefully.")
+                logger.warning(
+                    f"Energy monitoring thread for GPU {self._device_index} did not stop gracefully."
+                )
         self._is_running = False
-        logger.info("Stopped energy monitoring.")
+        logger.info(f"Stopped energy monitoring for GPU {self._device_index}.")
 
-        # Calculate energy after stopping
         return self._calculate_energy()
 
     def get_total_energy_joules(self) -> Optional[float]:
         """Returns the calculated total energy in Joules, or None if not calculated."""
-        # Ensures calculation happens if monitor stopped but energy not yet calculated
         if (
             self._total_energy_joules is None
             and not self._is_running
@@ -360,21 +347,17 @@ class GPUEnergyMonitor:
         end_time = self._end_time if self._end_time is not None else time.time()
         return end_time - self._start_time
 
-    # --- Context Manager ---
     def __enter__(self):
-        """Starts monitoring when entering the 'with' block."""
         self.start()
-        return self  # Return the monitor instance
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Stops monitoring when exiting the 'with' block."""
         self.stop()
-        # Optional: Re-raise exception if one occurred within the 'with' block
-        # return False # Returning False (or None implicitly) re-raises the exception
-        # return True # Suppress any exception that occurred within the block
 
 
 # Ensure NVML shutdown happens at program exit
 import atexit
 
-atexit.register(shutdown_nvml)
+# Check if already registered to avoid duplicates if module reloaded
+if "shutdown_nvml" not in [func for func, args, kwargs in atexit._exithandlers]:
+    atexit.register(shutdown_nvml)

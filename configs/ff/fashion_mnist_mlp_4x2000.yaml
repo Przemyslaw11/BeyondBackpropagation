@@ -7,52 +7,54 @@
 # Experiment Identification
 experiment_name: "ff_fashion_mnist_mlp_4x2000"
 algorithm:
-  name: "FF" # Specify algorithm
+  name: "FF"
 
 # Dataset Configuration
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1 # Not strictly needed for FF training itself, but good for consistency
+  val_split: 0.1
   num_classes: 10
   input_channels: 1
   image_size: 28
 
 # Data Loader Configuration
 data_loader:
-  batch_size: 128 # Inherited from base (or set explicitly)
-  num_workers: 4 # Adjust based on system capabilities
-  pin_memory: true # Enable if using CUDA
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
 
 # Model Architecture Configuration
 model:
-  name: "FF_MLP" # Corresponds to src/architectures/ff_mlp.py
+  name: "FF_MLP"
   params:
-    # input_dim: 784 # Calculated by engine from data config
-    hidden_dims: [2000, 2000, 2000, 2000] # 4 hidden layers of 2000 units
+    # input_dim: 784 # Calculated
+    hidden_dims: [2000, 2000, 2000, 2000]
     activation: "ReLU"
-    normalize_layers: true # As per paper's description
+    normalize_layers: true
+    norm_type: 'length' # Use length normalization as per paper footnote 5
     bias: true
-    # num_classes: 10 # Calculated by engine from data config
+    # num_classes: 10 # Calculated
 
 # Algorithm Specific Configuration (Forward-Forward)
 algorithm_params:
-  optimizer_type: "Adam" # Optimizer per layer
-  lr: 0.03 # Learning rate from FF paper (Figure 2 uses 0.03 for jittered MNIST)
-  weight_decay: 0.0 # FF paper often uses no weight decay
-  threshold: 2.0 # Goodness threshold (from Sec 2 - 'well above')
-  epochs_per_layer: 60 # From Sec 3.3 (60 epochs for 1.36% error) - adjust as needed
+  optimizer_type: "Adam" # Paper doesn't specify, Adam is common default
+  lr: 0.03 # From paper Fig 2 caption for jittered MNIST
+  weight_decay: 0.0
+  threshold: 2.0 # Seems reasonable starting point
+  epochs_per_layer: 60 # From paper Sec 3.3 for comparable MNIST performance
   log_interval: 100
 
-# Logging Configuration
+# Logging Configuration (Inherits project/entity from base)
 logging:
   level: "INFO"
-  # log_file: null # Set dynamically by run_experiment.py
+  # log_file: null # Set dynamically
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation" # Inherited or set here
-    # entity: null # Inherited (replace if needed)
-    # run_name: null # Set dynamically by run_experiment.py
+
+# Checkpointing (For FF, save after each layer)
+checkpointing:
+  checkpoint_dir: "checkpoints/ff_fashion_mnist_mlp_4x2000" # Specific directory
 
 # Monitoring/Profiling
 monitoring:
@@ -61,4 +63,4 @@ monitoring:
   energy_interval_sec: 0.2
 profiling:
   enabled: true
-  verbose: false # Less verbose profiling output by default
+  verbose: false

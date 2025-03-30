@@ -4,6 +4,7 @@ import os
 from typing import Dict, Any
 import logging  # Use logging
 
+# Get logger instance for this module
 logger = logging.getLogger(__name__)
 
 
@@ -73,17 +74,23 @@ def load_config(
         logger.error(f"An unexpected error occurred while reading {config_path}: {e}")
         raise
 
-    # Merge configurations: specific config overrides base config
-    # Using a simple top-level merge for now.
-    # A deep merge function would be needed for nested dictionaries if required.
-    merged_config = base_config.copy()
-    merged_config.update(specific_config)  # Simple top-level merge
+    # --- Deep Merge Implementation ---
+    def deep_merge(source, destination):
+        """Deeply merges source dict into destination dict."""
+        for key, value in source.items():
+            if isinstance(value, dict):
+                # Get node or create one
+                node = destination.setdefault(key, {})
+                deep_merge(value, node)
+            else:
+                destination[key] = value
+        return destination
+
+    # Merge configurations: specific config overrides base config using deep merge
+    merged_config = base_config.copy()  # Start with a copy of the base
+    merged_config = deep_merge(specific_config, merged_config)
 
     logger.info(
         f"Successfully merged configuration from {config_path} and {base_config_path}"
     )
     return merged_config
-
-
-# Removed the __main__ block with dummy file creation for cleaner utils file
-# Testing should ideally be done via separate unit test files.

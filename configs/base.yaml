@@ -1,15 +1,15 @@
 # File: configs/base.yaml
 # Base configuration settings shared across experiments
 
-# Reproducibility
-general: # Added a general section
+# Reproducibility and General Settings
+general:
   seed: 42
-  # device: cuda # Set device explicitly in experiment configs or rely on auto-detect in engine
+  device: "auto" # Options: "auto", "cuda", "cpu". Engine will use this preference.
 
 # Default Training parameters (can be overridden)
 training:
-  epochs: 100
-  # criterion: "CrossEntropyLoss" # Often dataset/task specific, define in experiment config
+  epochs: 100 # Default total epochs for BP and equivalent budget reference
+  criterion: "CrossEntropyLoss" # Default loss for BP
   log_interval: 100 # Default logging frequency
 
 # Default Data Loader parameters
@@ -24,14 +24,24 @@ data:
   download: true # Default to downloading if not found
   val_split: 0.1 # Default validation split
 
+# Default Optimizer parameters (Placeholders, override in specific configs)
+# Used primarily by BP baselines; alternatives might use different settings
+# in algorithm_params
+optimizer:
+  type: "AdamW" # Default optimizer type for baselines
+  lr: 0.001 # Default LR (likely overridden by tuning for baselines)
+  weight_decay: 0.0001 # Default WD (likely overridden by tuning for baselines)
+  # params: {} # Additional optimizer-specific params (e.g., momentum, betas)
+
 # Logging Defaults
 logging:
   level: "INFO" # Default logging level
+  # log_file: null # Set dynamically by run scripts based on experiment name/output dir
   wandb:
     use_wandb: true # Enable W&B by default
     project: "BeyondBackpropagation"
-    # entity: null # Specify in user environment or here if constant
-    # run_name: null # Should be set dynamically
+    # entity: null # Specify in user environment (WANDB_ENTITY) or here
+    # run_name: null # Set dynamically by run scripts
 
 # Monitoring Defaults
 monitoring:
@@ -43,3 +53,21 @@ monitoring:
 profiling:
   enabled: true              # Enable FLOPs profiling by default
   verbose: false             # Show less detailed torchprof output
+
+# Checkpointing Defaults
+checkpointing:
+  checkpoint_dir: null       # Base directory for checkpoints (experiment-specific subdir recommended)
+                             # Set to a path like "checkpoints/" in specific configs to enable.
+  save_best_metric: "bp_val_accuracy" # Metric to track for saving best BP model ('bp_val_accuracy' or 'bp_val_loss')
+
+# Default Tuning parameters (Used by Optuna script if tuning section exists)
+tuning:
+  enabled: false # Default to disabled unless specified in baseline config
+  n_trials: 50
+  num_epochs: 25 # Epochs per Optuna trial
+  direction: "maximize"
+  metric: "val_accuracy" # Metric objective returns (raw name, not W&B key)
+  sampler: "TPE"
+  pruner: "Median"
+  lr_range: [1.0e-5, 1.0e-2]
+  wd_range: [1.0e-6, 1.0e-3]

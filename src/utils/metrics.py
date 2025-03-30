@@ -22,10 +22,11 @@ def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
 
     with torch.no_grad():
         # Get the index of the max log-probability/probability
+        # Ensure outputs are on CPU for argmax if targets are on CPU
+        if outputs.device != targets.device:
+            outputs = outputs.to(targets.device)
+
         predicted = torch.argmax(outputs, dim=1)
         correct = (predicted == targets).sum().item()
         accuracy = (correct / total) * 100.0
     return accuracy
-
-
-# Removed the __main__ block for cleaner utils file

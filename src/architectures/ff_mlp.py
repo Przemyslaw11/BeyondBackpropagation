@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List, Tuple, Optional, Type  # Added Type
+from typing import List, Tuple, Optional, Type
 import math
 import logging
 
@@ -19,58 +19,68 @@ class FF_Layer(nn.Module):
         self,
         in_features: int,
         out_features: int,
-        activation_cls: Type[nn.Module] = nn.ReLU,  # Pass class, not instance
-        normalize: bool = True,
+        activation_cls: Type[nn.Module] = nn.ReLU,
+        normalize: bool = True,  # Default to true for FF
+        norm_type: str = "length",  # 'length' or 'layernorm'
         bias: bool = True,
     ):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias=bias)
-        self.activation = activation_cls()  # Instantiate activation here
+        self.activation = activation_cls()
 
-        # Layer Normalization: Using standard nn.LayerNorm.
-        # NOTE: Hinton's paper (Sec 2.1, Footnote 5) suggests a simpler version:
-        # "FF uses the simplest version of layer normalization which does not subtract the mean
-        # before dividing by the length of the activity vector."
-        # This could be implemented as `x / torch.linalg.norm(x, dim=1, keepdim=True)`
-        # Standard LayerNorm is used here for simplicity and common practice.
-        # It includes learnable affine parameters (elementwise_affine=True) by default.
-        self.norm_layer = (
-            nn.LayerNorm(out_features, elementwise_affine=True)
-            if normalize
-            else nn.Identity()
-        )
+        self.norm_type = norm_type.lower()
         self.normalize = normalize
+        if self.normalize:
+            if self.norm_type == "layernorm":
+                # Standard LayerNorm with learnable affine parameters
+                self.norm_layer = nn.LayerNorm(out_features, elementwise_affine=True)
+                logger.debug(f"FF_Layer: Using nn.LayerNorm for normalization.")
+            elif self.norm_type == "length":
+                # Hinton's simplified length normalization (no learnable parameters)
+                self.norm_layer = lambda x: F.normalize(x, p=2, dim=1)
+                # Or: lambda x: x / (torch.linalg.norm(x, dim=1, keepdim=True) + 1e-8) # Add epsilon
+                logger.debug(f"FF_Layer: Using Length Normalization (L2 norm).")
+            else:
+                raise ValueError(
+                    f"Unsupported norm_type: {norm_type}. Choose 'length' or 'layernorm'."
+                )
+        else:
+            self.norm_layer = nn.Identity()
+
         logger.debug(
-            f"FF_Layer: In={in_features}, Out={out_features}, Normalize={normalize}, Bias={bias}, Activation={activation_cls.__name__}"
+            f"FF_Layer: In={in_features}, Out={out_features}, Normalize={normalize} (Type: {norm_type if normalize else 'None'}), Bias={bias}, Activation={activation_cls.__name__}"
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass through the layer. Applies Linear -> Norm -> Activation.
+        Forward pass: Linear -> Activation -> Norm.
+        NOTE: Hinton's description (Sec 2.1) implies norm *after* activation
+        to remove magnitude info before passing to the next layer.
+        Goodness is typically based on the post-activation, pre-norm value.
         """
-        x = self.linear(x)
-        # Apply normalization BEFORE activation, as per common interpretation of FF
-        x = self.norm_layer(x)
-        x = self.activation(x)
-        return x
+        x_lin = self.linear(x)
+        x_act = self.activation(x_lin)  # Activation applied first
+        x_norm = self.norm_layer(x_act)  # Normalization applied last
+        return x_norm
 
     def forward_with_goodness(
         self, x: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass that also returns the sum of squared activities (goodness).
-        Goodness is calculated *after* activation.
+        Goodness is calculated *after* activation but *before* final normalization.
         """
-        x_out = self.forward(x)
-        # Goodness: sum of squares of activations per sample in the batch
-        goodness = torch.sum(x_out.pow(2), dim=1)  # Sum over the feature dimension
-        return x_out, goodness
+        x_lin = self.linear(x)
+        x_act = self.activation(x_lin)  # Calculate activation output
+        # Goodness: sum of squares of activations (BEFORE final normalization)
+        goodness = torch.sum(x_act.pow(2), dim=1)  # Sum over the feature dimension
+        x_norm = self.norm_layer(x_act)  # Apply final normalization
+        return x_norm, goodness
 
 
 class FF_MLP(nn.Module):
     """
     Multi-Layer Perceptron specifically designed for the Forward-Forward algorithm.
-    Includes layers that handle normalization and provides methods for FF training/eval.
     """
 
     def __init__(
@@ -80,22 +90,15 @@ class FF_MLP(nn.Module):
         num_classes: int,
         activation: str = "relu",
         normalize_layers: bool = True,
+        norm_type: str = "length",  # Add norm_type selection
         bias: bool = True,
     ):
-        """
-        Args:
-            input_dim: Dimensionality of the raw input features (e.g., 784 for flattened MNIST).
-            hidden_dims: List of sizes for each hidden layer.
-            num_classes: Number of output classes (used for label embedding).
-            activation: Name of activation function ('relu', 'tanh').
-            normalize_layers: Whether to apply Layer Normalization in hidden layers.
-            bias: Whether to use bias terms in linear layers.
-        """
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.num_classes = num_classes
         self.normalize_layers = normalize_layers
+        self.norm_type = norm_type
 
         if activation.lower() == "relu":
             act_cls = nn.ReLU
@@ -105,120 +108,114 @@ class FF_MLP(nn.Module):
             raise ValueError(f"Unsupported activation function: {activation}")
 
         self.layers = nn.ModuleList()
-        # Input dimension to the *first* FF_Layer includes space for embedded labels
-        current_dim = input_dim + num_classes
+        current_dim = input_dim  # Labels embedded externally now
+        # --- Input Adapter Layer ---
+        # Handles label embedding and ensures correct dimension for the first FF layer
+        self.input_adapter = nn.Linear(
+            input_dim + num_classes, hidden_dims[0], bias=bias
+        )
+        self.first_layer_activation = act_cls()
+        self.first_layer_norm = (
+            nn.LayerNorm(hidden_dims[0])
+            if normalize_layers and norm_type == "layernorm"
+            else (
+                lambda x: (
+                    F.normalize(x, p=2, dim=1)
+                    if normalize_layers and norm_type == "length"
+                    else nn.Identity()
+                )
+            )
+        )
 
-        for h_dim in hidden_dims:
+        # --- Hidden Layers (start from the second hidden layer definition) ---
+        current_dim = hidden_dims[0]  # Output dim of the first adapted layer
+        for h_dim in hidden_dims[1:]:  # Iterate from the second hidden dim onwards
             self.layers.append(
                 FF_Layer(
                     current_dim,
                     h_dim,
                     activation_cls=act_cls,
                     normalize=normalize_layers,
+                    norm_type=norm_type,
                     bias=bias,
                 )
             )
-            current_dim = h_dim  # Output dimension of this layer is input for next
+            current_dim = h_dim
 
-        logger.info(f"Initialized FF_MLP with {len(self.layers)} hidden layers.")
-        layer_dims_str = " -> ".join(map(str, [input_dim + num_classes] + hidden_dims))
-        logger.info(f"Layer dimensions: {layer_dims_str}")
+        logger.info(
+            f"Initialized FF_MLP with {len(hidden_dims)} effective hidden layers (1 input adapter + {len(self.layers)} FF_Layers)."
+        )
+        all_layer_dims = [input_dim + num_classes] + hidden_dims
+        layer_dims_str = " -> ".join(map(str, all_layer_dims))
+        logger.info(f"Layer dimensions (including input adapter): {layer_dims_str}")
 
-    def prepare_ff_input(
-        self, x_images: torch.Tensor, labels: torch.Tensor
-    ) -> torch.Tensor:
+    # Removed prepare_ff_input - handled externally by training script for clarity
+
+    def forward_upto(self, x_combined: torch.Tensor, layer_idx: int) -> torch.Tensor:
         """
-        Prepares input for FF by embedding labels into the image tensor.
-        Assumes x_images has shape [batch_size, input_dim].
-        Returns tensor of shape [batch_size, input_dim + num_classes].
-        """
-        batch_size = x_images.shape[0]
-        device = x_images.device
-
-        # Ensure image tensor has correct input_dim before padding
-        if x_images.shape[1] != self.input_dim:
-            # This should typically be handled by an input_adapter before calling this
-            logger.warning(
-                f"Input image tensor shape {x_images.shape} dim 1 != expected input_dim {self.input_dim}. Ensure input is flattened correctly."
-            )
-            # Attempt to flatten if not already flat (risky, assumes spatial dims)
-            if len(x_images.shape) > 2:
-                try:
-                    x_images = x_images.view(batch_size, -1)
-                    if x_images.shape[1] != self.input_dim:
-                        raise ValueError(
-                            "Flattened shape still doesn't match input_dim."
-                        )
-                    logger.warning("Automatically flattened input tensor.")
-                except Exception as e:
-                    raise ValueError(
-                        f"Input image tensor has dimension {x_images.shape[1]}, expected {self.input_dim}. Auto-flatten failed: {e}"
-                    ) from e
-            else:
-                raise ValueError(
-                    f"Input image tensor has dimension {x_images.shape[1]}, expected {self.input_dim}."
-                )
-
-        # Create one-hot labels
-        one_hot_labels = F.one_hot(labels, num_classes=self.num_classes).float()
-
-        # Concatenate labels and images
-        # [B, num_classes] + [B, input_dim] -> [B, num_classes + input_dim]
-        ff_input = torch.cat((one_hot_labels, x_images), dim=1)
-        return ff_input
-
-    def forward_upto(self, x: torch.Tensor, layer_idx: int) -> torch.Tensor:
-        """
-        Performs a forward pass through layers 0 to layer_idx (exclusive).
-        Assumes input 'x' already has labels embedded.
+        Performs a forward pass through layers 0 to layer_idx (inclusive).
+        Assumes input 'x_combined' already has labels embedded.
+        layer_idx=0 corresponds to the output of the input adapter layer.
+        layer_idx=k corresponds to the output of the k-th FF_Layer in self.layers (which maps hidden k to hidden k+1).
 
         Args:
-            x: Input tensor (shape: [batch_size, input_dim + num_classes]).
-            layer_idx: Index of the layer *not* to run (runs up to layer_idx - 1).
-                       layer_idx=0 returns x, layer_idx=1 returns output of self.layers[0].
+            x_combined: Input tensor with embedded labels (shape: [batch_size, input_dim + num_classes]).
+            layer_idx: Index of the last layer to run (0 to num_hidden_layers - 1).
 
         Returns:
-            Output activation tensor from layer layer_idx - 1.
+            Output activation tensor from the specified layer.
         """
-        expected_input_dim = self.input_dim + self.num_classes
-        if x.shape[1] != expected_input_dim:
+        if not (0 <= layer_idx < len(self.hidden_dims)):
             raise ValueError(
-                f"Input tensor shape {x.shape} dim 1 does not match expected combined dimension {expected_input_dim}"
-            )
-        if layer_idx < 0 or layer_idx > len(self.layers):
-            raise ValueError(
-                f"layer_idx {layer_idx} out of range for {len(self.layers)} layers."
+                f"layer_idx {layer_idx} out of range for {len(self.hidden_dims)} hidden layers."
             )
 
-        current_activation = x
-        for i in range(layer_idx):  # Run layers 0, 1, ..., layer_idx-1
+        # --- Input Adapter Layer ---
+        current_activation = self.input_adapter(x_combined)
+        current_activation = self.first_layer_activation(current_activation)
+        current_activation = self.first_layer_norm(
+            current_activation
+        )  # Output of effective hidden layer 0
+
+        if layer_idx == 0:
+            return current_activation
+
+        # --- Subsequent FF Layers ---
+        # Run FF_Layers 0 to layer_idx-1
+        for i in range(layer_idx):
             current_activation = self.layers[i](current_activation)
+
         return current_activation
 
-    def forward_goodness_per_layer(self, x: torch.Tensor) -> List[torch.Tensor]:
+    def forward_goodness_per_layer(
+        self, x_combined: torch.Tensor
+    ) -> List[torch.Tensor]:
         """
-        Forward pass calculating and returning the 'goodness' for each hidden layer's output.
-        Assumes input x already has labels embedded.
+        Forward pass calculating and returning 'goodness' for each effective hidden layer.
+        Assumes input x_combined already has labels embedded.
 
         Returns:
-            List[torch.Tensor]: List containing goodness scores (sum of squared activations)
-                                for each hidden layer, each tensor of shape [batch_size].
+            List[torch.Tensor]: List containing goodness scores (sum of squared activations
+                                before final normalization) for each hidden layer output.
+                                Length = number of hidden layers.
         """
-        expected_input_dim = self.input_dim + self.num_classes
-        if x.shape[1] != expected_input_dim:
-            raise ValueError(
-                f"Input tensor shape {x.shape} dim 1 does not match expected combined dimension {expected_input_dim}"
-            )
-
         layer_goodness = []
-        current_activation = x
-        for layer in self.layers:
-            # Use the layer's specific forward_with_goodness method
+
+        # --- Input Adapter Layer ---
+        x_adapt_lin = self.input_adapter(x_combined)
+        x_adapt_act = self.first_layer_activation(x_adapt_lin)
+        goodness_0 = torch.sum(x_adapt_act.pow(2), dim=1)  # Goodness before norm
+        layer_goodness.append(goodness_0)
+        current_activation = self.first_layer_norm(
+            x_adapt_act
+        )  # Pass normalized output
+
+        # --- Subsequent FF Layers ---
+        for layer in self.layers:  # These are FF_Layer instances
+            # forward_with_goodness returns (normalized_output, goodness_before_norm)
             current_activation, goodness = layer.forward_with_goodness(
                 current_activation
             )
             layer_goodness.append(goodness)
+
         return layer_goodness
-
-
-# Removed the __main__ block for cleaner architecture file

@@ -10,7 +10,7 @@ algorithm:
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1 # Not needed for CaFo training itself, but good for consistency
+  val_split: 0.1
   num_classes: 10
   input_channels: 1
   image_size: 28
@@ -23,24 +23,26 @@ data_loader:
 
 # Model Architecture Configuration (Base blocks)
 model:
-  name: "CaFo_CNN" # Corresponds to src/architectures/cafo_cnn.py
+  name: "CaFo_CNN"
   params:
-    # input_channels: 1 # Calculated by engine
+    # input_channels: 1 # Calculated
     block_channels: [32, 128, 512] # Channels for the 3 blocks
     activation: "ReLU"
     use_batchnorm: true
-    # image_size: 28 # Calculated by engine
-    # num_classes: 10 # Calculated by engine (used by training logic for predictor)
+    kernel_size: 3 # Default kernel size
+    pool_kernel_size: 2 # Default pool size
+    pool_stride: 2 # Default pool stride
+    # image_size: 28 # Calculated
+    # num_classes: 10 # Calculated
 
 # Algorithm Specific Configuration (CaFo-Rand-CE)
 algorithm_params:
-  optimizer_type: "Adam" # Optimizer for local predictors
-  lr: 0.001 # Starting LR for predictors (from CaFo paper experiments, adjust if needed)
-  weight_decay: 0.0 # Often no WD for predictors, but can be added
-  loss_type: "CrossEntropyLoss" # Loss for local predictors (CaFo-Rand-CE)
-  # Epochs specified in CaFo paper: 5000 for MNIST/CIFAR10, 1000 for CIFAR100/MiniImageNet
-  num_epochs_per_block: 5000 # How many epochs to train each predictor locally
-  log_interval: 200 # Log less frequently for many epochs
+  optimizer_type: "Adam"
+  lr: 0.001
+  weight_decay: 0.0
+  loss_type: "CrossEntropyLoss"
+  num_epochs_per_block: 5000 # Epochs for predictor training
+  log_interval: 200
 
 # Logging Configuration
 logging:
@@ -48,9 +50,10 @@ logging:
   # log_file: null
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation"
-    # entity: null
-    # run_name: null
+
+# Checkpointing (Save predictors after training)
+checkpointing:
+  checkpoint_dir: "checkpoints/cafo_fashion_mnist_cnn_3block"
 
 # Monitoring/Profiling
 monitoring:

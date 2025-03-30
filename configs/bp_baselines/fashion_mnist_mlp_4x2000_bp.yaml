@@ -2,19 +2,16 @@
 # Configuration for Backpropagation (BP) Baseline on Fashion-MNIST with 4x2000 MLP
 # This corresponds to the ff_fashion_mnist_mlp_4x2000 experiment.
 
-# Inherit from base config (handled by config_parser)
-# Values here override base.yaml
-
-# Experiment Identification
+# Inherit from base config
 experiment_name: "bp_baseline_fashion_mnist_mlp_4x2000"
 algorithm:
-  name: "BP" # Specify Backpropagation baseline
+  name: "BP"
 
-# Dataset Configuration (Should match the corresponding FF experiment)
+# Dataset Configuration (Match FF experiment)
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1 # Crucial for Optuna tuning
+  val_split: 0.1 # Needed for Optuna & best model saving
   num_classes: 10
   input_channels: 1
   image_size: 28
@@ -25,52 +22,62 @@ data_loader:
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration (Identical architecture structure to FF experiment)
+# Model Architecture Configuration (Identical structure to FF experiment)
 model:
-  name: "FF_MLP" # Engine will adapt this name for BP baseline creation
+  name: "FF_MLP" # Engine adapts this for BP baseline creation
   params:
-    # input_dim: 784 # Calculated by engine
+    # input_dim: 784 # Calculated
     hidden_dims: [2000, 2000, 2000, 2000]
     activation: "ReLU"
-    # num_classes: 10 # Calculated by engine
+    # num_classes: 10 # Calculated
+    # norm_type, normalize_layers are ignored by BP baseline logic
 
-# Optimizer Configuration (Placeholders for Optuna tuning)
+# Optimizer Configuration
+# !!! IMPORTANT !!!
+# Update lr and weight_decay below with the best values found by
+# running scripts/run_optuna_search.py --config configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml
 optimizer:
-  type: "AdamW" # Tuner will use this type
-  # lr and weight_decay provided by Optuna trial
+  type: "AdamW" # Match the type used in Optuna search
+  lr: 0.001 # Placeholder - UPDATE THIS
+  weight_decay: 0.0001 # Placeholder - UPDATE THIS
+  # Add other fixed params if needed (e.g., betas for Adam)
+  # params:
+  #   betas: [0.9, 0.999]
 
-# Training Configuration (Parameters for the final run *after* tuning)
+# Training Configuration (For the final run)
 training:
-  epochs: 100 # Total epochs for the final run
-  criterion: "CrossEntropyLoss" # Standard loss for classification
+  epochs: 100 # Total epochs for final run
+  criterion: "CrossEntropyLoss"
   log_interval: 100
-  # scheduler: "CosineAnnealingLR" # Optional: Add scheduler for final run
+  # Optional: Add scheduler config if used in final run
+  # scheduler: "CosineAnnealingLR"
   # scheduler_params: {}
 
-# Hyperparameter Tuning Configuration (For Optuna)
+# Hyperparameter Tuning Configuration (Used by run_optuna_search.py)
 tuning:
   enabled: true # Flag for scripts (optional)
-  n_trials: 50 # Number of Optuna trials
-  num_epochs: 25 # Number of epochs *per trial* during tuning (e.g., 25% of final)
-  direction: "maximize" # Optimize for validation accuracy
-  metric: "val_accuracy" # Metric the objective function returns
-  sampler: "TPE" # Optuna sampler (TPE, Random)
-  pruner: "Median" # Optuna pruner (Median, Hyperband, None)
-  # Define search space for Optuna
-  lr_range: [1.0e-5, 1.0e-2] # Log uniform search space for learning rate
-  wd_range: [1.0e-6, 1.0e-3] # Log uniform search space for weight decay (Adjusted upper limit)
+  n_trials: 50
+  num_epochs: 25 # Epochs *per trial* (e.g., 25% of final)
+  direction: "maximize"
+  metric: "val_accuracy" # Metric to optimize (use BP specific keys e.g., bp_val_accuracy)
+  sampler: "TPE"
+  pruner: "Median"
+  lr_range: [1.0e-5, 1.0e-2]
+  wd_range: [1.0e-6, 1.0e-3]
+
+# Checkpointing (Save best BP model based on validation)
+checkpointing:
+  checkpoint_dir: "checkpoints/bp_baseline_fashion_mnist_mlp_4x2000"
+  save_best_metric: "bp_val_accuracy" # Metric key used in bp.py logging (case-insensitive compare)
 
 # Logging Configuration
 logging:
   level: "INFO"
-  # log_file: null # Set dynamically
+  # log_file: null
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation"
-    # entity: null
-    # run_name: null # Set dynamically
 
-# Monitoring/Profiling (Enable for baseline runs too)
+# Monitoring/Profiling
 monitoring:
   enabled: true
   energy_enabled: true

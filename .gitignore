@@ -179,6 +179,7 @@ data/
 results/
 *.log
 logs/
+checkpoints/ # Ignore checkpoints directory
 
 # IDE settings
 .vscode/

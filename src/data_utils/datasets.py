@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 # --- Custom Subset class to handle transform application ---
-# This is crucial because the original dataset instance (full_train_dataset)
-# has the *training* transforms. We need validation subset to use *test* transforms.
 class TransformedSubset(Dataset):
     """
     A Subset that applies a specific transform independent of the original dataset's transform.
@@ -23,17 +21,19 @@ class TransformedSubset(Dataset):
     def __init__(self, subset: Subset, transform: Optional[Callable] = None):
         self.subset = subset
         self.transform = transform
+        # Store the underlying dataset for direct access if needed
+        self.dataset = subset.dataset
 
     def __getitem__(self, index):
-        # Get the *original* data item from the underlying dataset
-        data, target = self.subset.dataset[self.subset.indices[index]]
+        # Get the *original* data item from the underlying dataset using the subset index mapping
+        data, target = self.dataset[self.subset.indices[index]]
         # Apply the specific transform provided to this subset
         if self.transform:
             data = self.transform(data)
         return data, target
 
     def __len__(self):
-        return len(self.subset)
+        return len(self.subset.indices)  # Correct way to get subset length
 
 
 def get_dataloaders(
@@ -78,11 +78,8 @@ def get_dataloaders(
 
     # --- Get Transforms ---
     try:
-        # Get transforms *before* loading dataset - needed for validation split handling
         train_transform = get_transforms(dataset_name, train=True)
-        test_transform = get_transforms(
-            dataset_name, train=False
-        )  # Use test transforms for val/test
+        test_transform = get_transforms(dataset_name, train=False)
     except ValueError as e:
         logger.error(f"Failed to get transforms: {e}")
         raise
@@ -100,17 +97,13 @@ def get_dataloaders(
 
     try:
         # Load raw training data *without* transforms initially if splitting needed
-        # If val_split > 0, we apply transforms later via TransformedSubset
-        # If val_split == 0, we can apply train_transform directly here
-        initial_train_transform = train_transform if val_split == 0.0 else None
         full_train_dataset = dataset_class(
             root=data_root,
             train=True,
             download=download,
-            transform=initial_train_transform,  # Apply later if splitting
+            transform=None,  # Apply transforms after splitting
         )
-
-        # Load test data with test transforms
+        # Load test data with test transforms applied directly
         test_dataset = dataset_class(
             root=data_root, train=False, download=download, transform=test_transform
         )
@@ -123,24 +116,27 @@ def get_dataloaders(
             raise FileNotFoundError(
                 f"Dataset {dataset_name.upper()} not found in {data_root} and download is disabled."
             )
-        raise  # Re-raise other errors
+        raise
 
     # --- Split Train/Validation ---
-    train_dataset: Dataset  # Type hint
-    val_dataset: Optional[Dataset] = None  # val_dataset can be None
+    train_dataset: Dataset
+    val_dataset: Optional[Dataset] = None
 
     if val_split > 0.0:
         num_train_total = len(full_train_dataset)
         num_val = int(num_train_total * val_split)
         num_train_split = num_train_total - num_val
 
-        if num_val == 0:
+        if num_val == 0 or num_train_split == 0:  # Also check if train split is empty
             logger.warning(
-                f"Validation split {val_split} resulted in 0 samples for dataset size {num_train_total}. Validation loader will be None."
+                f"Validation split {val_split} resulted in {num_train_split} train / {num_val} validation samples for dataset size {num_train_total}. Using full dataset for training. Validation loader will be None."
             )
-            # Use full dataset for training, apply train transforms
+            # Use full dataset for training, apply train transforms now
             train_dataset = TransformedSubset(
-                full_train_dataset, transform=train_transform
+                Subset(
+                    full_train_dataset, range(num_train_total)
+                ),  # Wrap in subset first
+                transform=train_transform,
             )
             val_dataset = None
         else:
@@ -150,7 +146,7 @@ def get_dataloaders(
             generator = (
                 torch.Generator().manual_seed(seed) if seed is not None else None
             )
-            # Split the *indices*
+            # Split the dataset into Subset objects
             train_subset, val_subset = random_split(
                 full_train_dataset, [num_train_split, num_val], generator=generator
             )
@@ -162,42 +158,52 @@ def get_dataloaders(
                 "Applied training transforms to train subset and test transforms to validation subset."
             )
     else:
-        # No validation split needed, use the already transformed full_train_dataset
+        # No validation split needed, wrap the full dataset to apply train transforms
         logger.info("Validation split is 0, using full training set for training.")
-        train_dataset = full_train_dataset  # Already has train_transform applied
+        train_dataset = TransformedSubset(
+            Subset(
+                full_train_dataset, range(len(full_train_dataset))
+            ),  # Wrap in subset first
+            transform=train_transform,
+        )
         val_dataset = None
 
     # --- Create DataLoaders ---
+    persistent_workers = num_workers > 0  # Use persistent workers if num_workers > 0
     train_loader = DataLoader(
         dataset=train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=True,  # Often beneficial for training stability
+        drop_last=True,
+        persistent_workers=persistent_workers,
     )
 
     val_loader = None
     if val_dataset and len(val_dataset) > 0:
         val_loader = DataLoader(
             dataset=val_dataset,
-            batch_size=batch_size,  # Can use larger batch size for validation if memory allows
+            batch_size=batch_size * 2,  # Often possible to use larger BS for validation
             shuffle=False,
             num_workers=num_workers,
             pin_memory=pin_memory,
             drop_last=False,
+            persistent_workers=persistent_workers,
         )
     elif val_split > 0.0:
-        # Log warning only if user intended a validation set but it ended up empty
-        logger.warning("Validation dataset is empty. Validation loader will be None.")
+        logger.warning(
+            "Validation dataset is empty after split. Validation loader will be None."
+        )
 
     test_loader = DataLoader(
         dataset=test_dataset,
-        batch_size=batch_size,  # Can use larger batch size for testing
+        batch_size=batch_size * 2,  # Often possible to use larger BS for testing
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
         drop_last=False,
+        persistent_workers=persistent_workers,
     )
 
     logger.info(
@@ -205,4 +211,3 @@ def get_dataloaders(
     )
 
     return train_loader, val_loader, test_loader
-

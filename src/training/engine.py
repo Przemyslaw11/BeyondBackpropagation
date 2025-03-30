@@ -7,15 +7,9 @@ import os
 import contextlib
 from typing import Dict, Any, Optional, Tuple, Callable
 
-# Import project components
 from src.utils.config_parser import load_config
 from src.utils.helpers import set_seed, create_directory_if_not_exists, format_time
-from src.utils.logging_utils import (
-    setup_wandb,
-    log_metrics,
-    logger,
-    setup_logging,
-)  # Import setup_logging
+from src.utils.logging_utils import setup_wandb, log_metrics, logger, setup_logging
 from src.utils.monitoring import (
     init_nvml,
     shutdown_nvml,
@@ -25,19 +19,15 @@ from src.utils.monitoring import (
 )
 from src.utils.profiling import profile_model_flops
 from src.data_utils.datasets import get_dataloaders
-
-# Architectures
 from src.architectures import FF_MLP, CaFo_CNN, MF_MLP
-
-# Algorithms & Baselines
-from src.algorithms import train_ff_model, evaluate_ff_model
-from src.algorithms import train_cafo_model, evaluate_cafo_model
-from src.algorithms import train_mf_model, evaluate_mf_model
-from src.baselines import train_bp_model, evaluate_bp_model
+from src.algorithms import (
+    get_training_function,
+    get_evaluation_function,
+)  # Use factories
 
 
 def get_model_and_adapter(
-    config: Dict[str, Any], device: torch.device  # Pass device for shape calculation
+    config: Dict[str, Any], device: torch.device
 ) -> Tuple[nn.Module, Optional[Callable]]:
     """
     Instantiates the model based on the configuration and returns an optional input adapter.
@@ -46,7 +36,7 @@ def get_model_and_adapter(
     model_config = config.get("model", {})
     arch_name = model_config.get("name", "").lower()
     arch_params = model_config.get("params", {})
-    dataset_config = config.get("dataset", {})
+    dataset_config = config.get("data", {})
     num_classes = dataset_config.get("num_classes", 10)
     input_channels = dataset_config.get("input_channels", 1)
     image_size = dataset_config.get("image_size", 28)
@@ -54,22 +44,20 @@ def get_model_and_adapter(
     algorithm_name = config.get("algorithm", {}).get("name", "").lower()
     is_bp_baseline = algorithm_name == "bp"
 
-    model = None
-    input_adapter = None
+    model: Optional[nn.Module] = None  # Initialize model as Optional
+    input_adapter: Optional[Callable] = None  # Initialize adapter
 
     logger.info(
         f"Creating model architecture: {arch_name} (BP Baseline: {is_bp_baseline})"
     )
-    # logger.info(f"Architecture params: {arch_params}")
-    # logger.info(f"Dataset params: Channels={input_channels}, Size={image_size}, Classes={num_classes}")
 
     # --- Determine necessary parameters if not provided ---
     if arch_name in ["ff_mlp", "mf_mlp"]:
         if "input_dim" not in arch_params:
             arch_params["input_dim"] = input_channels * image_size * image_size
-            logger.debug(f"Calculated input_dim: {arch_params['input_dim']}")
         if "num_classes" not in arch_params:
             arch_params["num_classes"] = num_classes
+        input_adapter = lambda x: x.view(x.shape[0], -1)  # MLPs need flattened input
     elif arch_name == "cafo_cnn":
         if "input_channels" not in arch_params:
             arch_params["input_channels"] = input_channels
@@ -77,22 +65,33 @@ def get_model_and_adapter(
             arch_params["image_size"] = image_size
         if "num_classes" not in arch_params:
             arch_params["num_classes"] = num_classes
+        input_adapter = None  # CNNs usually don't need adapter
 
     # --- Instantiate based on architecture name ---
     if arch_name == "ff_mlp":
+        # Instantiate the base FF_MLP regardless
         ff_model_instance = FF_MLP(**arch_params)
         if is_bp_baseline:
-            # Create a standard MLP from FF_Layer parameters for the BP baseline
             logger.info(
                 "Adapting FF_MLP structure for BP baseline -> Standard nn.Sequential MLP."
             )
             layers = []
-            # Input adapter needed for BP MLP
-            input_adapter = lambda x: x.view(x.shape[0], -1)
-            current_dim = arch_params["input_dim"]  # Use original image dim
-            for (
-                ff_layer
-            ) in ff_model_instance.layers:  # Iterate through FF_Layer modules
+            current_dim = arch_params[
+                "input_dim"
+            ]  # BP baseline uses original image dim
+            # Reconstruct sequential layers from FF_MLP structure
+            # Input Adapter Layer of FF becomes first Linear layer for BP
+            layers.append(
+                nn.Linear(
+                    current_dim,
+                    ff_model_instance.input_adapter.out_features,
+                    bias=ff_model_instance.input_adapter.bias is not None,
+                )
+            )
+            layers.append(type(ff_model_instance.first_layer_activation)())
+            current_dim = ff_model_instance.input_adapter.out_features
+            # Subsequent FF_Layers become Linear + Activation
+            for ff_layer in ff_model_instance.layers:
                 layers.append(
                     nn.Linear(
                         current_dim,
@@ -100,67 +99,54 @@ def get_model_and_adapter(
                         bias=ff_layer.linear.bias is not None,
                     )
                 )
-                # Copy weights if needed, or reinitialize for BP tuning
-                # layers[-1].load_state_dict(ff_layer.linear.state_dict()) # Optional: Start BP from FF weights
-                layers.append(type(ff_layer.activation)())  # Instantiate new activation
+                layers.append(type(ff_layer.activation)())
                 current_dim = ff_layer.linear.out_features
             layers.append(
                 nn.Linear(current_dim, num_classes)
             )  # Add final BP classifier
             model = nn.Sequential(*layers)
         else:
-            # FF algorithm uses the FF_MLP instance directly
-            model = ff_model_instance
-            # FF training needs flattening adapter before label embedding
-            input_adapter = lambda x: x.view(x.shape[0], -1)
+            model = ff_model_instance  # Use FF_MLP directly
+            # Input adapter for FF handled by its train function internally
 
     elif arch_name == "cafo_cnn":
-        # Instantiate the base CaFo CNN (contains only blocks now)
         cafo_base = CaFo_CNN(**arch_params)
         if is_bp_baseline:
             logger.info(
                 "Creating BP baseline model from CaFo_CNN blocks + final Linear layer."
             )
-            # Calculate output features from the last block
+            # Temporarily move model to device to calculate output dim
+            cafo_base.to(device)
             with torch.no_grad():
-                cafo_base.to(device)  # Move to device for calculation
                 dummy_input = torch.randn(1, input_channels, image_size, image_size).to(
                     device
                 )
                 last_block_output = cafo_base.forward_blocks_only(dummy_input)
                 num_output_features = last_block_output.numel()
-                cafo_base.cpu()  # Move back if only used for shape calculation
-                logger.debug(
-                    f"Flattened output dimension from CaFo blocks: {num_output_features}"
-                )
-
+            cafo_base.cpu()  # Move back
+            logger.debug(
+                f"Flattened output dimension from CaFo blocks: {num_output_features}"
+            )
             model = nn.Sequential(
-                cafo_base.blocks,  # Use the ModuleList of blocks
+                cafo_base.blocks,
                 nn.Flatten(),
                 nn.Linear(num_output_features, num_classes),
             )
-            # No input adapter usually needed for CNN baselines
         else:
-            # CaFo algorithm uses the CaFo_CNN instance containing blocks directly
-            # Predictors are handled by train_cafo_model
-            model = cafo_base
-            # No input adapter needed
+            model = cafo_base  # CaFo training uses the base model
 
     elif arch_name == "mf_mlp":
-        # Instantiate MF_MLP (includes W layers and M parameters)
+        # MF_MLP instance contains W layers, M parameters, and standard forward for BP
         model = MF_MLP(**arch_params)
-        # Both MF training and BP baseline need flattened input
-        input_adapter = lambda x: x.view(x.shape[0], -1)
         if is_bp_baseline:
             logger.info("Using standard forward pass of MF_MLP for BP baseline.")
-            # BP training will ignore the projection matrices automatically
+        # MF training function uses specific forward methods
 
     else:
         raise ValueError(f"Unknown model architecture name: {arch_name}")
 
     if model is None:
         raise RuntimeError(f"Failed to instantiate model for architecture: {arch_name}")
-
     return model, input_adapter
 
 
@@ -176,34 +162,33 @@ def run_training(
     monitor = None
     run_start_time = time.time()
 
-    # Ensure logging is configured (can be called multiple times safely if needed)
-    # setup_logging(log_level=config.get('logging', {}).get('level', 'INFO')) # Setup happens in run_experiment.py
-
     try:
         # --- Setup ---
         general_config = config.get("general", {})
         seed = general_config.get("seed", 42)
         set_seed(seed)
         logger.info(f"Using random seed: {seed}")
-        device_name = general_config.get(
-            "device", "cuda" if torch.cuda.is_available() else "cpu"
-        )
-        device = torch.device(device_name)
-        logger.info(f"Using device: {device}")
+
+        # --- Device Setup (Reads from config) ---
+        device_preference = general_config.get("device", "auto").lower()
+        if device_preference == "cuda" and torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif device_preference == "cpu":
+            device = torch.device("cpu")
+        else:  # Includes "auto" or invalid config value
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {device} (Preference: '{device_preference}')")
 
         # --- W&B Initialization ---
-        # Moved W&B setup here to capture the whole run
-        if (
-            wandb_run is None
-        ):  # Allow passing an existing run (e.g., from Optuna wrapper)
-            wandb_run = setup_wandb(config)  # Use config for project/entity/name
+        if wandb_run is None:
+            wandb_run = setup_wandb(config, job_type="training")
 
         # --- Monitoring Initialization ---
         monitoring_config = config.get("monitoring", {})
         if device.type == "cuda":
             if init_nvml():
                 nvml_active = True
-                gpu_index = device.index if device.index is not None else 0
+                gpu_index = torch.cuda.current_device()  # Get current device index
                 gpu_handle = get_gpu_handle(gpu_index)
                 if gpu_handle:
                     logger.info(f"NVML active for GPU {gpu_index}.")
@@ -236,12 +221,12 @@ def run_training(
             logger.info("Running on CPU, GPU monitoring disabled.")
 
         # --- Data Loading ---
-        data_config = config.get("data", {})  # Use 'data' section now
+        data_config = config.get("data", {})
         loader_config = config.get("data_loader", {})
         train_loader, val_loader, test_loader = get_dataloaders(
             dataset_name=data_config.get("name", "FashionMNIST"),
             batch_size=loader_config.get("batch_size", 64),
-            data_root=data_config.get("root", "./data"),  # Use 'root' key
+            data_root=data_config.get("root", "./data"),
             val_split=data_config.get("val_split", 0.1),
             seed=seed,
             num_workers=loader_config.get("num_workers", 4),
@@ -255,7 +240,7 @@ def run_training(
         logger.info("Dataloaders created.")
 
         # --- Model Instantiation ---
-        model, input_adapter = get_model_and_adapter(config, device)  # Pass device
+        model, input_adapter = get_model_and_adapter(config, device)
         model.to(device)
         logger.info(
             f"Model '{config.get('model', {}).get('name')}' instantiated and moved to {device}."
@@ -279,12 +264,17 @@ def run_training(
         profiling_config = config.get("profiling", {})
         if profiling_config.get("enabled", True):
             try:
-                # Get a sample input and apply adapter to determine profiling shape/input
                 sample_input_img, _ = next(iter(train_loader))
+                # Ensure sample input is on the correct device for profiling
+                sample_input_device = sample_input_img.to(device)
                 if input_adapter:
-                    profile_input_constructor = lambda: input_adapter(sample_input_img)
+                    profile_input_constructor = lambda: input_adapter(
+                        sample_input_device
+                    )
                 else:
-                    profile_input_constructor = lambda: sample_input_img
+                    profile_input_constructor = (
+                        lambda: sample_input_device
+                    )  # Use device input
 
                 logger.info(f"Profiling FLOPs...")
                 gmacs = profile_model_flops(
@@ -295,7 +285,7 @@ def run_training(
                 )
                 if gmacs is not None:
                     results["estimated_gmacs"] = gmacs
-                    results["estimated_gflops"] = gmacs * 2.0  # Standard estimation
+                    results["estimated_gflops"] = gmacs * 2.0
                     log_metrics(
                         {
                             "estimated_gmacs": gmacs,
@@ -318,18 +308,17 @@ def run_training(
         # --- Training ---
         logger.info("Starting training phase...")
         train_config = config.get("training", {})
-        algo_train_config = config.get(
-            "algorithm_params", train_config
-        )  # Use specific section first
         algorithm_name = config.get("algorithm", {}).get("name", "").lower()
+        training_fn = get_training_function(algorithm_name)
 
-        peak_gpu_mem = float("nan")  # Default if not measurable
+        peak_gpu_mem = float("nan")
         train_loop_start_time = time.time()
         total_energy_joules = None
 
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
+            # Different algorithms might need different arguments
             if algorithm_name == "bp":
-                train_bp_model(
+                training_fn(
                     model,
                     train_loader,
                     val_loader,
@@ -337,19 +326,20 @@ def run_training(
                     device,
                     wandb_run,
                     input_adapter,
-                )  # Pass full config for now
+                )
             elif algorithm_name == "cafo":
-                train_cafo_model(
+                # CaFo's train function expects model (blocks), loader, config, device, wandb
+                training_fn(
                     model, train_loader, config, device, wandb_run
-                )  # Pass full config
+                )  # No adapter needed for CNN
             elif algorithm_name == "mf":
-                train_mf_model(
+                training_fn(
                     model, train_loader, config, device, wandb_run, input_adapter
-                )  # Pass full config
+                )
             elif algorithm_name == "ff":
-                train_ff_model(
+                training_fn(
                     model, train_loader, config, device, wandb_run, input_adapter
-                )  # Pass full config
+                )
             else:
                 raise ValueError(
                     f"Unknown algorithm name for training: {algorithm_name}"
@@ -361,7 +351,7 @@ def run_training(
         log_metrics({"training_duration_sec": train_loop_duration}, wandb_run=wandb_run)
         logger.info(f"Training phase completed in: {format_time(train_loop_duration)}")
 
-        if monitor:  # Retrieve energy from monitor if it exists
+        if monitor:
             total_energy_joules = monitor.get_total_energy_joules()
             if total_energy_joules is not None:
                 results["total_gpu_energy_joules"] = total_energy_joules
@@ -379,19 +369,36 @@ def run_training(
             else:
                 logger.warning("Energy monitoring failed to calculate total energy.")
 
-        if nvml_active and gpu_handle:  # Log peak memory
-            time.sleep(0.1)  # Short pause
+        if nvml_active and gpu_handle:
+            time.sleep(0.1)
             mem_info_end = get_gpu_memory_usage(gpu_handle)
             if mem_info_end:
-                peak_gpu_mem = mem_info_end[
-                    0
-                ]  # Use memory 'used' at the end as proxy for peak
+                # Attempt to read peak memory usage directly if supported (newer NVML/drivers)
+                try:
+                    peak_mem_info = pynvml.nvmlDeviceGetMaxMemoryUsage(
+                        gpu_handle
+                    )  # Requires NVML 11.5+ ? Check docs
+                    peak_gpu_mem = peak_mem_info / (1024**2)  # Convert bytes to MiB
+                    logger.info(
+                        f"Peak GPU Memory Usage (NVML Max): {peak_gpu_mem:.2f} MiB"
+                    )
+                except (pynvml.NVMLError_NotSupported, AttributeError):
+                    logger.warning(
+                        "Direct peak memory query not supported by NVML/driver. Using memory usage at end of training as proxy."
+                    )
+                    peak_gpu_mem = mem_info_end[
+                        0
+                    ]  # Use memory 'used' at the end as proxy
+                except pynvml.NVMLError as e:
+                    logger.error(f"NVML Error getting peak memory: {e}")
+                    peak_gpu_mem = mem_info_end[0]  # Fallback to end memory
+
                 results["peak_gpu_mem_used_mib"] = peak_gpu_mem
                 log_metrics(
                     {"peak_gpu_mem_used_mib": peak_gpu_mem}, wandb_run=wandb_run
                 )
                 logger.info(
-                    f"GPU Memory Usage (End of Training): {peak_gpu_mem:.2f} MiB Used / {mem_info_end[1]:.2f} MiB Total"
+                    f"GPU Memory Usage (End of Training): {mem_info_end[0]:.2f} MiB Used / {mem_info_end[1]:.2f} MiB Total"
                 )
 
         # --- Evaluation ---
@@ -402,63 +409,71 @@ def run_training(
         if eval_criterion_name.lower() == "crossentropyloss":
             eval_criterion = nn.CrossEntropyLoss()
 
+        evaluation_fn = get_evaluation_function(algorithm_name)
         eval_results = {}
-        test_loss_key = "test_loss"
-        test_acc_key = "test_accuracy"
+        test_loss_key = f"{algorithm_name.upper()}/Test_Loss"
+        test_acc_key = f"{algorithm_name.upper()}/Test_Accuracy"
 
-        if algorithm_name == "bp":
-            eval_loss, eval_acc = evaluate_bp_model(
-                model, test_loader, eval_criterion, device, input_adapter
+        # Evaluation functions might need different args
+        try:
+            if algorithm_name == "bp":
+                eval_loss, eval_acc = evaluation_fn(
+                    model, test_loader, eval_criterion, device, input_adapter
+                )
+                eval_results = {test_loss_key: eval_loss, test_acc_key: eval_acc}
+            elif algorithm_name == "cafo":
+                # CaFo eval needs predictors, assume they are attached or passed via config if needed
+                cafo_eval = evaluation_fn(
+                    model, test_loader, device, eval_criterion, aggregation_method="sum"
+                )  # Default aggregation
+                eval_results = {
+                    test_loss_key: cafo_eval.get("eval_loss", float("nan")),
+                    test_acc_key: cafo_eval.get("eval_accuracy", float("nan")),
+                }
+            elif algorithm_name == "mf":
+                mf_eval = evaluation_fn(
+                    model, test_loader, device, eval_criterion, input_adapter
+                )
+                eval_results = {
+                    test_loss_key: mf_eval.get("eval_loss", float("nan")),
+                    test_acc_key: mf_eval.get("eval_accuracy", float("nan")),
+                }
+            elif algorithm_name == "ff":
+                ff_eval = evaluation_fn(model, test_loader, device, input_adapter)
+                eval_results = {
+                    test_acc_key: ff_eval.get("eval_accuracy", float("nan")),
+                    test_loss_key: float("nan"),
+                }
+            else:
+                raise ValueError(
+                    f"Unknown algorithm name for evaluation: {algorithm_name}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Evaluation failed for algorithm {algorithm_name}: {e}", exc_info=True
             )
-            eval_results = {test_loss_key: eval_loss, test_acc_key: eval_acc}
-        elif algorithm_name == "cafo":
-            # Evaluate using sum aggregation by default
-            cafo_eval = evaluate_cafo_model(
-                model, test_loader, device, eval_criterion, aggregation_method="sum"
-            )
-            eval_results = {
-                test_loss_key: cafo_eval.get("eval_loss", float("nan")),
-                test_acc_key: cafo_eval.get("eval_accuracy", float("nan")),
-            }
-        elif algorithm_name == "mf":
-            mf_eval = evaluate_mf_model(
-                model, test_loader, device, eval_criterion, input_adapter
-            )
-            eval_results = {
-                test_loss_key: mf_eval.get("eval_loss", float("nan")),
-                test_acc_key: mf_eval.get("eval_accuracy", float("nan")),
-            }
-        elif algorithm_name == "ff":
-            ff_eval = evaluate_ff_model(model, test_loader, device, input_adapter)
-            eval_results = {
-                test_acc_key: ff_eval.get("eval_accuracy", float("nan")),
-                test_loss_key: float("nan"),  # FF eval doesn't calculate loss this way
-            }
-        else:
-            raise ValueError(f"Unknown algorithm name for evaluation: {algorithm_name}")
+            eval_results = {test_loss_key: float("nan"), test_acc_key: float("nan")}
 
         logger.info(
             f"Test Set Results: Accuracy: {eval_results.get(test_acc_key, 'N/A'):.2f}%, Loss: {eval_results.get(test_loss_key, 'N/A'):.4f}"
         )
-        results.update(eval_results)  # Add eval results to main results dict
-        log_metrics(eval_results, wandb_run=wandb_run)  # Log to W&B
+        results.update(eval_results)
+        log_metrics(eval_results, wandb_run=wandb_run)
 
     except Exception as e:
         logger.error(f"An error occurred during the run: {e}", exc_info=True)
         results["error"] = str(e)
-        # raise e # Optional: re-raise to halt execution
     finally:
-        # --- Cleanup ---
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
         log_metrics({"total_run_duration_sec": total_run_time}, wandb_run=wandb_run)
         logger.info(f"Total run duration: {format_time(total_run_time)}")
 
-        # Shutdown NVML explicitly (though atexit should also handle it)
-        # shutdown_nvml() # Let atexit handle it to avoid issues if multiple runs happen
+        # Let atexit handle NVML shutdown
+        # shutdown_nvml()
 
-        # Finish W&B run if it was initialized here
-        if wandb_run and wandb_run.finish:
+        if wandb_run and wandb_run.finish and os.environ.get("WANDB_MODE") != "offline":
             try:
                 wandb_run.finish()
                 logger.info("W&B run finished.")
@@ -466,6 +481,3 @@ def run_training(
                 logger.error(f"Error finishing W&B run: {e}")
 
     return results
-
-
-# Removed the __main__ block for cleaner engine file

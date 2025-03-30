@@ -82,57 +82,67 @@ def profile_model_flops(
 
         total_macs = None
         # --- Profile the forward pass ---
+        # Wrap model forward if it requires specific args (unlikely for standard models)
+        forward_args = (dummy_input,)
+        # Note: For models like CaFo needing specific forward methods, adjust here or profile externally.
+        # This default profiles the __call__ method which usually calls forward().
+
         with torchprof.Profile(
             model, use_cuda=(device.type == "cuda"), profile_memory=False
-        ) as prof:  # Memory profiling can be slow and less relevant here
+        ) as prof:
             with torch.no_grad():
-                model(dummy_input)
+                # Call the model directly
+                model(*forward_args)
 
         if verbose:
             try:
-                print(prof)  # Print the default summary
-                # Or for more control: print(prof.display(show_events=False))
+                print(prof)
             except Exception as e:
                 logger.warning(f"Could not print torchprof summary: {e}")
 
         # --- Extract total MACs ---
-        # Attempt 1: Use the string representation (common method)
         try:
-            summary_str = str(prof)
-            for line in summary_str.split("\n"):
-                if "Total MACs:" in line:
-                    mac_str = (
-                        line.split(":")[-1].strip().upper()
-                    )  # Handle case-insensitivity
-                    value = float(mac_str[:-1])  # Remove suffix
-                    if mac_str.endswith("K"):
-                        total_macs = value * 1e3
-                    elif mac_str.endswith("M"):
-                        total_macs = value * 1e6
-                    elif mac_str.endswith("G"):
-                        total_macs = value * 1e9
-                    elif mac_str.endswith("T"):
-                        total_macs = value * 1e12
-                    else:  # Assume no suffix or unrecognized suffix
-                        total_macs = float(mac_str)  # Try converting directly
-                    logger.debug(f"Parsed MACs from summary string: {total_macs}")
-                    break
-        except Exception as e:
-            logger.warning(
-                f"Could not parse Total MACs from torchprof summary string: {e}"
+            # Using the internal structured data is more robust if available
+            ops = prof.raw()  # Get raw operator data
+            total_macs = 0
+            for op in ops:
+                if (
+                    hasattr(op, "macs") and op.macs
+                ):  # Check if macs attribute exists and is not None/0
+                    total_macs += op.macs
+            if (
+                total_macs == 0
+            ):  # Fallback to parsing string if internal method yields 0 or fails
+                raise ValueError("Internal MACs sum is zero, trying string parsing.")
+            logger.debug(f"Retrieved MACs from prof.raw(): {total_macs}")
+        except Exception as e_internal:
+            logger.debug(
+                f"Could not retrieve MACs using internal method ({e_internal}), trying string parsing."
             )
-            total_macs = None  # Ensure reset if parsing fails
-
-        # Attempt 2: Use internal methods if available (may vary by torchprof version)
-        if total_macs is None:
+            total_macs = None  # Reset for string parsing
             try:
-                # Check for common attribute names used by profilers
-                if hasattr(prof, "total_macs"):
-                    total_macs = prof.total_macs()
-                    logger.debug(f"Retrieved MACs from prof.total_macs(): {total_macs}")
-                # Add other potential attribute names if needed
-            except Exception as e:
-                logger.warning(f"Could not retrieve MACs using internal methods: {e}")
+                summary_str = str(prof)
+                for line in summary_str.split("\n"):
+                    if "Total MACs:" in line:
+                        mac_str = line.split(":")[-1].strip().upper()
+                        value = float(mac_str[:-1])
+                        if mac_str.endswith("K"):
+                            total_macs = value * 1e3
+                        elif mac_str.endswith("M"):
+                            total_macs = value * 1e6
+                        elif mac_str.endswith("G"):
+                            total_macs = value * 1e9
+                        elif mac_str.endswith("T"):
+                            total_macs = value * 1e12
+                        else:
+                            total_macs = float(mac_str)
+                        logger.debug(f"Parsed MACs from summary string: {total_macs}")
+                        break
+            except Exception as e_str:
+                logger.warning(
+                    f"Could not parse Total MACs from torchprof summary string: {e_str}"
+                )
+                total_macs = None
 
         if total_macs is None:
             logger.warning("Failed to determine Total MACs from torchprof.")
@@ -146,13 +156,15 @@ def profile_model_flops(
         logger.error(f"Failed to profile model MACs/FLOPs: {e}", exc_info=True)
         total_macs = None
     finally:
-        # Restore original training mode
-        model.train(original_mode)
+        model.train(original_mode)  # Restore original training mode
 
-    if total_macs is not None:
+    if total_macs is not None and total_macs > 0:
         gmacs = total_macs / 1e9
         logger.info(f"Estimated Total MACs: {gmacs:.4f} G")
-        # Return GigaMACs. User can multiply by 2 for GFLOPs estimate if desired.
         return gmacs
     else:
+        if total_macs == 0:
+            logger.warning(
+                "FLOPs profiling resulted in 0 MACs. Check model structure or torchprof compatibility."
+            )
         return None

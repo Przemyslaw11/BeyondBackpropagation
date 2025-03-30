@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 # Use more descriptive names and store in a dictionary for easier access
 DATASET_STATS = {
     "fashionmnist": {
-        "mean": (0.2860,),  # Calculated from training set
-        "std": (0.3530,),  # Calculated from training set
+        # Values calculated on the standard training set (60k images)
+        "mean": (0.2860,),
+        "std": (0.3530,),
     },
     "cifar10": {
         "mean": (0.4914, 0.4822, 0.4465),  # Standard values

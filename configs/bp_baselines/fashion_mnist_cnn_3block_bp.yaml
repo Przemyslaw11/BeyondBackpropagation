@@ -24,27 +24,31 @@ data_loader:
 
 # Model Architecture Configuration (Identical block structure)
 model:
-  name: "CaFo_CNN" # Engine adapts this name for BP baseline
+  name: "CaFo_CNN" # Engine adapts this for BP baseline
   params:
-    # input_channels: 1 # Calculated by engine
+    # input_channels: 1 # Calculated
     block_channels: [32, 128, 512]
     activation: "ReLU"
     use_batchnorm: true
-    # image_size: 28 # Calculated by engine
-    # num_classes: 10 # Calculated by engine
-    # use_predictors: false # ADDED flag for clarity (though engine implicitly handles it)
+    kernel_size: 3 # Match CaFo config
+    pool_kernel_size: 2 # Match CaFo config
+    pool_stride: 2 # Match CaFo config
+    # image_size: 28 # Calculated
+    # num_classes: 10 # Calculated
 
-# Optimizer Configuration (Placeholders for Optuna tuning)
+# Optimizer Configuration
+# !!! IMPORTANT !!! Update after running Optuna search
 optimizer:
   type: "AdamW"
-  # lr and weight_decay provided by Optuna trial
+  lr: 0.001 # Placeholder - UPDATE THIS
+  weight_decay: 0.0001 # Placeholder - UPDATE THIS
 
-# Training Configuration (For final run after tuning)
+# Training Configuration (For final run)
 training:
   epochs: 100
   criterion: "CrossEntropyLoss"
   log_interval: 100
-  # scheduler: "CosineAnnealingLR" # Optional scheduler
+  # scheduler: "CosineAnnealingLR" # Optional
   # scheduler_params: {}
 
 # Hyperparameter Tuning Configuration (For Optuna)
@@ -57,7 +61,12 @@ tuning:
   sampler: "TPE"
   pruner: "Median"
   lr_range: [1.0e-5, 1.0e-2]
-  wd_range: [1.0e-6, 1.0e-3] # Adjusted WD range
+  wd_range: [1.0e-6, 1.0e-3]
+
+# Checkpointing (Save best BP model)
+checkpointing:
+  checkpoint_dir: "checkpoints/bp_baseline_fashion_mnist_cnn_3block"
+  save_best_metric: "bp_val_accuracy" # Or bp_val_loss
 
 # Logging Configuration
 logging:
@@ -65,9 +74,6 @@ logging:
   # log_file: null
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation"
-    # entity: null
-    # run_name: null
 
 # Monitoring/Profiling
 monitoring:

@@ -29,17 +29,20 @@ model:
     block_channels: [32, 128, 512]
     activation: "ReLU"
     use_batchnorm: true
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
     # image_size: 32 # Calculated
     # num_classes: 10 # Calculated
 
 # Algorithm Specific Configuration (CaFo-Rand-CE)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.001 # As used in paper's experiments
-  weight_decay: 0.0 # Check if paper used WD for predictors
+  lr: 0.001
+  weight_decay: 0.0
   loss_type: "CrossEntropyLoss"
   num_epochs_per_block: 5000 # Epochs for predictor training on CIFAR-10
-  log_interval: 200 # Log less frequently for many epochs
+  log_interval: 200
 
 # Logging Configuration
 logging:
@@ -47,9 +50,10 @@ logging:
   # log_file: null
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation"
-    # entity: null
-    # run_name: null
+
+# Checkpointing
+checkpointing:
+  checkpoint_dir: "checkpoints/cafo_cifar10_cnn_3block"
 
 # Monitoring/Profiling
 monitoring:
