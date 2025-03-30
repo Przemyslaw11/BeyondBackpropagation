@@ -10,10 +10,15 @@ from typing import Dict, Any, Optional, Tuple, Callable
 
 from src.utils.helpers import set_seed, format_time
 from src.data_utils.datasets import get_dataloaders
-from src.training.engine import get_model_and_adapter
-from src.baselines.bp import train_bp_epoch, evaluate_bp_model
+from src.training.engine import (
+    get_model_and_adapter,
+)  # Import the function that provides the adapter
+from src.baselines.bp import (
+    train_bp_epoch,
+    evaluate_bp_model,
+)  # Keep evaluate_bp_model signature consistent
 
-logger = logging.getLogger(__name__)  # Get logger instance
+logger = logging.getLogger(__name__)
 
 
 def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
@@ -24,17 +29,18 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     cfg = copy.deepcopy(base_config)
     tuning_cfg = cfg.get("tuning")
     if not isinstance(tuning_cfg, dict):
-        raise ValueError("Missing 'tuning' section.")
+        raise ValueError("Missing 'tuning' section in configuration.")
+    # Ensure optimizer sub-dict exists
     if "optimizer" not in cfg or not isinstance(cfg["optimizer"], dict):
         cfg["optimizer"] = {}
 
-    # Suggest hyperparameters based on config ranges
+    # Suggest hyperparameters based on config ranges defined in the 'tuning' section
     cfg["optimizer"]["lr"] = trial.suggest_float(
         "lr", *tuning_cfg.get("lr_range", [1e-5, 1e-2]), log=True
     )
     cfg["optimizer"]["weight_decay"] = trial.suggest_float(
         "wd", *tuning_cfg.get("wd_range", [1e-6, 1e-3]), log=True
-    )  # Renamed trial param to 'wd'
+    )  # Use 'wd' for trial name
     optimizer_type = cfg.get("optimizer", {}).get("type", "AdamW").lower()
     if optimizer_type == "sgd":
         cfg["optimizer"]["momentum"] = trial.suggest_float(
@@ -56,6 +62,21 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     logger.info(f"Device: {device}, Seed: {trial_seed}")
     logger.info(f"Hyperparameters: {trial.params}")  # Log suggested params
 
+    # Define optimization direction and metric from config
+    metric_to_optimize = tuning_cfg.get("metric", "val_accuracy").lower()
+    optimization_direction = tuning_cfg.get("direction", "maximize").lower()
+    if metric_to_optimize not in ["val_accuracy", "val_loss"]:
+        logger.warning(
+            f"Unsupported optimization metric '{metric_to_optimize}'. Defaulting to 'val_accuracy'."
+        )
+        metric_to_optimize = "val_accuracy"
+
+    model = None  # Initialize for finally block
+    optimizer = None
+    train_loader = None
+    val_loader = None
+    criterion = None
+
     try:
         # --- Data Loading ---
         data_config = cfg.get("data", {})
@@ -67,29 +88,40 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             data_root=data_config.get("root", "./data"),
             val_split=data_config.get("val_split", 0.1),
             seed=trial_seed,
-            num_workers=0,  # Use 0 workers for Optuna trials
-            pin_memory=False,  # Disable pin_memory
+            # Use 0 workers and disable pin_memory for simpler Optuna runs
+            num_workers=0,
+            pin_memory=False,
             download=data_config.get("download", True),
         )
         if not val_loader:
-            raise ValueError("Validation loader missing.")
+            raise ValueError(
+                "Validation loader is required for Optuna tuning but was not created."
+            )
         logger.info("Data loaded.")
 
-        # --- Model Instantiation ---
-        logger.info("Instantiating BP baseline model...")
-        cfg["algorithm"] = {"name": "BP"}  # Ensure BP baseline creation
-        model, input_adapter = get_model_and_adapter(cfg, device)
+        # --- Model Instantiation & Input Adapter Retrieval ---
+        logger.info("Instantiating BP baseline model and getting adapter...")
+        # Ensure we are creating the BP baseline version of the model
+        # The logic inside get_model_and_adapter handles this if algorithm is 'BP'
+        if cfg.get("algorithm", {}).get("name", "").lower() != "bp":
+            logger.warning("Overriding algorithm to 'BP' for baseline tuning.")
+            cfg["algorithm"] = {"name": "BP"}
+
+        model, input_adapter = get_model_and_adapter(
+            cfg, device
+        )  # Get model AND adapter here
         model.to(device)
         num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(
             f"Model '{cfg.get('model', {}).get('name')}' baseline ({num_params:,} params) on {device}."
+            f" Input adapter type: {type(input_adapter)}"
         )
 
         # --- Optimizer and Criterion ---
         optimizer_cfg = cfg.get("optimizer", {})
         optimizer_type = optimizer_cfg.get("type", "AdamW").lower()
 
-        # Use suggested parameters
+        # Use suggested parameters from the trial
         opt_kwargs = {
             "lr": trial.params["lr"],
             "weight_decay": trial.params["wd"],  # Use trial param name 'wd'
@@ -97,8 +129,9 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         if optimizer_type == "sgd":
             opt_kwargs["momentum"] = trial.params.get(
                 "momentum", 0.9
-            )  # Get momentum if suggested
+            )  # Use trial momentum if available
 
+        # Select optimizer based on type
         if optimizer_type == "adamw":
             optimizer = optim.AdamW(model.parameters(), **opt_kwargs)
         elif optimizer_type == "adam":
@@ -106,52 +139,60 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         elif optimizer_type == "sgd":
             optimizer = optim.SGD(model.parameters(), **opt_kwargs)
         else:
-            raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
+            raise ValueError(
+                f"Unsupported optimizer type specified in config: {optimizer_type}"
+            )
 
         criterion_name = cfg.get("training", {}).get("criterion", "CrossEntropyLoss")
         if criterion_name.lower() == "crossentropyloss":
             criterion = nn.CrossEntropyLoss()
         else:
-            raise ValueError(f"Unsupported criterion: {criterion_name}")
+            raise ValueError(
+                f"Unsupported criterion specified in config: {criterion_name}"
+            )
         logger.info(
             f"Optimizer ({optimizer_type}) and Criterion ({criterion_name}) setup."
         )
 
         # --- Training & Evaluation Loop ---
-        num_epochs = tuning_cfg.get("num_epochs", 10)
+        num_epochs = tuning_cfg.get("num_epochs", 10)  # Epochs per trial
         best_val_metric_for_trial = (
-            -float("inf")
-            if tuning_cfg.get("direction", "maximize").lower() == "maximize"
-            else float("inf")
+            -float("inf") if optimization_direction == "maximize" else float("inf")
         )
-        metric_to_optimize = tuning_cfg.get("metric", "val_accuracy").lower()
-        optimization_direction = tuning_cfg.get("direction", "maximize").lower()
 
         logger.info(f"Starting trial training loop for {num_epochs} epochs.")
         trial_start_time = time.time()
 
         for epoch in range(num_epochs):
             epoch_start_time = time.time()
+            # Pass the retrieved input_adapter to the training epoch function
             train_loss, train_acc = train_bp_epoch(
-                model,
-                train_loader,
-                optimizer,
-                criterion,
-                device,
-                epoch,
-                num_epochs,
-                None,
-                99999,
-                input_adapter,
+                model=model,
+                train_loader=train_loader,
+                optimizer=optimizer,
+                criterion=criterion,
+                device=device,
+                epoch=epoch,
+                total_epochs=num_epochs,
+                wandb_run=None,  # No W&B logging for Optuna trials by default
+                log_interval=99999,  # Minimize logging noise during tuning
+                input_adapter=input_adapter,  # Pass the adapter
             )
+            # Pass the retrieved input_adapter to the evaluation function
             val_loss, val_acc = evaluate_bp_model(
-                model, val_loader, criterion, device, input_adapter
+                model=model,
+                data_loader=val_loader,
+                criterion=criterion,
+                device=device,
+                input_adapter=input_adapter,  # Pass the adapter
             )
             epoch_duration = time.time() - epoch_start_time
 
+            # Determine the metric value for this epoch based on config
             current_val_metric = (
                 val_acc if metric_to_optimize == "val_accuracy" else val_loss
             )
+
             logger.info(
                 f"Trial {trial.number} - Epoch {epoch+1}/{num_epochs} | "
                 f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.2f}% | "
@@ -159,37 +200,47 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
                 f"Duration: {format_time(epoch_duration)}"
             )
 
+            # Report intermediate value to Optuna for pruning.
             trial.report(current_val_metric, epoch)
+
+            # Handle pruning based on the intermediate value.
             if trial.should_prune():
                 logger.warning(f"Trial {trial.number} pruned at epoch {epoch+1}.")
-                # Return intermediate value upon pruning
-                return current_val_metric  # Optuna uses this for pruning decision effectiveness
+                # Optuna raises TrialPruned; return value is used internally by Optuna.
+                raise optuna.TrialPruned()
 
+            # Update the best metric *for this specific trial*
             if optimization_direction == "maximize":
                 best_val_metric_for_trial = max(
                     best_val_metric_for_trial, current_val_metric
                 )
-            else:
+            else:  # minimize
                 best_val_metric_for_trial = min(
                     best_val_metric_for_trial, current_val_metric
                 )
 
+        # --- Trial Completion ---
         total_trial_time = time.time() - trial_start_time
         logger.info(
-            f"Trial {trial.number} finished. Duration: {format_time(total_trial_time)}. Best Value ({metric_to_optimize}): {best_val_metric_for_trial:.4f}"
+            f"Trial {trial.number} finished. Duration: {format_time(total_trial_time)}. "
+            f"Best Value ({metric_to_optimize}) for this trial: {best_val_metric_for_trial:.4f}"
         )
+        # Return the final best metric achieved in this trial
         return best_val_metric_for_trial
 
     except optuna.TrialPruned as e:
-        logger.info(f"Trial {trial.number} pruned.")
-        raise e  # Re-raise prune exceptions
+        # Let Optuna handle the pruned state.
+        raise e
     except Exception as e:
-        logger.error(f"Trial {trial.number} failed: {e}", exc_info=True)
-        return (
-            -float("inf") if optimization_direction == "maximize" else float("inf")
-        )  # Return poor value
+        logger.error(f"Trial {trial.number} failed with error: {e}", exc_info=True)
+        # Return a very poor value to indicate failure.
+        # Check direction to return appropriate worst value.
+        return -float("inf") if optimization_direction == "maximize" else float("inf")
     finally:
+        # --- Cleanup ---
+        # Ensure resources are released, especially GPU memory
         del model, optimizer, train_loader, val_loader, criterion
         if device.type == "cuda":
             torch.cuda.empty_cache()
+            logger.debug(f"Trial {trial.number}: Cleared CUDA cache.")
         logger.info(f"--- Finished Optuna Trial {trial.number} ---")
