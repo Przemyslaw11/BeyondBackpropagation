@@ -186,3 +186,5 @@ logs/
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+print_content.py

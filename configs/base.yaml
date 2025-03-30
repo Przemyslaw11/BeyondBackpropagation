@@ -17,4 +17,8 @@ dataset_root: "./data" # Relative path to data directory
 wandb_project: "BeyondBackpropagation"
 wandb_entity: null # Replace with your W&B username/entity if desired
 
-# Add other common parameters here
+monitoring:
+  enabled: true              # General NVML monitoring (memory)
+  energy_enabled: true       # Enable background power sampling for energy calc
+  energy_interval_sec: 0.2   # Sampling interval (e.g., 200ms)
+  # interval_seconds: 1 # This might have been for a different monitoring type, clarify/remove if unused
