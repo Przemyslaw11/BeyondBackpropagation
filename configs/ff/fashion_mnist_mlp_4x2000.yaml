@@ -1,3 +1,4 @@
+# File: configs/ff/fashion_mnist_mlp_4x2000.yaml
 # Configuration for Forward-Forward (FF) on Fashion-MNIST with 4x2000 MLP
 
 # Inherit from base config (handled by config_parser)
@@ -5,60 +6,59 @@
 
 # Experiment Identification
 experiment_name: "ff_fashion_mnist_mlp_4x2000"
-algorithm: "FF"
+algorithm:
+  name: "FF" # Specify algorithm
 
 # Dataset Configuration
 data:
   name: "FashionMNIST"
-  root: "./data" # Inherited from base, but explicit here for clarity
-  val_split: 0.1 # 10% of training data for validation
-  batch_size: 128 # Inherited from base
+  root: "./data"
+  val_split: 0.1 # Not strictly needed for FF training itself, but good for consistency
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
+  batch_size: 128 # Inherited from base (or set explicitly)
   num_workers: 4 # Adjust based on system capabilities
-  normalization: # FashionMNIST specific normalization
-    mean: [0.2860]
-    std: [0.3530]
-  augmentation: false # No augmentation specified for F-MNIST in FF paper
+  pin_memory: true # Enable if using CUDA
 
 # Model Architecture Configuration
 model:
   name: "FF_MLP" # Corresponds to src/architectures/ff_mlp.py
-  input_dim: 784 # FashionMNIST: 28*28
-  hidden_dims: [2000, 2000, 2000, 2000] # 4 hidden layers of 2000 units
-  activation: "ReLU"
-  output_dim: 10 # FashionMNIST: 10 classes (used for label embedding/final eval)
+  params:
+    # input_dim: 784 # Calculated by engine from data config
+    hidden_dims: [2000, 2000, 2000, 2000] # 4 hidden layers of 2000 units
+    activation: "ReLU"
+    normalize_layers: true # As per paper's description
+    bias: true
+    # num_classes: 10 # Calculated by engine from data config
 
 # Algorithm Specific Configuration (Forward-Forward)
 algorithm_params:
   optimizer_type: "Adam" # Optimizer per layer
-  lr: 0.03 # Learning rate from FF paper (adjust if needed)
+  lr: 0.03 # Learning rate from FF paper (Figure 2 uses 0.03 for jittered MNIST)
   weight_decay: 0.0 # FF paper often uses no weight decay
-  threshold: 2.0 # Goodness threshold (adjust if needed)
-  loss_type: "SoftmaxCrossEntropyLoss" # Or other suitable loss for FF positive/negative pairs
-  num_epochs_per_layer: 50 # How many epochs to train each layer locally (adjust)
-  # Add other FF specific params if needed (e.g., goodness function details)
-
-# Training Configuration (Overrides base if needed)
-training:
-  epochs: 100 # Total effective epochs (might be interpreted differently by FF engine)
-  seed: 42 # Inherited
-  device: "cuda" # Inherited
-  use_cuda: true
+  threshold: 2.0 # Goodness threshold (from Sec 2 - 'well above')
+  epochs_per_layer: 60 # From Sec 3.3 (60 epochs for 1.36% error) - adjust as needed
+  log_interval: 100
 
 # Logging Configuration
 logging:
   level: "INFO"
-  log_file: null # Set dynamically by run_experiment.py
+  # log_file: null # Set dynamically by run_experiment.py
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation" # Inherited
-    entity: null # Inherited (replace if needed)
-    run_name: null # Set dynamically by run_experiment.py
+    project: "BeyondBackpropagation" # Inherited or set here
+    # entity: null # Inherited (replace if needed)
+    # run_name: null # Set dynamically by run_experiment.py
 
 # Monitoring/Profiling
 monitoring:
   enabled: true
-  interval_seconds: 1
+  energy_enabled: true
+  energy_interval_sec: 0.2
 profiling:
   enabled: true
-  use_cuda_events: true
-  profile_memory: true
+  verbose: false # Less verbose profiling output by default

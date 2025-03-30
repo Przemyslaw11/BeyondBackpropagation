@@ -2,13 +2,17 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Type  # Added Type
+import math  # For Kaiming init
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MF_MLP(nn.Module):
     """
     Multi-Layer Perceptron designed for the Mono-Forward (MF) algorithm.
-    Includes standard feedforward layers (W_i) and *learnable* projection matrices (M_i).
+    Includes standard feedforward layers (W_i) and learnable projection matrices (M_i).
     """
 
     def __init__(
@@ -23,7 +27,7 @@ class MF_MLP(nn.Module):
         Initializes the MF_MLP.
 
         Args:
-            input_dim: Dimensionality of the input features.
+            input_dim: Dimensionality of the input features (e.g., flattened image).
             hidden_dims: List of integers specifying the size of each hidden layer.
             num_classes: Number of output classes.
             activation: Activation function ('relu', 'tanh', etc.).
@@ -36,9 +40,9 @@ class MF_MLP(nn.Module):
         self.num_hidden_layers = len(hidden_dims)
 
         if activation.lower() == "relu":
-            act_fn = nn.ReLU
+            act_cls = nn.ReLU
         elif activation.lower() == "tanh":
-            act_fn = nn.Tanh
+            act_cls = nn.Tanh
         # Add other activations if needed
         else:
             raise ValueError(f"Unsupported activation function: {activation}")
@@ -48,36 +52,40 @@ class MF_MLP(nn.Module):
         current_dim = input_dim
         for i, h_dim in enumerate(hidden_dims):
             linear_layer = nn.Linear(current_dim, h_dim, bias=bias)
+            # Apply initialization (e.g., Kaiming for ReLU)
+            # nn.init.kaiming_uniform_(linear_layer.weight, a=math.sqrt(5), nonlinearity=activation.lower())
+            # if bias: nn.init.zeros_(linear_layer.bias)
             self.layers.append(linear_layer)  # Linear layer for W_i
-            self.layers.append(act_fn())  # Activation function
+            self.layers.append(act_cls())  # Activation function
             current_dim = h_dim
-        # Final classifier layer (can be trained by BP or potentially MF style)
+        # Final classifier layer (W_L) - crucial for BP-style prediction and BP baseline
         self.output_layer = nn.Linear(current_dim, num_classes, bias=bias)
 
         # --- Learnable Projection Matrices (M_i) ---
         # M_i projects the activation of layer i (a_i) to goodness scores.
         # Dimensions: num_classes x num_neurons_in_layer_i
+        # We need one M matrix for each hidden layer activation (a_1 to a_{L-1})
         self.projection_matrices = nn.ParameterList()
-        all_layer_dims = hidden_dims  # Output dimensions of hidden layers 0 to L-1
-
-        for i, layer_dim in enumerate(all_layer_dims):
+        for i, layer_dim in enumerate(hidden_dims):  # layer_dim = size of a_i
             # M_i corresponds to activation a_i (output of hidden layer i)
             m_matrix = nn.Parameter(torch.empty(num_classes, layer_dim))
-            nn.init.kaiming_uniform_(m_matrix, a=math.sqrt(5))  # Initialize M_i
+            nn.init.kaiming_uniform_(
+                m_matrix, a=math.sqrt(5)
+            )  # Initialize M_i (or other scheme)
             self.projection_matrices.append(m_matrix)
+            # logger.debug(f"Created projection matrix M_{i} with shape {m_matrix.shape}")
 
-        print(f"Initialized MF_MLP with {len(hidden_dims)} hidden layers.")
-        print(
-            f"Layer dimensions (W): {input_dim} -> {' -> '.join(map(str, hidden_dims))} -> {num_classes}"
+        logger.info(f"Initialized MF_MLP with {len(hidden_dims)} hidden layers.")
+        layer_dims_str = " -> ".join(
+            map(str, [input_dim] + hidden_dims + [num_classes])
         )
-        print(
-            f"Created {len(self.projection_matrices)} learnable projection matrices (M_0 to M_{self.num_hidden_layers-1})"
+        logger.info(f"Feedforward Layer dimensions (W): {layer_dims_str}")
+        logger.info(
+            f"Created {len(self.projection_matrices)} projection matrices (M_0 to M_{self.num_hidden_layers-1})"
         )
-        for i, M in enumerate(self.projection_matrices):
-            print(f"  M_{i} shape: {M.shape}")  # Shape [num_classes, hidden_dims[i]]
 
     def get_projection_matrix(self, layer_index: int) -> nn.Parameter:
-        """Safely retrieves a projection matrix parameter by its index (0 to num_hidden_layers - 1)."""
+        """Safely retrieves a projection matrix parameter by its hidden layer index (0 to num_hidden_layers - 1)."""
         if 0 <= layer_index < len(self.projection_matrices):
             return self.projection_matrices[layer_index]
         else:
@@ -87,16 +95,14 @@ class MF_MLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Standard forward pass through the MLP layers, returning final logits.
-        Used for inference (BP-style) and potentially for the BP baseline.
+        Standard forward pass through the MLP layers (W_0...W_L), returning final logits.
+        Used for inference (BP-style) and for the BP baseline. Assumes input 'x' is already flattened.
         """
-        # Flatten input if needed (assuming adapter handled it before calling)
-        # x = x.view(x.shape[0], -1) # Ensure flattened
         current_activation = x
         # Iterate through Linear + Activation pairs for hidden layers
-        for i in range(0, len(self.layers), 2):
-            linear_layer = self.layers[i]
-            act_layer = self.layers[i + 1]
+        for i in range(self.num_hidden_layers):
+            linear_layer = self.layers[i * 2]
+            act_layer = self.layers[i * 2 + 1]
             current_activation = act_layer(linear_layer(current_activation))
         # Pass through final output layer
         logits = self.output_layer(current_activation)
@@ -108,84 +114,27 @@ class MF_MLP(nn.Module):
         """
         Forward pass returning the activations *after* the activation function
         for each hidden layer. Activation 0 is the input x.
-        These are the 'a_i' vectors needed for local loss calculation.
+        These are the 'a_i' vectors needed for local MF loss calculation.
+        Assumes input 'x' is already flattened.
 
         Returns:
             List[torch.Tensor]: layer_activations = [a_0, a_1, ..., a_{L-1}]
-            where a_0 = x (input), and a_i is the output of hidden layer i.
+            where a_0 = x (input), and a_i is the output of hidden layer i-1's activation (for i>0).
+            So, a_1 is output of layer 0, a_2 is output of layer 1, etc.
         """
-        # x = x.view(x.shape[0], -1) # Ensure flattened input
         layer_activations = [x]  # a_0 is the input
         current_activation = x
         # Iterate through Linear + Activation pairs for hidden layers
-        for i in range(0, len(self.layers), 2):  # Step by 2 (Linear, Activation)
-            linear_layer = self.layers[i]
-            act_layer = self.layers[i + 1]
+        for i in range(self.num_hidden_layers):
+            linear_layer = self.layers[i * 2]
+            act_layer = self.layers[i * 2 + 1]
             current_activation = linear_layer(current_activation)
-            current_activation = act_layer(
-                current_activation
-            )  # This is a_i (i=layer_index+1)
+            current_activation = act_layer(current_activation)  # This is a_{i+1}
             layer_activations.append(current_activation)
 
-        # We don't necessarily need the final logits here, just the hidden activations
+        # We only need hidden activations a_1 to a_{num_hidden_layers} for M_0 to M_{num_hidden_layers-1}
+        # The list returned has length num_hidden_layers + 1
         return layer_activations
 
 
-# --- Keep the __main__ block for testing, adapting it as needed ---
-import math
-
-if __name__ == "__main__":
-    print("\nTesting MF_MLP (Corrected)...")
-    # Config based on F-MNIST plan: 2x1000 ReLU MLP
-    input_dim_fmnist = 28 * 28  # 784
-    num_classes_fmnist = 10
-    hidden_dims_fmnist = [1000, 1000]
-    batch_size = 4
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Create F-MNIST model
-    print("\n--- F-MNIST Config (2x1000) ---")
-    model_fmnist = MF_MLP(
-        input_dim=input_dim_fmnist,
-        hidden_dims=hidden_dims_fmnist,
-        num_classes=num_classes_fmnist,
-        activation="relu",
-    ).to(device)
-    # print(model_fmnist) # Print model structure if needed
-
-    # Check projection matrices (should be Parameters)
-    print("Projection Matrix Check:")
-    num_expected_matrices = len(hidden_dims_fmnist)
-    assert len(model_fmnist.projection_matrices) == num_expected_matrices
-    for i in range(num_expected_matrices):
-        m = model_fmnist.get_projection_matrix(i)
-        print(f"  M_{i}: shape={m.shape}, requires_grad={m.requires_grad}")
-        assert m.shape == (num_classes_fmnist, hidden_dims_fmnist[i])
-        assert isinstance(m, nn.Parameter)
-        assert m.requires_grad  # Crucial: should be True
-
-    # Create dummy data (flattened)
-    dummy_images_flat = torch.randn(batch_size, input_dim_fmnist).to(device)
-
-    # --- Test standard forward pass ---
-    print("\nTesting standard forward pass...")
-    logits = model_fmnist.forward(dummy_images_flat)
-    print("Logits shape:", logits.shape)
-    assert logits.shape == (batch_size, num_classes_fmnist)
-
-    # --- Test forward pass with intermediate activations ---
-    print("\nTesting forward pass with intermediate activations...")
-    activations_inter = model_fmnist.forward_with_intermediate_activations(
-        dummy_images_flat
-    )
-    print(f"Number of activation tensors: {len(activations_inter)}")
-    # Expect input (a_0) + one activation per hidden layer (a_1, a_2)
-    assert len(activations_inter) == model_fmnist.num_hidden_layers + 1
-    print("Activation shapes:")
-    print(f"  a_0 (Input): {activations_inter[0].shape}")
-    assert activations_inter[0].shape == (batch_size, input_dim_fmnist)
-    for i, act in enumerate(activations_inter[1:]):  # a_1, a_2, ...
-        print(f"  a_{i+1} (Layer {i} output): {act.shape}")
-        assert act.shape == (batch_size, hidden_dims_fmnist[i])
-
-    print("\nMF_MLP (Corrected) tests passed.")
+# Removed the __main__ block for cleaner architecture file

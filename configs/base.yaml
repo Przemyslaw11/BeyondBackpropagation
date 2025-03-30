@@ -1,24 +1,45 @@
+# File: configs/base.yaml
 # Base configuration settings shared across experiments
 
 # Reproducibility
-seed: 42
+general: # Added a general section
+  seed: 42
+  # device: cuda # Set device explicitly in experiment configs or rely on auto-detect in engine
 
-# Hardware
-device: cuda  # Assume CUDA is available on HPC
+# Default Training parameters (can be overridden)
+training:
+  epochs: 100
+  # criterion: "CrossEntropyLoss" # Often dataset/task specific, define in experiment config
+  log_interval: 100 # Default logging frequency
 
-# Training parameters (can be overridden by specific experiment configs)
-epochs: 100
-batch_size: 128 # A common default, adjust as needed
+# Default Data Loader parameters
+data_loader:
+  batch_size: 128
+  num_workers: 4 # Adjust based on system
+  pin_memory: true # Default to true, engine handles logic based on device
 
-# Dataset configuration (placeholders, specific paths/settings in experiment configs)
-dataset_root: "./data" # Relative path to data directory
+# Default Dataset parameters (placeholders)
+data:
+  root: "./data" # Relative path to data directory
+  download: true # Default to downloading if not found
+  val_split: 0.1 # Default validation split
 
-# Logging
-wandb_project: "BeyondBackpropagation"
-wandb_entity: null # Replace with your W&B username/entity if desired
+# Logging Defaults
+logging:
+  level: "INFO" # Default logging level
+  wandb:
+    use_wandb: true # Enable W&B by default
+    project: "BeyondBackpropagation"
+    # entity: null # Specify in user environment or here if constant
+    # run_name: null # Should be set dynamically
 
+# Monitoring Defaults
 monitoring:
-  enabled: true              # General NVML monitoring (memory)
-  energy_enabled: true       # Enable background power sampling for energy calc
-  energy_interval_sec: 0.2   # Sampling interval (e.g., 200ms)
-  # interval_seconds: 1 # This might have been for a different monitoring type, clarify/remove if unused
+  enabled: true              # Enable NVML memory monitoring if available
+  energy_enabled: true       # Enable background power sampling if available
+  energy_interval_sec: 0.2   # Sampling interval (e.g., 200ms = 5 Hz)
+
+# Profiling Defaults
+profiling:
+  enabled: true              # Enable FLOPs profiling by default
+  verbose: false             # Show less detailed torchprof output

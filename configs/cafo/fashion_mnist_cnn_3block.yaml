@@ -1,63 +1,62 @@
+# File: configs/cafo/fashion_mnist_cnn_3block.yaml
 # Configuration for Cascaded Forward (CaFo) on Fashion-MNIST with 3-Block CNN
 
 # Inherit from base config
 experiment_name: "cafo_fashion_mnist_cnn_3block"
-algorithm: "CaFo"
+algorithm:
+  name: "CaFo"
 
 # Dataset Configuration
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1
+  val_split: 0.1 # Not needed for CaFo training itself, but good for consistency
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
   batch_size: 128
   num_workers: 4
-  normalization: # FashionMNIST specific
-    mean: [0.2860]
-    std: [0.3530]
-  augmentation: false # No augmentation for F-MNIST
+  pin_memory: true
 
-# Model Architecture Configuration
+# Model Architecture Configuration (Base blocks)
 model:
   name: "CaFo_CNN" # Corresponds to src/architectures/cafo_cnn.py
-  input_channels: 1 # F-MNIST is grayscale
-  block_channels: [32, 128, 512] # Channels for the 3 blocks
-  output_dim: 10 # F-MNIST classes
-  activation: "ReLU"
-  use_batchnorm: true
-  # Predictor network details might be defined within the model or algorithm config
-  predictor_hidden_dim: 512 # Example hidden dim for local predictors
+  params:
+    # input_channels: 1 # Calculated by engine
+    block_channels: [32, 128, 512] # Channels for the 3 blocks
+    activation: "ReLU"
+    use_batchnorm: true
+    # image_size: 28 # Calculated by engine
+    # num_classes: 10 # Calculated by engine (used by training logic for predictor)
 
-# Algorithm Specific Configuration (CaFo)
+# Algorithm Specific Configuration (CaFo-Rand-CE)
 algorithm_params:
-  optimizer_type: "Adam" # Optimizer for local blocks/predictors
-  lr: 0.001 # Starting LR for CaFo (adjust based on paper/tuning)
-  weight_decay: 0.0001 # Starting WD for CaFo (adjust)
+  optimizer_type: "Adam" # Optimizer for local predictors
+  lr: 0.001 # Starting LR for predictors (from CaFo paper experiments, adjust if needed)
+  weight_decay: 0.0 # Often no WD for predictors, but can be added
   loss_type: "CrossEntropyLoss" # Loss for local predictors (CaFo-Rand-CE)
-  num_epochs_per_block: 50 # How many epochs to train each block locally (adjust)
-  # Add other CaFo specific params if needed (e.g., predictor architecture details if not in model)
-
-# Training Configuration
-training:
-  epochs: 100 # Total effective epochs
-  seed: 42
-  device: "cuda"
-  use_cuda: true
+  # Epochs specified in CaFo paper: 5000 for MNIST/CIFAR10, 1000 for CIFAR100/MiniImageNet
+  num_epochs_per_block: 5000 # How many epochs to train each predictor locally
+  log_interval: 200 # Log less frequently for many epochs
 
 # Logging Configuration
 logging:
   level: "INFO"
-  log_file: null
+  # log_file: null
   wandb:
     use_wandb: true
     project: "BeyondBackpropagation"
-    entity: null
-    run_name: null
+    # entity: null
+    # run_name: null
 
 # Monitoring/Profiling
 monitoring:
   enabled: true
-  interval_seconds: 1
+  energy_enabled: true
+  energy_interval_sec: 0.2
 profiling:
   enabled: true
-  use_cuda_events: true
-  profile_memory: true
+  verbose: false

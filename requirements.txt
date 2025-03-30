@@ -1,3 +1,4 @@
+# File: requirements.txt
 # Core ML/DL Framework
 torch==2.1.0
 torchvision==0.16.0 # Ensure compatibility with torch 2.1.0
@@ -14,5 +15,6 @@ optuna>=3.0.0      # Hyperparameter optimization
 PyYAML>=6.0        # For reading YAML configs
 numpy>=1.21.0      # Fundamental package for scientific computing
 scikit-learn>=1.0  # For potential utility functions like train/val split if needed beyond simple slicing
+tqdm>=4.60         # Progress bars
 
 # Add other specific dependencies as they arise

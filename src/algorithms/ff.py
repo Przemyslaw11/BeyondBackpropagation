@@ -6,15 +6,12 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.functional as F
 import numpy as np
 import logging
-from tqdm import tqdm  # For progress bars
-from typing import Dict, Any, Optional, Tuple, List, Callable  # Added List, Callable
-import functools  # For partial function if needed
+from tqdm import tqdm
+from typing import Dict, Any, Optional, Tuple, List, Callable
+import functools
 
-# Assuming architectures and utils are accessible via src package
-from src.architectures.ff_mlp import FF_MLP, FF_Layer  # Import updated FF_MLP
-
-# FF eval does not directly use calculate_accuracy
-from src.utils.logging_utils import log_metrics  # For logging during training
+from src.architectures.ff_mlp import FF_MLP, FF_Layer
+from src.utils.logging_utils import log_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -23,29 +20,13 @@ def ff_loss_fn(
     pos_goodness: torch.Tensor, neg_goodness: torch.Tensor, threshold: float
 ) -> torch.Tensor:
     """
-    Calculates the Forward-Forward loss for a layer.
-    Encourages goodness of positive samples above threshold and negative samples below.
-    Uses a logistic function approach as described in Hinton's paper/code.
-
-    Args:
-        pos_goodness: Goodness scores for positive samples (shape: [batch_size]).
-        neg_goodness: Goodness scores for negative samples (shape: [batch_size]).
-        threshold: The goodness threshold theta.
-
-    Returns:
-        The mean loss for the batch.
+    Calculates the Forward-Forward loss for a layer using logistic loss (softplus).
+    Loss = softplus(-(pos_goodness - threshold)) + softplus(neg_goodness - threshold)
     """
-    # Loss for positive samples: encourage goodness > threshold
-    # log(1 + exp(-(pos_goodness - threshold))) -> pushes pos_goodness higher
-    loss_pos = F.softplus(
-        -(pos_goodness - threshold)
-    )  # More stable than log(1+exp(-x))
-
-    # Loss for negative samples: encourage goodness < threshold
-    # log(1 + exp(neg_goodness - threshold)) -> pushes neg_goodness lower
-    loss_neg = F.softplus(neg_goodness - threshold)  # More stable than log(1+exp(x))
-
-    # Combine and average
+    # log(1 + exp(-x)) -> softplus(-x)
+    loss_pos = F.softplus(-(pos_goodness - threshold))
+    # log(1 + exp(x)) -> softplus(x)
+    loss_neg = F.softplus(neg_goodness - threshold)
     loss = torch.mean(loss_pos + loss_neg)
     return loss
 
@@ -56,51 +37,36 @@ def train_ff_layer(
     train_loader: DataLoader,
     get_layer_input_fn: Callable[
         [torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]
-    ],  # Function to get input for current layer
+    ],
     threshold: float,
     epochs: int,
     device: torch.device,
-    layer_index: int,  # For logging
+    layer_index: int,
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
 ) -> None:
-    """
-    Trains a single FF_Layer using the Forward-Forward algorithm.
-
-    Args:
-        layer: The FF_Layer module to train.
-        optimizer: PyTorch optimizer for this layer's parameters.
-        train_loader: DataLoader providing batches of original (images, labels).
-        get_layer_input_fn: A function that takes (images, labels) and returns the
-                            (pos_input, neg_input) tensors for the *current* layer,
-                            already processed by previous frozen layers and detached.
-        threshold: Goodness threshold for the loss function.
-        epochs: Number of training epochs for this layer.
-        device: Device to perform training on ('cuda' or 'cpu').
-        layer_index: Index of the current layer (0-based) for logging.
-        wandb_run: Optional Weights & Biases run object for logging.
-        log_interval: How often to log batch metrics.
-    """
+    """Trains a single FF_Layer."""
     layer.train()
     layer.to(device)
     logger.info(f"Starting FF training for Layer {layer_index + 1}")
 
-    # Calculate total steps for accurate logging if needed later
-    total_steps = epochs * len(train_loader)
+    total_steps_per_epoch = len(train_loader)
+    global_step_offset = (
+        layer_index * epochs * total_steps_per_epoch
+    )  # Offset for global W&B step
 
     for epoch in range(epochs):
         epoch_loss = 0.0
         pbar = tqdm(
-            train_loader, desc=f"FF Layer {layer_index+1} Epoch {epoch+1}/{epochs}"
+            train_loader,
+            desc=f"FF Layer {layer_index+1} Epoch {epoch+1}/{epochs}",
+            leave=False,
         )
         for batch_idx, (images, labels) in enumerate(pbar):
-            # Original images/labels used by the input function
             images, labels = images.to(device), labels.to(device)
 
-            # 1. Get input for the current layer (already processed and detached)
-            # Input function handles generating pos/neg and passing through frozen layers
+            # 1. Get detached positive/negative input for the current layer
             pos_input, neg_input = get_layer_input_fn(images, labels)
-            # No need to detach here, input_fn should ensure detachment
 
             # 2. Forward pass through current layer to get goodness
             _, pos_goodness = layer.forward_with_goodness(pos_input)
@@ -112,139 +78,119 @@ def train_ff_layer(
             # 4. Backpropagate and optimize (only for the current layer)
             optimizer.zero_grad()
             loss.backward()
+            # Optional: Gradient clipping if needed
+            # torch.nn.utils.clip_grad_norm_(layer.parameters(), max_norm=1.0)
             optimizer.step()
 
             epoch_loss += loss.item()
-            batch_step = (
-                epoch * len(train_loader) + batch_idx
-            )  # Global step within this layer's training
+            batch_step = global_step_offset + epoch * total_steps_per_epoch + batch_idx
 
             # Logging
-            if batch_idx % log_interval == 0:
-                avg_loss = loss.item()
-                pbar.set_postfix(loss=f"{avg_loss:.4f}")
+            if (
+                batch_idx + 1
+            ) % log_interval == 0 or batch_idx == total_steps_per_epoch - 1:
+                avg_loss_batch = loss.item()  # Loss for this specific batch
+                pbar.set_postfix(loss=f"{avg_loss_batch:.4f}")
                 metrics = {
-                    f"layer_{layer_index+1}_train_loss_batch": avg_loss,
+                    f"layer_{layer_index+1}_train_loss_batch": avg_loss_batch,
                     f"layer_{layer_index+1}_pos_goodness_mean": pos_goodness.mean().item(),
                     f"layer_{layer_index+1}_neg_goodness_mean": neg_goodness.mean().item(),
                 }
+                # Log against global step across all layers
                 log_metrics(metrics, step=batch_step, wandb_run=wandb_run)
 
-        avg_epoch_loss = epoch_loss / len(train_loader)
+        avg_epoch_loss = epoch_loss / total_steps_per_epoch
         logger.info(
-            f"Layer {layer_index+1} Epoch {epoch+1}/{epochs} - Average Loss: {avg_epoch_loss:.4f}"
+            f"FF Layer {layer_index+1} Epoch {epoch+1}/{epochs} - Average Loss: {avg_epoch_loss:.4f}"
         )
-        # Log epoch loss against a global epoch number if tracked outside, or vs local epoch
+        # Log epoch loss against global epoch number *within this layer's training*
         log_metrics(
             {f"layer_{layer_index+1}_train_loss_epoch": avg_epoch_loss},
-            step=epoch + 1,
+            step=global_step_offset
+            + (epoch + 1) * total_steps_per_epoch,  # Log at end of epoch step
             wandb_run=wandb_run,
         )
 
     logger.info(f"Finished FF training for Layer {layer_index + 1}")
+    layer.eval()  # Set layer to eval mode after training
 
 
-# --- NEW: FF Model Training Orchestration ---
 def train_ff_model(
     model: FF_MLP,
     train_loader: DataLoader,
     config: Dict[
         str, Any
-    ],  # Containing optimizer params, threshold, epochs per layer etc.
+    ],  # Contains optimizer params, threshold, epochs per layer etc.
     device: torch.device,
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None,  # e.g., flatten
 ):
-    """
-    Orchestrates the layer-wise training of an FF_MLP model.
-
-    Args:
-        model: The FF_MLP model instance.
-        train_loader: DataLoader providing original (images, labels).
-        config: Dictionary with training configurations:
-            - optimizer_type: Name of the optimizer (e.g., 'Adam').
-            - lr: Learning rate for each layer's optimizer.
-            - weight_decay: Weight decay (typically 0 for FF).
-            - threshold: Goodness threshold theta.
-            - epochs_per_layer: Number of epochs to train each layer.
-            - log_interval: Frequency of logging batch metrics.
-        device: Device to run training on.
-        wandb_run: Optional W&B run object.
-        input_adapter: Function to adapt original images (e.g., flatten).
-    """
+    """Orchestrates the layer-wise training of an FF_MLP model."""
     model.to(device)
     num_layers = len(model.layers)
     logger.info(f"Starting layer-wise FF training for {num_layers} layers.")
 
     # --- Get Training Configuration ---
-    optimizer_type = config.get("optimizer_type", "Adam")
-    lr = config.get("lr", 0.001)
-    weight_decay = config.get("weight_decay", 0.0)
-    threshold = config.get("threshold", 1.0)
-    epochs_per_layer = config.get("epochs_per_layer", 10)
-    log_interval = config.get("log_interval", 100)
+    # Use 'algorithm_params' section from config if available, else 'training'
+    algo_config = config.get("algorithm_params", config.get("training", {}))
 
-    # --- Helper function to generate pos/neg data (using model's method) ---
+    optimizer_type = algo_config.get("optimizer_type", "Adam")
+    lr = algo_config.get("lr", 0.001)
+    weight_decay = algo_config.get("weight_decay", 0.0)
+    threshold = algo_config.get("threshold", 1.0)
+    epochs_per_layer = algo_config.get("epochs_per_layer", 10)
+    log_interval = algo_config.get("log_interval", 100)
+    optimizer_params_extra = algo_config.get(
+        "optimizer_params", {}
+    )  # E.g. momentum for SGD
+
+    # --- Helper function to generate pos/neg data ---
+    @torch.no_grad()  # Ensure no gradients within this helper
     def generate_pos_neg_for_ff(base_images, base_labels):
-        """Generates FF positive/negative inputs from base images/labels."""
         batch_size = base_images.shape[0]
+        num_classes = model.num_classes
         device = base_images.device
-        num_classes = model.num_classes  # Get from model instance
 
-        # Positive Data
-        pos_data = model.prepare_ff_input(base_images, base_labels)
+        # Positive Data (apply adapter if needed before embedding)
+        adapted_images = input_adapter(base_images) if input_adapter else base_images
+        pos_data = model.prepare_ff_input(adapted_images, base_labels)
 
         # Negative Data
-        # Ensure random integer is generated correctly on the target device
         rand_offset = torch.randint(
             1, num_classes, (batch_size,), device=device, dtype=torch.long
         )
         neg_labels = (base_labels + rand_offset) % num_classes
-        # Simple check for collisions (unlikely for large num_classes)
+        # Simple check for collisions (might need retry loop for small num_classes)
         collision = neg_labels == base_labels
         if torch.any(collision):
-            # Just shift collisions by 1 more (simple fix)
             neg_labels[collision] = (neg_labels[collision] + 1) % num_classes
-
-        neg_data = model.prepare_ff_input(base_images, neg_labels)
+        neg_data = model.prepare_ff_input(adapted_images, neg_labels)
 
         return pos_data, neg_data
 
     # --- Train Layer by Layer ---
-    for i, layer in enumerate(model.layers):
+    for i, layer in enumerate(model.layers):  # layer is FF_Layer instance
         logger.info(f"--- Training Layer {i+1}/{num_layers} ---")
 
         # Define the function to get input for the *current* layer 'i'
-        # This uses a closure to capture the current layer index 'i'
         def get_layer_i_input_closure(current_layer_idx: int):
             def get_layer_i_input(images, labels):
-                # Adapt original images first (e.g., flatten)
-                adapted_images = input_adapter(images) if input_adapter else images
-
-                # Generate base positive/negative data with embedded labels
-                base_pos_data, base_neg_data = generate_pos_neg_for_ff(
-                    adapted_images, labels
-                )
+                # Generate base pos/neg data (adapter applied inside)
+                base_pos_data, base_neg_data = generate_pos_neg_for_ff(images, labels)
 
                 if current_layer_idx == 0:
-                    # For the first layer, the input is just the base data
-                    return (
-                        base_pos_data.detach(),
-                        base_neg_data.detach(),
-                    )  # Detach for safety
+                    # Input to first layer is the prepared data
+                    return base_pos_data.detach(), base_neg_data.detach()
                 else:
                     # For subsequent layers, pass base data through frozen layers 0 to i-1
-                    with torch.no_grad():  # IMPORTANT: No gradients through previous layers
+                    with torch.no_grad():
                         pos_input_i = model.forward_upto(
                             base_pos_data, current_layer_idx
-                        )  # Run layers 0..i-1
+                        )
                         neg_input_i = model.forward_upto(
                             base_neg_data, current_layer_idx
-                        )  # Run layers 0..i-1
-                    return (
-                        pos_input_i.detach(),
-                        neg_input_i.detach(),
-                    )  # Return detached activations
+                        )
+                    return pos_input_i.detach(), neg_input_i.detach()
 
             return get_layer_i_input
 
@@ -254,26 +200,33 @@ def train_ff_model(
         params_to_optimize = list(layer.parameters())
         if not params_to_optimize:
             logger.warning(
-                f"Layer {i+1} has no parameters to optimize. Skipping training."
+                f"Layer {i+1} has no trainable parameters. Skipping training."
             )
             continue
 
         if optimizer_type.lower() == "adam":
-            optimizer = optim.Adam(params_to_optimize, lr=lr, weight_decay=weight_decay)
+            optimizer = optim.Adam(
+                params_to_optimize,
+                lr=lr,
+                weight_decay=weight_decay,
+                **optimizer_params_extra,
+            )
         elif optimizer_type.lower() == "sgd":
-            # Common to use momentum with SGD
-            sgd_momentum = config.get("momentum", 0.9)
             optimizer = optim.SGD(
                 params_to_optimize,
                 lr=lr,
                 weight_decay=weight_decay,
-                momentum=sgd_momentum,
+                **optimizer_params_extra,
             )
         elif optimizer_type.lower() == "adamw":
             optimizer = optim.AdamW(
-                params_to_optimize, lr=lr, weight_decay=weight_decay
+                params_to_optimize,
+                lr=lr,
+                weight_decay=weight_decay,
+                **optimizer_params_extra,
             )
         else:
+            logger.error(f"Unsupported optimizer: {optimizer_type}")
             raise ValueError(f"Unsupported optimizer: {optimizer_type}")
 
         # Train the current layer
@@ -290,33 +243,23 @@ def train_ff_model(
             log_interval=log_interval,
         )
 
-        # Freeze the trained layer
+        # Freeze the trained layer parameters
+        # layer.requires_grad_(False) # Freezes whole module, might be too broad
         for param in layer.parameters():
             param.requires_grad = False
-        layer.eval()  # Set to eval mode after training
+        # Ensure layer stays in eval mode
+        layer.eval()
 
     logger.info("Finished all layer-wise FF training.")
 
 
-# --- NEW: FF Model Evaluation ---
 def evaluate_ff_model(
     model: FF_MLP,
     data_loader: DataLoader,  # Validation or Test loader
     device: torch.device,
     input_adapter: Optional[Callable] = None,  # e.g., flatten
 ) -> Dict[str, float]:
-    """
-    Evaluates the trained FF_MLP model using multi-pass inference.
-
-    Args:
-        model: The trained FF_MLP model (layers should be frozen).
-        data_loader: DataLoader for the evaluation dataset.
-        device: Device to run evaluation on.
-        input_adapter: Function to adapt original images (e.g., flatten).
-
-    Returns:
-        Dictionary containing evaluation metrics (e.g., 'eval_accuracy').
-    """
+    """Evaluates the trained FF_MLP model using multi-pass inference."""
     model.eval()
     model.to(device)
     num_classes = model.num_classes
@@ -328,23 +271,23 @@ def evaluate_ff_model(
     total_samples = 0
 
     with torch.no_grad():
-        pbar = tqdm(data_loader, desc="Evaluating FF Model")
+        pbar = tqdm(data_loader, desc="Evaluating FF Model", leave=False)
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
             batch_size = images.shape[0]
 
-            # Adapt original images (e.g., flatten)
+            # Adapt original images (e.g., flatten) - MUST match training adaptation
             adapted_images = input_adapter(images) if input_adapter else images
 
-            # Store summed goodness for each class for each image in the batch
+            # Store summed goodness for each class for each image
             batch_total_goodness = torch.zeros((batch_size, num_classes), device=device)
 
             # Iterate through each possible class label candidate
             for label_candidate in range(num_classes):
-                # Prepare input with the candidate label embedded
                 candidate_labels = torch.full(
                     (batch_size,), label_candidate, dtype=torch.long, device=device
                 )
+                # Prepare input with the candidate label embedded
                 ff_input_candidate = model.prepare_ff_input(
                     adapted_images, candidate_labels
                 )
@@ -353,142 +296,53 @@ def evaluate_ff_model(
                 try:
                     layer_goodness_list = model.forward_goodness_per_layer(
                         ff_input_candidate
-                    )  # List of tensors [B]
+                    )
                 except Exception as e:
                     logger.error(
-                        f"Error during FF goodness forward pass for candidate {label_candidate}: {e}",
+                        f"Error in FF goodness forward pass for candidate {label_candidate}: {e}",
                         exc_info=True,
                     )
-                    # Handle error gracefully, e.g., assign very low goodness
-                    total_goodness_candidate = torch.full(
-                        (batch_size,), -float("inf"), device=device
-                    )
-                    batch_total_goodness[:, label_candidate] = total_goodness_candidate
+                    # Assign very low goodness to avoid selecting this candidate
+                    batch_total_goodness[:, label_candidate] = -torch.inf
                     continue  # Skip to next candidate
 
-                # Sum goodness across layers for this candidate
-                # Check if list is empty (shouldn't happen with >=1 layer)
+                # Sum goodness across layers
                 if not layer_goodness_list:
-                    logger.warning("Received empty goodness list during FF evaluation.")
                     total_goodness_candidate = torch.zeros((batch_size,), device=device)
                 else:
                     try:
-                        # Stack list of [B] tensors into [L, B], then sum over L (dim=0)
                         total_goodness_candidate = torch.stack(
                             layer_goodness_list, dim=0
                         ).sum(dim=0)
                     except Exception as e:
                         logger.error(
-                            f"Error stacking/summing goodness scores: {e}",
-                            exc_info=True,
+                            f"Error stacking/summing goodness: {e}", exc_info=True
                         )
-                        total_goodness_candidate = torch.full(
-                            (batch_size,), -float("inf"), device=device
-                        )
+                        batch_total_goodness[:, label_candidate] = -torch.inf
+                        continue
 
                 batch_total_goodness[:, label_candidate] = total_goodness_candidate
 
-            # Predict the label with the highest total goodness for each image
+            # Predict the label with the highest total goodness
             try:
                 predicted_labels = torch.argmax(batch_total_goodness, dim=1)
             except Exception as e:
                 logger.error(f"Error during argmax prediction: {e}", exc_info=True)
-                # Handle error, e.g., predict class 0
-                predicted_labels = torch.zeros_like(labels)
+                predicted_labels = torch.zeros_like(labels)  # Fallback prediction
 
-            # Calculate accuracy for the batch
+            # Update correct count and total samples
             total_correct += (predicted_labels == labels).sum().item()
             total_samples += batch_size
 
-            current_acc = (
-                (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
-            )
-            pbar.set_postfix(acc=f"{current_acc:.2f}%")
+            # Update progress bar if desired
+            # current_acc = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
+            # pbar.set_postfix(acc=f"{current_acc:.2f}%")
 
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
     logger.info(f"FF Evaluation Accuracy: {accuracy:.2f}%")
 
-    results = {
-        # Use a consistent key name like other algorithms
-        "eval_accuracy": accuracy
-    }
+    results = {"eval_accuracy": accuracy}
     return results
 
 
-# --- Update __main__ block for testing ---
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-    print("Testing FF algorithm components (including orchestration)...")
-
-    # Setup
-    batch_size = 4
-    input_dim = 784
-    num_classes = 10
-    hidden_dims = [100, 50]  # Small MLP for testing
-    threshold = 1.5
-    epochs_per_layer = 1  # Minimal epochs
-    lr = 0.01
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Dummy Data (Flat input expected by adapter)
-    num_batches = 5
-    dummy_images = torch.randn(batch_size * num_batches, input_dim)
-    dummy_labels = torch.randint(0, num_classes, (batch_size * num_batches,))
-    dummy_dataset = TensorDataset(dummy_images, dummy_labels)
-    dummy_loader = DataLoader(dummy_dataset, batch_size=batch_size)
-
-    # Input adapter (identity since data is already flat for MLP)
-    input_adapter_flat = lambda x: x
-
-    # Dummy Model
-    try:
-        model = FF_MLP(
-            input_dim=input_dim, hidden_dims=hidden_dims, num_classes=num_classes
-        ).to(device)
-        print("\n--- FF Model Instance ---")
-        # print(model)
-
-        # Dummy Training Config (matching args for train_ff_model)
-        # Use keys expected by train_ff_model
-        config_ff = {
-            "optimizer_type": "AdamW",  # Use AdamW example
-            "lr": lr,
-            "weight_decay": 0.01,  # Example WD
-            "threshold": threshold,
-            "epochs_per_layer": epochs_per_layer,
-            "log_interval": 2,
-        }
-
-        print("\n--- Testing train_ff_model ---")
-        train_ff_model(
-            model=model,
-            train_loader=dummy_loader,
-            config=config_ff,  # Pass the config dict
-            device=device,
-            input_adapter=input_adapter_flat,
-        )
-        print("Finished FF model training simulation.")
-
-        # Verify layers are frozen
-        print("\nChecking layer freeze status:")
-        for i, layer in enumerate(model.layers):
-            frozen = not any(p.requires_grad for p in layer.parameters())
-            print(f"  Layer {i+1} frozen: {frozen}")
-            assert frozen  # All layers should be frozen after training
-
-        print("\n--- Testing evaluate_ff_model ---")
-        eval_metrics = evaluate_ff_model(
-            model=model,
-            data_loader=dummy_loader,  # Evaluate on same dummy data for test
-            device=device,
-            input_adapter=input_adapter_flat,
-        )
-        print("Evaluation metrics:", eval_metrics)
-        assert "eval_accuracy" in eval_metrics
-
-        print("\nFF Algorithm orchestration tests seem functional.")
-
-    except Exception as e:
-        print(f"\nError during FF testing: {e}", exc_info=True)
+# Removed the __main__ block for cleaner algorithm file

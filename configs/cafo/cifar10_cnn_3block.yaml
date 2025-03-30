@@ -1,61 +1,61 @@
+# File: configs/cafo/cifar10_cnn_3block.yaml
 # Configuration for Cascaded Forward (CaFo) on CIFAR-10 with 3-Block CNN
 
 # Inherit from base config
 experiment_name: "cafo_cifar10_cnn_3block"
-algorithm: "CaFo"
+algorithm:
+  name: "CaFo"
 
 # Dataset Configuration
 data:
   name: "CIFAR10"
   root: "./data"
   val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+# Data Loader Configuration
+data_loader:
   batch_size: 128
   num_workers: 4
-  normalization: # CIFAR-10 specific
-    mean: [0.4914, 0.4822, 0.4465]
-    std: [0.2470, 0.2435, 0.2616] # Using std [0.2023, 0.1994, 0.2010] is also common
-  augmentation: true # Use standard CIFAR augmentation (crops/flips)
+  pin_memory: true
 
-# Model Architecture Configuration
+# Model Architecture Configuration (Base blocks)
 model:
   name: "CaFo_CNN"
-  input_channels: 3 # CIFAR-10 is RGB
-  block_channels: [32, 128, 512]
-  output_dim: 10 # CIFAR-10 classes
-  activation: "ReLU"
-  use_batchnorm: true
-  predictor_hidden_dim: 512 # Example
+  params:
+    # input_channels: 3 # Calculated
+    block_channels: [32, 128, 512]
+    activation: "ReLU"
+    use_batchnorm: true
+    # image_size: 32 # Calculated
+    # num_classes: 10 # Calculated
 
-# Algorithm Specific Configuration (CaFo)
+# Algorithm Specific Configuration (CaFo-Rand-CE)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.001 # Adjust if needed for CIFAR-10
-  weight_decay: 0.0001 # Adjust if needed
+  lr: 0.001 # As used in paper's experiments
+  weight_decay: 0.0 # Check if paper used WD for predictors
   loss_type: "CrossEntropyLoss"
-  num_epochs_per_block: 50 # Adjust if needed
-
-# Training Configuration
-training:
-  epochs: 100
-  seed: 42
-  device: "cuda"
-  use_cuda: true
+  num_epochs_per_block: 5000 # Epochs for predictor training on CIFAR-10
+  log_interval: 200 # Log less frequently for many epochs
 
 # Logging Configuration
 logging:
   level: "INFO"
-  log_file: null
+  # log_file: null
   wandb:
     use_wandb: true
     project: "BeyondBackpropagation"
-    entity: null
-    run_name: null
+    # entity: null
+    # run_name: null
 
 # Monitoring/Profiling
 monitoring:
   enabled: true
-  interval_seconds: 1
+  energy_enabled: true
+  energy_interval_sec: 0.2
 profiling:
   enabled: true
-  use_cuda_events: true
-  profile_memory: true
+  verbose: false

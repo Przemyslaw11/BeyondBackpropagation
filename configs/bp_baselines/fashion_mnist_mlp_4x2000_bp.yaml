@@ -1,3 +1,4 @@
+# File: configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml
 # Configuration for Backpropagation (BP) Baseline on Fashion-MNIST with 4x2000 MLP
 # This corresponds to the ff_fashion_mnist_mlp_4x2000 experiment.
 
@@ -6,72 +7,74 @@
 
 # Experiment Identification
 experiment_name: "bp_baseline_fashion_mnist_mlp_4x2000"
-algorithm: "BP" # Specify Backpropagation baseline
+algorithm:
+  name: "BP" # Specify Backpropagation baseline
 
 # Dataset Configuration (Should match the corresponding FF experiment)
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1
+  val_split: 0.1 # Crucial for Optuna tuning
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
   batch_size: 128
   num_workers: 4
-  normalization:
-    mean: [0.2860]
-    std: [0.3530]
-  augmentation: false # Match FF experiment
+  pin_memory: true
 
-# Model Architecture Configuration (Identical architecture to FF experiment)
+# Model Architecture Configuration (Identical architecture structure to FF experiment)
 model:
-  name: "FF_MLP" # Use the same architecture definition
-  input_dim: 784
-  hidden_dims: [2000, 2000, 2000, 2000]
-  activation: "ReLU"
-  output_dim: 10 # Standard output for classification
+  name: "FF_MLP" # Engine will adapt this name for BP baseline creation
+  params:
+    # input_dim: 784 # Calculated by engine
+    hidden_dims: [2000, 2000, 2000, 2000]
+    activation: "ReLU"
+    # num_classes: 10 # Calculated by engine
 
-# Optimizer Configuration (For standard end-to-end BP)
+# Optimizer Configuration (Placeholders for Optuna tuning)
 optimizer:
-  type: "AdamW" # Common choice for BP, can be tuned
-  # lr and weight_decay will be tuned by Optuna, provide initial/placeholder if needed by engine
-  lr: 0.001 # Placeholder, will be overridden by Optuna trial
-  weight_decay: 0.01 # Placeholder, will be overridden by Optuna trial
-  # Add other optimizer params like momentum if using SGD
+  type: "AdamW" # Tuner will use this type
+  # lr and weight_decay provided by Optuna trial
 
-# Training Configuration (Standard BP training)
+# Training Configuration (Parameters for the final run *after* tuning)
 training:
-  epochs: 100 # Total epochs for the final run *after* tuning
-  seed: 42
-  device: "cuda"
-  use_cuda: true
+  epochs: 100 # Total epochs for the final run
   criterion: "CrossEntropyLoss" # Standard loss for classification
+  log_interval: 100
+  # scheduler: "CosineAnnealingLR" # Optional: Add scheduler for final run
+  # scheduler_params: {}
 
 # Hyperparameter Tuning Configuration (For Optuna)
 tuning:
-  enabled: true # Flag to indicate this config is for tuning (optional, could be inferred)
-  n_trials: 50 # Number of Optuna trials to run
-  num_epochs: 20 # Number of epochs *per trial* during tuning (less than final training)
+  enabled: true # Flag for scripts (optional)
+  n_trials: 50 # Number of Optuna trials
+  num_epochs: 25 # Number of epochs *per trial* during tuning (e.g., 25% of final)
   direction: "maximize" # Optimize for validation accuracy
   metric: "val_accuracy" # Metric the objective function returns
   sampler: "TPE" # Optuna sampler (TPE, Random)
   pruner: "Median" # Optuna pruner (Median, Hyperband, None)
   # Define search space for Optuna
   lr_range: [1.0e-5, 1.0e-2] # Log uniform search space for learning rate
-  wd_range: [1.0e-6, 1.0e-1] # Log uniform search space for weight decay
+  wd_range: [1.0e-6, 1.0e-3] # Log uniform search space for weight decay (Adjusted upper limit)
 
 # Logging Configuration
 logging:
   level: "INFO"
-  log_file: null
+  # log_file: null # Set dynamically
   wandb:
     use_wandb: true
     project: "BeyondBackpropagation"
-    entity: null
-    run_name: null # Set dynamically (e.g., include 'optuna' in the name)
+    # entity: null
+    # run_name: null # Set dynamically
 
 # Monitoring/Profiling (Enable for baseline runs too)
 monitoring:
   enabled: true
-  interval_seconds: 1
+  energy_enabled: true
+  energy_interval_sec: 0.2
 profiling:
   enabled: true
-  use_cuda_events: true
-  profile_memory: true
+  verbose: false

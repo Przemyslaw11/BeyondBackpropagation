@@ -1,75 +1,79 @@
+# File: configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml
 # Configuration for BP Baseline on Fashion-MNIST with 3-Block CNN
 # Corresponds to cafo_fashion_mnist_cnn_3block experiment
 
 # Inherit from base config
 experiment_name: "bp_baseline_fashion_mnist_cnn_3block"
-algorithm: "BP"
+algorithm:
+  name: "BP"
 
 # Dataset Configuration (Match CaFo experiment)
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1
+  val_split: 0.1 # Needed for Optuna
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
   batch_size: 128
   num_workers: 4
-  normalization:
-    mean: [0.2860]
-    std: [0.3530]
-  augmentation: false
+  pin_memory: true
 
-# Model Architecture Configuration (Identical architecture, no predictors)
+# Model Architecture Configuration (Identical block structure)
 model:
-  name: "CaFo_CNN" # Use same base architecture
-  input_channels: 1
-  block_channels: [32, 128, 512]
-  output_dim: 10
-  activation: "ReLU"
-  use_batchnorm: true
-  # Ensure the CaFo_CNN model can be instantiated *without* predictors for BP
-  # This might require a flag like `use_predictors: false` or similar in the model's __init__
-  use_predictors: false # Assuming the model supports this flag
+  name: "CaFo_CNN" # Engine adapts this name for BP baseline
+  params:
+    # input_channels: 1 # Calculated by engine
+    block_channels: [32, 128, 512]
+    activation: "ReLU"
+    use_batchnorm: true
+    # image_size: 28 # Calculated by engine
+    # num_classes: 10 # Calculated by engine
+    # use_predictors: false # ADDED flag for clarity (though engine implicitly handles it)
 
-# Optimizer Configuration (For standard end-to-end BP)
+# Optimizer Configuration (Placeholders for Optuna tuning)
 optimizer:
   type: "AdamW"
-  lr: 0.001 # Placeholder for Optuna
-  weight_decay: 0.01 # Placeholder for Optuna
+  # lr and weight_decay provided by Optuna trial
 
-# Training Configuration (Standard BP training)
+# Training Configuration (For final run after tuning)
 training:
   epochs: 100
-  seed: 42
-  device: "cuda"
-  use_cuda: true
   criterion: "CrossEntropyLoss"
+  log_interval: 100
+  # scheduler: "CosineAnnealingLR" # Optional scheduler
+  # scheduler_params: {}
 
 # Hyperparameter Tuning Configuration (For Optuna)
 tuning:
   enabled: true
   n_trials: 50
-  num_epochs: 20 # Epochs per trial
+  num_epochs: 25 # Epochs per trial
   direction: "maximize"
   metric: "val_accuracy"
   sampler: "TPE"
   pruner: "Median"
   lr_range: [1.0e-5, 1.0e-2]
-  wd_range: [1.0e-6, 1.0e-1]
+  wd_range: [1.0e-6, 1.0e-3] # Adjusted WD range
 
 # Logging Configuration
 logging:
   level: "INFO"
-  log_file: null
+  # log_file: null
   wandb:
     use_wandb: true
     project: "BeyondBackpropagation"
-    entity: null
-    run_name: null
+    # entity: null
+    # run_name: null
 
 # Monitoring/Profiling
 monitoring:
   enabled: true
-  interval_seconds: 1
+  energy_enabled: true
+  energy_interval_sec: 0.2
 profiling:
   enabled: true
-  use_cuda_events: true
-  profile_memory: true
+  verbose: false

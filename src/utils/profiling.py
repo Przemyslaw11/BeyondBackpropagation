@@ -1,97 +1,149 @@
+# File: src/utils/profiling.py
 import torch
 import torch.nn as nn
 import torchprof
 import logging
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Callable  # Added Callable
 
 logger = logging.getLogger(__name__)
 
-def profile_model_flops(model: nn.Module, input_shape: Union[Tuple[int, ...], torch.Tensor], device: Optional[torch.device] = None, verbose: bool = False) -> Optional[float]:
+
+def profile_model_flops(
+    model: nn.Module,
+    input_constructor: Union[
+        Tuple[int, ...], Callable[[], torch.Tensor]
+    ],  # Shape tuple or function returning input tensor
+    device: Optional[torch.device] = None,
+    verbose: bool = False,
+) -> Optional[float]:
     """
     Estimates the FLOPs (specifically MACs reported by torchprof) for a model's forward pass.
 
     Args:
         model: The PyTorch model (nn.Module) to profile.
-        input_shape: A tuple describing the input shape (e.g., (1, 3, 32, 32) for a single image)
-                     or a sample input tensor. Batch size should typically be 1 for representative FLOPs.
-        device: The device ('cuda' or 'cpu') to run the profiling on. If None, uses model's device or default.
+        input_constructor: A tuple describing the input shape (e.g., (1, 3, 32, 32)) for random input,
+                           OR a callable function that returns a sample input tensor.
+                           Batch size should typically be 1 for representative FLOPs.
+        device: The device ('cuda' or 'cpu') to run the profiling on. If None, uses model's device or CPU default.
         verbose: If True, prints the detailed torchprof summary.
 
     Returns:
-        Estimated GFLOPs (Giga Floating Point Operations, often MACs * 2),
-        or None if profiling fails.
+        Estimated GigaMACs (Giga Multiply-Accumulate operations), or None if profiling fails.
+        Note: GFLOPs is often estimated as 2 * GigaMACs.
     """
     if device is None:
-        # Try to infer device from model parameters, default to CPU
         try:
             device = next(model.parameters()).device
-        except StopIteration: # Model might have no parameters
-             device = torch.device("cpu")
-             logger.debug("Model has no parameters, defaulting device to CPU for profiling.")
+        except StopIteration:  # Model might have no parameters
+            device = torch.device("cpu")
+            logger.debug(
+                "Model has no parameters, defaulting device to CPU for profiling."
+            )
         except Exception as e:
-             logger.warning(f"Could not infer model device, defaulting to CPU: {e}")
-             device = torch.device("cpu")
-
+            logger.warning(f"Could not infer model device, defaulting to CPU: {e}")
+            device = torch.device("cpu")
+    logger.debug(f"Profiling on device: {device}")
 
     # Ensure model is on the correct device and in eval mode
     original_mode = model.training
-    model.eval()
-    model.to(device)
-
-    # Create dummy input tensor if shape is provided
-    if isinstance(input_shape, tuple):
-        try:
-            dummy_input = torch.randn(input_shape, device=device)
-        except Exception as e:
-            logger.error(f"Failed to create dummy input tensor with shape {input_shape} on device {device}: {e}", exc_info=True)
-            return None
-    elif isinstance(input_shape, torch.Tensor):
-        dummy_input = input_shape.to(device)
-    else:
-        logger.error("Invalid input_shape provided. Must be a tuple or a torch.Tensor.")
-        return None
-
-    total_macs = None
     try:
-        # Profile the forward pass
-        with torchprof.Profile(model, use_cuda=(device.type == 'cuda'), profile_memory=False) as prof: # Memory profiling can be slow
+        model.eval()
+        model.to(device)
+
+        # Create dummy input tensor
+        if isinstance(input_constructor, tuple):
+            input_shape = input_constructor
+            try:
+                dummy_input = torch.randn(input_shape, device=device)
+                logger.debug(f"Created dummy input with shape: {input_shape}")
+            except Exception as e:
+                logger.error(
+                    f"Failed to create dummy input tensor with shape {input_shape} on device {device}: {e}",
+                    exc_info=True,
+                )
+                return None
+        elif callable(input_constructor):
+            try:
+                dummy_input = input_constructor().to(device)
+                logger.debug(
+                    f"Created dummy input from constructor, shape: {dummy_input.shape}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to create dummy input using constructor function: {e}",
+                    exc_info=True,
+                )
+                return None
+        else:
+            logger.error(
+                "Invalid input_constructor provided. Must be a shape tuple or a callable returning a tensor."
+            )
+            return None
+
+        total_macs = None
+        # --- Profile the forward pass ---
+        with torchprof.Profile(
+            model, use_cuda=(device.type == "cuda"), profile_memory=False
+        ) as prof:  # Memory profiling can be slow and less relevant here
             with torch.no_grad():
                 model(dummy_input)
 
         if verbose:
-            # Print the detailed summary (includes MACs per layer)
-            print(prof)
+            try:
+                print(prof)  # Print the default summary
+                # Or for more control: print(prof.display(show_events=False))
+            except Exception as e:
+                logger.warning(f"Could not print torchprof summary: {e}")
 
-        # Extract total MACs (Multiply-Accumulate operations)
-        # torchprof reports MACs. Often, FLOPs are estimated as 2 * MACs.
-        # We will return GigaMACs and let the user decide how to interpret as FLOPs.
-        # The summary string often contains 'Total MACs:'
-        summary_str = str(prof) # Get the string representation
-        for line in summary_str.split('\n'):
-             if 'Total MACs:' in line:
-                  mac_str = line.split(':')[-1].strip()
-                  # Handle suffixes like K, M, G
-                  if mac_str.endswith('K'):
-                      total_macs = float(mac_str[:-1]) * 1e3
-                  elif mac_str.endswith('M'):
-                      total_macs = float(mac_str[:-1]) * 1e6
-                  elif mac_str.endswith('G'):
-                      total_macs = float(mac_str[:-1]) * 1e9
-                  else:
-                      total_macs = float(mac_str)
-                  break
+        # --- Extract total MACs ---
+        # Attempt 1: Use the string representation (common method)
+        try:
+            summary_str = str(prof)
+            for line in summary_str.split("\n"):
+                if "Total MACs:" in line:
+                    mac_str = (
+                        line.split(":")[-1].strip().upper()
+                    )  # Handle case-insensitivity
+                    value = float(mac_str[:-1])  # Remove suffix
+                    if mac_str.endswith("K"):
+                        total_macs = value * 1e3
+                    elif mac_str.endswith("M"):
+                        total_macs = value * 1e6
+                    elif mac_str.endswith("G"):
+                        total_macs = value * 1e9
+                    elif mac_str.endswith("T"):
+                        total_macs = value * 1e12
+                    else:  # Assume no suffix or unrecognized suffix
+                        total_macs = float(mac_str)  # Try converting directly
+                    logger.debug(f"Parsed MACs from summary string: {total_macs}")
+                    break
+        except Exception as e:
+            logger.warning(
+                f"Could not parse Total MACs from torchprof summary string: {e}"
+            )
+            total_macs = None  # Ensure reset if parsing fails
+
+        # Attempt 2: Use internal methods if available (may vary by torchprof version)
+        if total_macs is None:
+            try:
+                # Check for common attribute names used by profilers
+                if hasattr(prof, "total_macs"):
+                    total_macs = prof.total_macs()
+                    logger.debug(f"Retrieved MACs from prof.total_macs(): {total_macs}")
+                # Add other potential attribute names if needed
+            except Exception as e:
+                logger.warning(f"Could not retrieve MACs using internal methods: {e}")
 
         if total_macs is None:
-             logger.warning("Could not parse Total MACs from torchprof summary.")
-             # Fallback: try accessing trace events if available (might be fragile)
-             try:
-                 total_macs = prof.total_macs() # Check if a direct method exists (may vary by version)
-             except AttributeError:
-                 logger.warning("torchprof object does not have a 'total_macs' method.")
+            logger.warning("Failed to determine Total MACs from torchprof.")
 
-
+    except ImportError:
+        logger.error(
+            "torchprof not found. Please install it (`pip install torchprof`) for FLOPs profiling."
+        )
+        total_macs = None
     except Exception as e:
-        logger.error(f"Failed to profile model FLOPs: {e}", exc_info=True)
+        logger.error(f"Failed to profile model MACs/FLOPs: {e}", exc_info=True)
         total_macs = None
     finally:
         # Restore original training mode
@@ -104,61 +156,3 @@ def profile_model_flops(model: nn.Module, input_shape: Union[Tuple[int, ...], to
         return gmacs
     else:
         return None
-
-
-if __name__ == '__main__':
-    print("Testing profiling_utils...")
-
-    # Define simple models
-    linear_model = nn.Linear(10, 5)
-    conv_model = nn.Sequential(
-        nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
-        nn.ReLU(),
-        nn.MaxPool2d(kernel_size=2, stride=2),
-        nn.Flatten(),
-        nn.Linear(16 * 16 * 16, 10) # Assuming 32x32 input -> 16x16 after pool
-    )
-
-    # Test on CPU
-    print("\n--- Profiling Linear Model (CPU) ---")
-    input_shape_linear = (1, 10) # Batch size 1
-    gmacs_linear_cpu = profile_model_flops(linear_model, input_shape_linear, device=torch.device('cpu'), verbose=True)
-    if gmacs_linear_cpu is not None:
-        print(f"Estimated GigaMACs (CPU): {gmacs_linear_cpu:.6f}")
-        # Expected MACs for Linear(in, out) = batch_size * in_features * out_features = 1 * 10 * 5 = 50
-        # Expected GigaMACs = 50 / 1e9 = 0.00000005
-        assert abs(gmacs_linear_cpu * 1e9 - 50) < 1e-9 # Check if close to 50 MACs
-
-    print("\n--- Profiling Conv Model (CPU) ---")
-    input_shape_conv = (1, 3, 32, 32) # Batch size 1
-    gmacs_conv_cpu = profile_model_flops(conv_model, input_shape_conv, device=torch.device('cpu'), verbose=True)
-    if gmacs_conv_cpu is not None:
-        print(f"Estimated GigaMACs (CPU): {gmacs_conv_cpu:.6f}")
-        # Manual calculation is more complex, but we expect a non-zero value.
-
-    # Test on GPU if available
-    if torch.cuda.is_available():
-        print("\n--- Profiling Linear Model (GPU) ---")
-        gmacs_linear_gpu = profile_model_flops(linear_model, input_shape_linear, device=torch.device('cuda'), verbose=False) # Less verbose for GPU
-        if gmacs_linear_gpu is not None:
-            print(f"Estimated GigaMACs (GPU): {gmacs_linear_gpu:.6f}")
-            assert abs(gmacs_linear_gpu * 1e9 - 50) < 1e-9 # Should be the same MAC count
-
-        print("\n--- Profiling Conv Model (GPU) ---")
-        gmacs_conv_gpu = profile_model_flops(conv_model, input_shape_conv, device=torch.device('cuda'), verbose=False)
-        if gmacs_conv_gpu is not None:
-            print(f"Estimated GigaMACs (GPU): {gmacs_conv_gpu:.6f}")
-            # Compare CPU and GPU results (should be very close)
-            if gmacs_conv_cpu is not None:
-                 print(f"Difference CPU vs GPU GigaMACs: {abs(gmacs_conv_cpu - gmacs_conv_gpu):.6f}")
-                 assert abs(gmacs_conv_cpu - gmacs_conv_gpu) < 1e-5 # Allow small tolerance
-    else:
-        print("\nCUDA not available, skipping GPU profiling tests.")
-
-    # Test with tensor input
-    print("\n--- Profiling with Tensor Input (CPU) ---")
-    dummy_tensor = torch.randn(input_shape_linear)
-    gmacs_tensor_input = profile_model_flops(linear_model, dummy_tensor, device=torch.device('cpu'), verbose=False)
-    if gmacs_tensor_input is not None:
-        print(f"Estimated GigaMACs (Tensor Input): {gmacs_tensor_input:.6f}")
-        assert abs(gmacs_tensor_input * 1e9 - 50) < 1e-9
