@@ -1,0 +1,20 @@
+# Base configuration settings shared across experiments
+
+# Reproducibility
+seed: 42
+
+# Hardware
+device: cuda  # Assume CUDA is available on HPC
+
+# Training parameters (can be overridden by specific experiment configs)
+epochs: 100
+batch_size: 128 # A common default, adjust as needed
+
+# Dataset configuration (placeholders, specific paths/settings in experiment configs)
+dataset_root: "./data" # Relative path to data directory
+
+# Logging
+wandb_project: "BeyondBackpropagation"
+wandb_entity: null # Replace with your W&B username/entity if desired
+
+# Add other common parameters here

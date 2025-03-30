@@ -1,0 +1,12 @@
+# Core dependencies
+torch
+torchvision
+torchaudio
+numpy
+pyyaml
+wandb
+optuna
+pynvml
+torchprof
+
+# Add other dependencies as needed
