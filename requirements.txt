@@ -1,5 +1,5 @@
 # Core dependencies
-torch
+torch==2.1.0 # Specify version for reproducibility, matching your plan
 torchvision
 torchaudio
 numpy
