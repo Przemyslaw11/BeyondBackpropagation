@@ -1,0 +1,75 @@
+# Configuration for BP Baseline on Fashion-MNIST with 3-Block CNN
+# Corresponds to cafo_fashion_mnist_cnn_3block experiment
+
+# Inherit from base config
+experiment_name: "bp_baseline_fashion_mnist_cnn_3block"
+algorithm: "BP"
+
+# Dataset Configuration (Match CaFo experiment)
+data:
+  name: "FashionMNIST"
+  root: "./data"
+  val_split: 0.1
+  batch_size: 128
+  num_workers: 4
+  normalization:
+    mean: [0.2860]
+    std: [0.3530]
+  augmentation: false
+
+# Model Architecture Configuration (Identical architecture, no predictors)
+model:
+  name: "CaFo_CNN" # Use same base architecture
+  input_channels: 1
+  block_channels: [32, 128, 512]
+  output_dim: 10
+  activation: "ReLU"
+  use_batchnorm: true
+  # Ensure the CaFo_CNN model can be instantiated *without* predictors for BP
+  # This might require a flag like `use_predictors: false` or similar in the model's __init__
+  use_predictors: false # Assuming the model supports this flag
+
+# Optimizer Configuration (For standard end-to-end BP)
+optimizer:
+  type: "AdamW"
+  lr: 0.001 # Placeholder for Optuna
+  weight_decay: 0.01 # Placeholder for Optuna
+
+# Training Configuration (Standard BP training)
+training:
+  epochs: 100
+  seed: 42
+  device: "cuda"
+  use_cuda: true
+  criterion: "CrossEntropyLoss"
+
+# Hyperparameter Tuning Configuration (For Optuna)
+tuning:
+  enabled: true
+  n_trials: 50
+  num_epochs: 20 # Epochs per trial
+  direction: "maximize"
+  metric: "val_accuracy"
+  sampler: "TPE"
+  pruner: "Median"
+  lr_range: [1.0e-5, 1.0e-2]
+  wd_range: [1.0e-6, 1.0e-1]
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_file: null
+  wandb:
+    use_wandb: true
+    project: "BeyondBackpropagation"
+    entity: null
+    run_name: null
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  interval_seconds: 1
+profiling:
+  enabled: true
+  use_cuda_events: true
+  profile_memory: true

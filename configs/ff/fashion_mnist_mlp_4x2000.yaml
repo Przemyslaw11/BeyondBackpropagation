@@ -1,0 +1,64 @@
+# Configuration for Forward-Forward (FF) on Fashion-MNIST with 4x2000 MLP
+
+# Inherit from base config (handled by config_parser)
+# Values here override base.yaml
+
+# Experiment Identification
+experiment_name: "ff_fashion_mnist_mlp_4x2000"
+algorithm: "FF"
+
+# Dataset Configuration
+data:
+  name: "FashionMNIST"
+  root: "./data" # Inherited from base, but explicit here for clarity
+  val_split: 0.1 # 10% of training data for validation
+  batch_size: 128 # Inherited from base
+  num_workers: 4 # Adjust based on system capabilities
+  normalization: # FashionMNIST specific normalization
+    mean: [0.2860]
+    std: [0.3530]
+  augmentation: false # No augmentation specified for F-MNIST in FF paper
+
+# Model Architecture Configuration
+model:
+  name: "FF_MLP" # Corresponds to src/architectures/ff_mlp.py
+  input_dim: 784 # FashionMNIST: 28*28
+  hidden_dims: [2000, 2000, 2000, 2000] # 4 hidden layers of 2000 units
+  activation: "ReLU"
+  output_dim: 10 # FashionMNIST: 10 classes (used for label embedding/final eval)
+
+# Algorithm Specific Configuration (Forward-Forward)
+algorithm_params:
+  optimizer_type: "Adam" # Optimizer per layer
+  lr: 0.03 # Learning rate from FF paper (adjust if needed)
+  weight_decay: 0.0 # FF paper often uses no weight decay
+  threshold: 2.0 # Goodness threshold (adjust if needed)
+  loss_type: "SoftmaxCrossEntropyLoss" # Or other suitable loss for FF positive/negative pairs
+  num_epochs_per_layer: 50 # How many epochs to train each layer locally (adjust)
+  # Add other FF specific params if needed (e.g., goodness function details)
+
+# Training Configuration (Overrides base if needed)
+training:
+  epochs: 100 # Total effective epochs (might be interpreted differently by FF engine)
+  seed: 42 # Inherited
+  device: "cuda" # Inherited
+  use_cuda: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_file: null # Set dynamically by run_experiment.py
+  wandb:
+    use_wandb: true
+    project: "BeyondBackpropagation" # Inherited
+    entity: null # Inherited (replace if needed)
+    run_name: null # Set dynamically by run_experiment.py
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  interval_seconds: 1
+profiling:
+  enabled: true
+  use_cuda_events: true
+  profile_memory: true

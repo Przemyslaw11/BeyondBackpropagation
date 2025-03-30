@@ -2,69 +2,105 @@ import yaml
 import os
 from typing import Dict, Any
 
-def load_config(config_path: str) -> Dict[str, Any]:
+def load_config(config_path: str, base_config_path: str = 'configs/base.yaml') -> Dict[str, Any]:
     """
-    Loads a YAML configuration file.
+    Loads a YAML configuration file and merges it with a base configuration file.
 
     Args:
-        config_path: Path to the YAML configuration file.
+        config_path: Path to the specific experiment configuration file.
+        base_config_path: Path to the base configuration file. Defaults to 'configs/base.yaml'.
 
     Returns:
-        A dictionary containing the configuration settings.
+        A dictionary containing the merged configuration.
 
     Raises:
-        FileNotFoundError: If the config file does not exist.
-        yaml.YAMLError: If the config file is not valid YAML.
+        FileNotFoundError: If either the config_path or base_config_path does not exist.
+        yaml.YAMLError: If there is an error parsing the YAML files.
     """
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    if not os.path.exists(base_config_path):
+        # Allow running without a base config if it's explicitly not found or not needed
+        print(f"Warning: Base configuration file not found at {base_config_path}. Proceeding without it.")
+        base_config = {}
+    else:
+        try:
+            with open(base_config_path, 'r') as f:
+                base_config = yaml.safe_load(f)
+                if base_config is None: # Handle empty base file
+                    base_config = {}
+        except yaml.YAMLError as e:
+            print(f"Error parsing base configuration file {base_config_path}: {e}")
+            raise
+        except Exception as e:
+            print(f"An unexpected error occurred while reading {base_config_path}: {e}")
+            raise
 
     try:
         with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        if config is None: # Handle empty YAML file case
-             config = {}
-        return config
+            specific_config = yaml.safe_load(f)
+            if specific_config is None: # Handle empty specific config file
+                specific_config = {}
     except yaml.YAMLError as e:
-        raise yaml.YAMLError(f"Error parsing YAML file {config_path}: {e}")
+        print(f"Error parsing specific configuration file {config_path}: {e}")
+        raise
     except Exception as e:
-        # Catch other potential file reading errors
-        raise IOError(f"Error reading file {config_path}: {e}")
+        print(f"An unexpected error occurred while reading {config_path}: {e}")
+        raise
 
-# TODO: Implement merging with base.yaml functionality if needed later.
-# def load_and_merge_config(config_path: str, base_config_path: str = "configs/base.yaml") -> Dict[str, Any]:
-#     """Loads experiment config and merges it with a base config."""
-#     base_config = load_config(base_config_path)
-#     experiment_config = load_config(config_path)
-#
-#     # Simple dictionary update (experiment overrides base)
-#     # More sophisticated merging (e.g., deep merge) could be added if needed
-#     merged_config = base_config.copy()
-#     merged_config.update(experiment_config)
-#
-#     return merged_config
+    # Merge configurations: specific config overrides base config
+    # Use a deep merge strategy if necessary, but for now, a simple update might suffice
+    # depending on the config structure. Let's start simple.
+    merged_config = base_config.copy()
+    merged_config.update(specific_config) # Simple top-level merge
+
+    # TODO: Implement deep merging if nested dictionaries need careful merging later
+
+    return merged_config
 
 if __name__ == '__main__':
-    # Example usage (for testing purposes)
+    # Example usage (assuming you have dummy files)
+    # Create dummy files for testing:
+    if not os.path.exists('configs'):
+        os.makedirs('configs')
+    with open('configs/base.yaml', 'w') as f:
+        yaml.dump({'learning_rate': 0.01, 'optimizer': 'Adam', 'epochs': 50, 'seed': 42}, f)
+    with open('configs/dummy_exp.yaml', 'w') as f:
+        yaml.dump({'learning_rate': 0.005, 'dataset': 'CIFAR10', 'model': {'type': 'CNN'}}, f)
+
     try:
-        # Create a dummy test config file
-        dummy_config_path = "dummy_test_config.yaml"
-        with open(dummy_config_path, 'w') as f:
-            yaml.dump({'learning_rate': 0.01, 'optimizer': 'adam'}, f)
+        config = load_config('configs/dummy_exp.yaml')
+        print("Loaded and merged config:")
+        print(yaml.dump(config, default_flow_style=False))
 
-        print(f"Loading dummy config: {dummy_config_path}")
-        loaded_settings = load_config(dummy_config_path)
-        print("Loaded settings:")
-        print(loaded_settings)
+        # Test loading without base
+        # os.remove('configs/base.yaml') # Temporarily remove base
+        # config_no_base = load_config('configs/dummy_exp.yaml')
+        # print("\nLoaded config without base:")
+        # print(yaml.dump(config_no_base, default_flow_style=False))
+        # # Recreate base for future tests
+        # with open('configs/base.yaml', 'w') as f:
+        #     yaml.dump({'learning_rate': 0.01, 'optimizer': 'Adam', 'epochs': 50, 'seed': 42}, f)
 
-        # Clean up dummy file
-        os.remove(dummy_config_path)
+        # Test non-existent file
+        # load_config('non_existent_config.yaml')
 
-        # Test loading base config
-        print("\nLoading base config: configs/base.yaml")
-        base_settings = load_config("configs/base.yaml")
-        print("Loaded base settings:")
-        print(base_settings)
+    except (FileNotFoundError, yaml.YAMLError) as e:
+        print(f"\nError during example usage: {e}")
+    finally:
+        # Clean up dummy files
+        # os.remove('configs/dummy_exp.yaml')
+        # os.remove('configs/base.yaml')
+        # if not os.listdir('configs'):
+        #     os.rmdir('configs')
+        pass # Keep dummy files for now as they might be useful
 
-    except (FileNotFoundError, yaml.YAMLError, IOError) as e:
-        print(f"Error during test: {e}")
+    # Example loading the actual base config (if it exists)
+    try:
+        base_cfg = load_config('configs/base.yaml', base_config_path='non_existent_base.yaml') # Load base as specific, ignore missing base
+        print("\nLoaded actual base config:")
+        print(yaml.dump(base_cfg, default_flow_style=False))
+    except FileNotFoundError as e:
+        print(f"\nCould not load actual base config: {e}")
+    except yaml.YAMLError as e:
+        print(f"\nError parsing actual base config: {e}")

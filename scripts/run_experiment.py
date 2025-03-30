@@ -9,36 +9,38 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from src.utils.config_parser import load_config
+# Import necessary functions
+import yaml # Import yaml to catch YAMLError
+from src.utils.config_parser import load_and_merge_config # Use the merging function
 from src.utils.helpers import set_seed
+from src.training.engine import train # Import the main training function
 
 def main(args):
     """
     Main function to run an experiment.
     """
-    print(f"Loading configuration from: {args.config}")
+    print(f"Loading and merging configuration from: {args.config}")
     try:
-        # TODO: Eventually use load_and_merge_config if implemented
-        config = load_config(args.config)
-        print("Configuration loaded successfully:")
-        pprint.pprint(config) # Pretty print the config for verification
+        # Load and merge base and experiment configurations
+        config = load_and_merge_config(args.config)
+        print("Configuration loaded and merged successfully:")
+        pprint.pprint(config) # Pretty print the final config
     except (FileNotFoundError, yaml.YAMLError, IOError) as e:
-        print(f"Error loading configuration: {e}")
+        print(f"Error loading or merging configuration: {e}")
         sys.exit(1) # Exit if config loading fails
 
-    # Set random seed for reproducibility
-    seed = config.get('seed', None) # Get seed from config, default to None
-    set_seed(seed)
-
-    # --- Placeholder for future steps ---
-    print("\n--- Experiment Setup Complete ---")
-    print("Next steps would involve:")
-    print("1. Setting up logging (W&B)")
-    print("2. Loading dataset")
-    print("3. Initializing model architecture")
-    print("4. Initializing algorithm/training logic")
-    print("5. Starting the training engine")
-    # --- End Placeholder ---
+    # --- Start Training ---
+    # Seed is set within the train function using the loaded config
+    print("\n--- Starting Experiment ---")
+    try:
+        train(config) # Call the main training function
+        print("\n--- Experiment Finished Successfully ---")
+    except Exception as e:
+        print(f"\n--- Experiment Failed ---")
+        print(f"Error during training: {e}")
+        # Optionally re-raise the exception for more detailed traceback
+        # raise e
+        sys.exit(1) # Exit with error status
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a deep learning experiment based on a configuration file.")

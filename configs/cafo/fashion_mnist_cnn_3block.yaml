@@ -1,0 +1,63 @@
+# Configuration for Cascaded Forward (CaFo) on Fashion-MNIST with 3-Block CNN
+
+# Inherit from base config
+experiment_name: "cafo_fashion_mnist_cnn_3block"
+algorithm: "CaFo"
+
+# Dataset Configuration
+data:
+  name: "FashionMNIST"
+  root: "./data"
+  val_split: 0.1
+  batch_size: 128
+  num_workers: 4
+  normalization: # FashionMNIST specific
+    mean: [0.2860]
+    std: [0.3530]
+  augmentation: false # No augmentation for F-MNIST
+
+# Model Architecture Configuration
+model:
+  name: "CaFo_CNN" # Corresponds to src/architectures/cafo_cnn.py
+  input_channels: 1 # F-MNIST is grayscale
+  block_channels: [32, 128, 512] # Channels for the 3 blocks
+  output_dim: 10 # F-MNIST classes
+  activation: "ReLU"
+  use_batchnorm: true
+  # Predictor network details might be defined within the model or algorithm config
+  predictor_hidden_dim: 512 # Example hidden dim for local predictors
+
+# Algorithm Specific Configuration (CaFo)
+algorithm_params:
+  optimizer_type: "Adam" # Optimizer for local blocks/predictors
+  lr: 0.001 # Starting LR for CaFo (adjust based on paper/tuning)
+  weight_decay: 0.0001 # Starting WD for CaFo (adjust)
+  loss_type: "CrossEntropyLoss" # Loss for local predictors (CaFo-Rand-CE)
+  num_epochs_per_block: 50 # How many epochs to train each block locally (adjust)
+  # Add other CaFo specific params if needed (e.g., predictor architecture details if not in model)
+
+# Training Configuration
+training:
+  epochs: 100 # Total effective epochs
+  seed: 42
+  device: "cuda"
+  use_cuda: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_file: null
+  wandb:
+    use_wandb: true
+    project: "BeyondBackpropagation"
+    entity: null
+    run_name: null
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  interval_seconds: 1
+profiling:
+  enabled: true
+  use_cuda_events: true
+  profile_memory: true

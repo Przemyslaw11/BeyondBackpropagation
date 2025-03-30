@@ -2,54 +2,71 @@ import random
 import numpy as np
 import torch
 import os
+import time
 
 def set_seed(seed: int):
     """
-    Sets the random seed for reproducibility across different libraries.
+    Sets the seed for reproducibility across different libraries.
 
     Args:
-        seed: The integer value to use as the seed.
+        seed: The integer seed value.
     """
-    if seed is None:
-        print("Warning: No seed provided. Results may not be reproducible.")
-        return
-
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-    # Set seed for CUDA operations if available
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)  # For multi-GPU setups
-
-        # Ensure deterministic behavior for CuDNN
-        # Note: This can impact performance, enable if strict reproducibility is paramount
-        # torch.backends.cudnn.deterministic = True
-        # torch.backends.cudnn.benchmark = False # Disable benchmark mode for determinism
-
-    # Set PYTHONHASHSEED environment variable (optional, affects hash-based operations)
-    # os.environ['PYTHONHASHSEED'] = str(seed)
-
+        torch.cuda.manual_seed_all(seed)  # if using multi-GPU
+        # Ensure deterministic behavior for cuDNN (can impact performance)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     print(f"Set random seed to {seed}")
 
+def create_directory_if_not_exists(path: str):
+    """
+    Creates a directory if it doesn't already exist.
+
+    Args:
+        path: The directory path to create.
+    """
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Created directory: {path}")
+
+def format_time(seconds: float) -> str:
+    """
+    Formats a duration in seconds into a human-readable string (HH:MM:SS).
+
+    Args:
+        seconds: The duration in seconds.
+
+    Returns:
+        A string representing the formatted time.
+    """
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    return f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
 
 if __name__ == '__main__':
     # Example usage
-    print("Setting seed to 123...")
-    set_seed(123)
-    print("Numpy random:", np.random.rand(1))
-    print("Torch random:", torch.rand(1))
-    print("Python random:", random.random())
+    print("Testing set_seed...")
+    set_seed(42)
+    print(f"Python random: {random.random()}")
+    print(f"Numpy random: {np.random.rand()}")
+    print(f"Torch random: {torch.rand(1)}")
+    if torch.cuda.is_available():
+        print(f"Torch CUDA random: {torch.cuda.FloatTensor(1).normal_()}")
 
-    print("\nSetting seed to 456...")
-    set_seed(456)
-    print("Numpy random:", np.random.rand(1))
-    print("Torch random:", torch.rand(1))
-    print("Python random:", random.random())
+    print("\nTesting create_directory_if_not_exists...")
+    test_dir = "temp_test_dir_helpers"
+    create_directory_if_not_exists(test_dir)
+    create_directory_if_not_exists(test_dir) # Should not print again
+    if os.path.exists(test_dir):
+        os.rmdir(test_dir)
+        print(f"Cleaned up directory: {test_dir}")
 
-    print("\nTesting without seed...")
-    set_seed(None)
-    print("Numpy random:", np.random.rand(1))
-    print("Torch random:", torch.rand(1))
-    print("Python random:", random.random())
+    print("\nTesting format_time...")
+    print(f"1 second: {format_time(1)}")
+    print(f"90 seconds: {format_time(90)}")
+    print(f"3661 seconds: {format_time(3661)}")
+    print(f"86400 seconds: {format_time(86400)}")

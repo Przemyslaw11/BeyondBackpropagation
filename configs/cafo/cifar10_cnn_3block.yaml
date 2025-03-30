@@ -1,0 +1,61 @@
+# Configuration for Cascaded Forward (CaFo) on CIFAR-10 with 3-Block CNN
+
+# Inherit from base config
+experiment_name: "cafo_cifar10_cnn_3block"
+algorithm: "CaFo"
+
+# Dataset Configuration
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  batch_size: 128
+  num_workers: 4
+  normalization: # CIFAR-10 specific
+    mean: [0.4914, 0.4822, 0.4465]
+    std: [0.2470, 0.2435, 0.2616] # Using std [0.2023, 0.1994, 0.2010] is also common
+  augmentation: true # Use standard CIFAR augmentation (crops/flips)
+
+# Model Architecture Configuration
+model:
+  name: "CaFo_CNN"
+  input_channels: 3 # CIFAR-10 is RGB
+  block_channels: [32, 128, 512]
+  output_dim: 10 # CIFAR-10 classes
+  activation: "ReLU"
+  use_batchnorm: true
+  predictor_hidden_dim: 512 # Example
+
+# Algorithm Specific Configuration (CaFo)
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.001 # Adjust if needed for CIFAR-10
+  weight_decay: 0.0001 # Adjust if needed
+  loss_type: "CrossEntropyLoss"
+  num_epochs_per_block: 50 # Adjust if needed
+
+# Training Configuration
+training:
+  epochs: 100
+  seed: 42
+  device: "cuda"
+  use_cuda: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_file: null
+  wandb:
+    use_wandb: true
+    project: "BeyondBackpropagation"
+    entity: null
+    run_name: null
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  interval_seconds: 1
+profiling:
+  enabled: true
+  use_cuda_events: true
+  profile_memory: true
