@@ -34,11 +34,10 @@ model:
 # Algorithm Specific Configuration (Mono-Forward)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.001 # Common default, check MF paper for CIFAR-100
-  weight_decay: 0.0001 # Common default, check MF paper for CIFAR-100
-  loss_type: "MSELoss" # MF uses a reconstruction/projection loss, MSE is typical
-  proj_dim: 512 # Dimension of the random projection matrix M_i, needs verification for CIFAR-100
-  num_epochs: 100 # Total training epochs (end-to-end equivalent), check MF paper
+  lr: 0.0001 # Matches methodology section / Table 5
+  weight_decay: 0.0 # Paper doesn't explicitly mention WD
+  epochs_per_layer: 10 # Layer-wise training epochs (adjust based on convergence)
+  # epochs_output_layer: 10 # Optional: Can be same or different for the final layer
   log_interval: 100
 
 # Logging Configuration
