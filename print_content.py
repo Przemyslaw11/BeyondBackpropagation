@@ -113,7 +113,7 @@ def get_config_files():
 
 
 def discover_files_by_type(
-    extensions=[".py", ".yaml", ".md", ".txt"],
+    extensions=[".py", ".yaml", ".md", ".txt", ".slurm"],
     exclude_dirs=["data", "results", "slurm_logs"],
 ):
     """Discover files with specific extensions, excluding certain directories."""
