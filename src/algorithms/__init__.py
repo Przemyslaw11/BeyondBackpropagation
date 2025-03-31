@@ -26,10 +26,11 @@ from src.baselines import train_bp_model, evaluate_bp_model as evaluate_bp_basel
 
 def get_training_function(
     name: str,
-) -> Callable[
-    [nn.Module, Any, Dict[str, Any], Any, Optional[Any], Optional[Callable]], None
-]:
+) -> Callable:  # Type hint adjusted - FF signature changed
     """Returns the main training orchestration function for an algorithm."""
+    # Original FF Signature: [nn.Module, Any, Dict[str, Any], Any, Optional[Any], Optional[Callable]], None
+    # New FF Signature: [nn.Module, Any, Dict[str, Any], Any, Optional[Any]], None
+    # Other signatures might also differ, using generic Callable for now
     name = name.lower()
     if name == "ff":
         return train_ff_model
@@ -47,10 +48,11 @@ def get_training_function(
 
 def get_evaluation_function(
     name: str,
-) -> Callable[
-    [nn.Module, Any, Any, Optional[nn.Module], Optional[Callable]], Dict[str, float]
-]:
+) -> Callable:  # Type hint adjusted - FF signature changed
     """Returns the main evaluation function for an algorithm."""
+    # Original FF Signature: [nn.Module, Any, Any, Optional[Callable]], Dict[str, float]
+    # New FF Signature: [nn.Module, Any, Any], Dict[str, float]
+    # Using generic Callable for robustness
     name = name.lower()
     if name == "ff":
         return evaluate_ff_model

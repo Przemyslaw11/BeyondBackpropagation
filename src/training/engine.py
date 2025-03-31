@@ -25,6 +25,8 @@ from src.algorithms import (
     get_evaluation_function,
 )  # Use factories
 
+# ... (get_model_and_adapter function remains unchanged) ...
+
 
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
@@ -100,12 +102,15 @@ def get_model_and_adapter(
             layers.append(
                 nn.Linear(
                     bp_input_dim,  # Use flattened input dim
-                    ff_model_instance.input_adapter.out_features,
-                    bias=ff_model_instance.input_adapter.bias is not None,
+                    ff_model_instance.input_adapter_layer.out_features,  # Corrected reference
+                    bias=ff_model_instance.input_adapter_layer.bias
+                    is not None,  # Corrected reference
                 )
             )
             layers.append(type(ff_model_instance.first_layer_activation)())
-            current_dim = ff_model_instance.input_adapter.out_features
+            current_dim = (
+                ff_model_instance.input_adapter_layer.out_features
+            )  # Corrected reference
             # Subsequent FF_Layers become Linear + Activation
             for ff_layer in ff_model_instance.layers:
                 layers.append(
@@ -339,18 +344,24 @@ def run_training(
         total_energy_joules = None
 
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
-            # Pass the retrieved input_adapter to all algorithms that might need it
-            training_fn(
-                model,
-                train_loader,
-                (
-                    val_loader if algorithm_name == "bp" else None
-                ),  # Only BP uses val_loader directly in its main train func
-                config,
-                device,
-                wandb_run,
-                input_adapter,  # Pass the adapter
-            )
+            # Determine arguments needed by the specific training function
+            training_args = {
+                "model": model,
+                "train_loader": train_loader,
+                "config": config,
+                "device": device,
+                "wandb_run": wandb_run,
+            }
+            if algorithm_name == "bp":
+                training_args["val_loader"] = val_loader
+                training_args["input_adapter"] = input_adapter
+            elif algorithm_name in ["mf"]:  # FF no longer needs it here
+                training_args["input_adapter"] = input_adapter
+            # CaFo doesn't use a generic input adapter here; handled internally
+            # FF no longer needs input_adapter passed to train_ff_model
+
+            # Call the training function with appropriate arguments
+            training_fn(**training_args)
 
         # --- Post-Training Monitoring ---
         train_loop_duration = time.time() - train_loop_start_time
@@ -436,25 +447,32 @@ def run_training(
         test_loss_key = f"{algorithm_name.upper()}/Test_Loss"
         test_acc_key = f"{algorithm_name.upper()}/Test_Accuracy"
 
-        # Pass the retrieved input_adapter to evaluation functions
-        try:
-            eval_output = evaluation_fn(
-                model=model,
-                data_loader=test_loader,
-                device=device,
-                # Pass other required args based on function signature
-                criterion=(
-                    eval_criterion if algorithm_name in ["bp", "mf", "cafo"] else None
-                ),  # Criterion needed?
-                input_adapter=input_adapter,  # Pass adapter
-                # CaFo might need predictors and aggregation method passed here if not handled internally
-                predictors=(
-                    getattr(model, "trained_predictors", None)
-                    if algorithm_name == "cafo"
-                    else None
-                ),
-                aggregation_method="sum" if algorithm_name == "cafo" else None,
+        # Determine arguments needed by the specific evaluation function
+        eval_args = {
+            "model": model,
+            "data_loader": test_loader,
+            "device": device,
+        }
+        if algorithm_name in [
+            "bp",
+            "mf",
+            "cafo",
+        ]:  # CaFo eval might use criterion internally
+            eval_args["criterion"] = eval_criterion
+        if algorithm_name in [
+            "bp",
+            "mf",
+            "ff",
+        ]:  # FF eval also uses input adapter (handled inside evaluate_ff_model now)
+            eval_args["input_adapter"] = input_adapter
+        if algorithm_name == "cafo":
+            eval_args["predictors"] = getattr(model, "trained_predictors", None)
+            eval_args["aggregation_method"] = config.get("algorithm_params", {}).get(
+                "aggregation_method", "sum"
             )
+
+        try:
+            eval_output = evaluation_fn(**eval_args)
 
             # Process output based on what eval function returns
             if isinstance(eval_output, dict):  # Preferred return type
