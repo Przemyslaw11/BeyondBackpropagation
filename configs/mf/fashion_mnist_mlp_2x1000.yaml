@@ -1,0 +1,62 @@
+# File: configs/mf/fashion_mnist_mlp_2x1000.yaml
+# Configuration for Mono-Forward (MF) on Fashion-MNIST with 2x1000 MLP
+
+# Inherit from base config
+experiment_name: "mf_fashion_mnist_mlp_2x1000"
+algorithm:
+  name: "MF"
+
+# Dataset Configuration
+data:
+  name: "FashionMNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+# Model Architecture Configuration
+model:
+  name: "MF_MLP"
+  params:
+    # input_dim: 784 # Calculated
+    hidden_dims: [1000, 1000] # MF specific architecture
+    activation: "ReLU"
+    bias: true
+    # num_classes: 10 # Calculated
+
+# Algorithm Specific Configuration (Mono-Forward)
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.001 # Common default, check MF paper
+  weight_decay: 0.0001 # Common default, check MF paper
+  loss_type: "MSELoss" # MF uses a reconstruction/projection loss, MSE is typical
+  proj_dim: 512 # Dimension of the random projection matrix M_i, needs verification
+  num_epochs: 100 # Total training epochs (end-to-end equivalent)
+  log_interval: 100
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  # log_file: null
+  wandb:
+    use_wandb: true
+
+# Checkpointing
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_fashion_mnist_mlp_2x1000" # Specific directory
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

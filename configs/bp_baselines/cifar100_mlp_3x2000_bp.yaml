@@ -1,19 +1,19 @@
-# File: configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml
-# Configuration for Backpropagation (BP) Baseline using the FF Fashion-MNIST MLP Architecture
+# File: configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml
+# Configuration for Backpropagation (BP) Baseline using the MF CIFAR-100 MLP Architecture
 
 # Inherit from base config
-experiment_name: "bp_fashion_mnist_mlp_4x2000"
+experiment_name: "bp_cifar100_mlp_3x2000"
 algorithm:
   name: "BP" # Specify Backpropagation
 
-# Dataset Configuration (Matches FF counterpart)
+# Dataset Configuration (Matches MF counterpart)
 data:
-  name: "FashionMNIST"
+  name: "CIFAR100" # Updated for CIFAR-100
   root: "./data"
   val_split: 0.1
-  num_classes: 10
-  input_channels: 1
-  image_size: 28
+  num_classes: 100 # Updated for CIFAR-100
+  input_channels: 3
+  image_size: 32
 
 # Data Loader Configuration
 data_loader:
@@ -21,20 +21,19 @@ data_loader:
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration (Matches FF counterpart, removing FF specifics)
+# Model Architecture Configuration (Matches MF counterpart)
 model:
-  name: "FF_MLP" # Use the same architecture class
+  name: "MF_MLP" # Use the same architecture class
   params:
-    # input_dim: 784 # Calculated (1 * 28 * 28)
-    hidden_dims: [2000, 2000, 2000, 2000] # Same dimensions as FF
+    # input_dim: 3072 # Calculated (3 * 32 * 32)
+    hidden_dims: [2000, 2000, 2000] # Same dimensions as MF
     activation: "ReLU"
     bias: true
-    # num_classes: 10 # Calculated
-    # normalize_layers: false # Explicitly disable or remove FF-specific normalization for BP
+    # num_classes: 100 # Calculated
 
 # BP Training Configuration
 training:
-  epochs: 100 # Total training epochs (adjust based on convergence if needed)
+  epochs: 100 # Total training epochs
   criterion: "CrossEntropyLoss" # Standard loss for BP classification
   log_interval: 100
 
@@ -42,6 +41,7 @@ training:
 optimizer:
   type: "AdamW"
   # lr and weight_decay will be tuned by Optuna
+  # Default values from base.yaml are placeholders if tuning is disabled
   lr: 0.001
   weight_decay: 0.0001
 
@@ -51,11 +51,11 @@ logging:
   wandb:
     use_wandb: true
     project: "BeyondBackpropagation" # Ensure consistency
-    # run_name will be set dynamically
+    # run_name will be set dynamically (e.g., bp_cifar100_mlp_3x2000_trial_X)
 
 # Checkpointing (Enabled for BP baselines)
 checkpointing:
-  checkpoint_dir: "checkpoints/bp_fashion_mnist_mlp_4x2000" # Specific directory
+  checkpoint_dir: "checkpoints/bp_cifar100_mlp_3x2000" # Specific directory
   save_best_metric: "bp_val_accuracy" # Save based on validation accuracy
 
 # Monitoring/Profiling
@@ -71,7 +71,7 @@ profiling:
 tuning:
   enabled: true # Enable Optuna tuning for this baseline
   n_trials: 50 # Number of Optuna trials
-  num_epochs: 25 # Epochs per trial
+  num_epochs: 25 # Epochs per trial (adjust as needed for reasonable trial time)
   direction: "maximize"
   metric: "val_accuracy" # Optimize for validation accuracy
   sampler: "TPE"
