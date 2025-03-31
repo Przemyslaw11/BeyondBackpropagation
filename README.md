@@ -42,10 +42,13 @@ These are compared against standard **Backpropagation (BP)** baselines using ide
 │   ├── training/             # Core training/evaluation loop engine
 │   ├── tuning/               # Optuna objective function
 │   └── utils/                # Helper utilities (config, logging, metrics, monitoring, profiling)
-├── slurm/                    # SLURM submission scripts for Athena cluster
-│   ├── run_array.slurm       # Example for running multiple configs via job array
-│   ├── run_optuna.slurm      # Submit an Optuna search job
-│   └── run_single_experiment.slurm # Submit a single experiment job
+├── scripts/                  # Main Python execution scripts
+│   ├── run_experiment.py     # Run a single experiment from a config file
+│   ├── run_optuna_search.py  # Run Optuna hyperparameter search for BP baselines
+│   └── slurm_scripts/        # SLURM submission scripts for Athena cluster
+│       ├── run_array.slurm       # Example for running multiple configs via job array
+│       ├── run_optuna.slurm      # Submit an Optuna search job
+│       └── run_single_experiment.slurm # Submit a single experiment job
 ├── slurm_logs/               # (Gitignored) SLURM stdout/stderr files
 └── venv/                     # (Gitignored) Python virtual environment
 ```
@@ -119,14 +122,14 @@ All commands below assume you are in the project's root directory (`BeyondBackpr
     python scripts/run_experiment.py --config-path configs/<algo_or_baseline>/<config_name>.yaml
     ```
 *   **On Athena (using Slurm):**
-    1.  Modify `slurm/run_single_experiment.slurm` if necessary (e.g., adjust resources, grant name).
+    1.  Modify `scripts/slurm_scripts/run_single_experiment.slurm` if necessary (e.g., adjust resources, grant name).
     2.  Submit the job using `sbatch`, passing the config file path relative to the project root as an argument:
         ```bash
-        sbatch slurm/run_single_experiment.slurm configs/<algo_or_baseline>/<config_name>.yaml
+        sbatch scripts/slurm_scripts/run_single_experiment.slurm configs/<algo_or_baseline>/<config_name>.yaml
         ```
         *Example:*
         ```bash
-        sbatch slurm/run_single_experiment.slurm configs/ff/fashion_mnist_mlp_4x2000.yaml
+        sbatch scripts/slurm_scripts/run_single_experiment.slurm configs/ff/fashion_mnist_mlp_4x2000.yaml
         ```
     3.  Slurm output logs will be saved in `slurm_logs/`. Experiment results (metrics, logs) will be saved in `results/`.
 
@@ -138,25 +141,25 @@ All commands below assume you are in the project's root directory (`BeyondBackpr
     python scripts/run_optuna_search.py --config-path configs/bp_baselines/<config_name>.yaml --n-trials <num_trials>
     ```
 *   **On Athena (using Slurm):**
-    1.  Modify `slurm/run_optuna.slurm` if necessary (e.g., adjust resources, grant name, number of trials).
+    1.  Modify `scripts/slurm_scripts/run_optuna.slurm` if necessary (e.g., adjust resources, grant name, number of trials).
     2.  Submit the job using `sbatch`, passing the config file path and number of trials:
         ```bash
-        sbatch slurm/run_optuna.slurm configs/bp_baselines/<config_name>.yaml <num_trials>
+        sbatch scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/<config_name>.yaml <num_trials>
         ```
         *Example:*
         ```bash
-        sbatch slurm/run_optuna.slurm configs/bp_baselines/cifar10_cnn_3block_bp.yaml 100
+        sbatch scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/cifar10_cnn_3block_bp.yaml 100
         ```
     3.  The Optuna study database (`.db` file) will be saved in `results/optuna/`. Slurm logs are in `slurm_logs/`.
 
 ### Running Multiple Experiments (Slurm Job Array - Example)
 
-The `slurm/run_array.slurm` script provides an example of how to run multiple configurations using a Slurm job array. You will need to adapt it to list the specific config files you want to run.
+The `scripts/slurm_scripts/run_array.slurm` script provides an example of how to run multiple configurations using a Slurm job array. You will need to adapt it to list the specific config files you want to run.
 
-1.  Modify `slurm/run_array.slurm` to define the `CONFIG_FILES` array with the paths to your desired configuration files. Adjust resources and grant name as needed.
+1.  Modify `scripts/slurm_scripts/run_array.slurm` to define the `CONFIG_FILES` array with the paths to your desired configuration files. Adjust resources and grant name as needed.
 2.  Submit the job array:
     ```bash
-    sbatch slurm/run_array.slurm
+    sbatch scripts/slurm_scripts/run_array.slurm
     ```
 
 ## Monitoring and Logging

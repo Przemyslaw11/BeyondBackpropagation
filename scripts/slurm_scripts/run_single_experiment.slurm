@@ -11,9 +11,23 @@
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file (%x=jobname, %j=jobid)
 #SBATCH --error=slurm_logs/%x-%j.err  # Standard error log file
 
-# --- User Configuration ---
-# REQUIRED: Set the path to the configuration file you want to run
-CONFIG_FILE="configs/ff/fashion_mnist_mlp_4x2000.yaml" # <--- CHANGE THIS LINE
+# --- Configuration via Command Line Argument ---
+# The path to the configuration file should be passed as the first argument to sbatch
+# Example: sbatch scripts/slurm_scripts/run_single_experiment.slurm configs/ff/fashion_mnist_mlp_4x2000.yaml
+CONFIG_FILE="$1"
+
+# Check if CONFIG_FILE argument is provided
+if [ -z "$CONFIG_FILE" ]; then
+  echo "Error: No configuration file path provided as the first argument."
+  echo "Usage: sbatch $0 <path_to_config.yaml>"
+  exit 1
+fi
+
+# Check if CONFIG_FILE exists
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file not found at: $CONFIG_FILE"
+    exit 1
+fi
 
 # --- Environment Setup ---
 echo "#####################################################################"
@@ -24,13 +38,12 @@ echo "Executing command in: $(pwd)"
 echo "Using config file: $CONFIG_FILE"
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
-# Set experiment name based on config file for better logging/output names
+# Set experiment name based on config file for potential use (e.g., logging)
 # Extract filename without extension: e.g., configs/ff/file.yaml -> file
 EXP_NAME=$(basename "$CONFIG_FILE" .yaml)
-# Update the SLURM job name dynamically if possible (might not reflect in scheduler immediately, but good for logs)
-# Note: This won't change the name in `squeue` after submission, but helps identify logs.
-# A better way is to set job name during submission (see run_array.slurm example).
-echo "Setting log identifier to: BBP_$EXP_NAME"
+echo "Derived Experiment Name: $EXP_NAME"
+# Note: To set the SLURM job name dynamically, use the --job-name flag during sbatch submission, e.g.:
+# sbatch --job-name="BBP_${EXP_NAME}" scripts/slurm_scripts/run_single_experiment.slurm "$CONFIG_FILE"
 
 # Navigate to the submission directory (where the code is)
 cd $SLURM_SUBMIT_DIR || exit 1

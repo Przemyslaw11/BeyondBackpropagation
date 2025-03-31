@@ -355,10 +355,10 @@ def run_training(
             if algorithm_name == "bp":
                 training_args["val_loader"] = val_loader
                 training_args["input_adapter"] = input_adapter
-            elif algorithm_name in ["mf"]:  # FF no longer needs it here
+            elif algorithm_name in ["mf"]: # Only MF needs it passed here now
                 training_args["input_adapter"] = input_adapter
             # CaFo doesn't use a generic input adapter here; handled internally
-            # FF no longer needs input_adapter passed to train_ff_model
+            # FF handles adapter internally
 
             # Call the training function with appropriate arguments
             training_fn(**training_args)
@@ -462,8 +462,7 @@ def run_training(
         if algorithm_name in [
             "bp",
             "mf",
-            "ff",
-        ]:  # FF eval also uses input adapter (handled inside evaluate_ff_model now)
+        ]:  # FF handles adapter internally
             eval_args["input_adapter"] = input_adapter
         if algorithm_name == "cafo":
             eval_args["predictors"] = getattr(model, "trained_predictors", None)

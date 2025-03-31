@@ -11,9 +11,25 @@
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file
 #SBATCH --error=slurm_logs/%x-%j.err  # Standard error log file
 
-# --- User Configuration ---
-# REQUIRED: Set the path to the BASELINE configuration file for Optuna
-CONFIG_FILE="configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml" # <--- CHANGE THIS LINE
+# --- Configuration via Command Line Arguments ---
+# Arg 1: Path to the BASELINE configuration file for Optuna
+# Arg 2: Number of Optuna trials to run (overrides config if provided)
+# Example: sbatch scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml 100
+CONFIG_FILE="$1"
+NUM_TRIALS="$2" # Optional, script will use config value if not provided
+
+# Check if CONFIG_FILE argument is provided
+if [ -z "$CONFIG_FILE" ]; then
+  echo "Error: No configuration file path provided as the first argument."
+  echo "Usage: sbatch $0 <path_to_config.yaml> [num_trials]"
+  exit 1
+fi
+
+# Check if CONFIG_FILE exists
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file not found at: $CONFIG_FILE"
+    exit 1
+fi
 
 # --- Environment Setup ---
 echo "#####################################################################"
@@ -22,11 +38,18 @@ echo "Job Name: $SLURM_JOB_NAME"
 echo "Running on host: $(hostname)"
 echo "Executing command in: $(pwd)"
 echo "Using config file for Optuna: $CONFIG_FILE"
+if [ -n "$NUM_TRIALS" ]; then
+    echo "Number of trials (from command line): $NUM_TRIALS"
+else
+    echo "Number of trials: (from config file)"
+fi
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 
 EXP_NAME=$(basename "$CONFIG_FILE" .yaml)
-echo "Setting log identifier to: BBP_Optuna_$EXP_NAME"
+echo "Derived Experiment Name: $EXP_NAME"
+# Note: To set the SLURM job name dynamically, use the --job-name flag during sbatch submission, e.g.:
+# sbatch --job-name="Optuna_${EXP_NAME}" scripts/slurm_scripts/run_optuna.slurm "$CONFIG_FILE" "$NUM_TRIALS"
 
 cd $SLURM_SUBMIT_DIR || exit 1
 
@@ -46,13 +69,16 @@ OPTUNA_OUTPUT_DIR="results/optuna/${EXP_NAME}_${SLURM_JOB_ID}"
 mkdir -p "$OPTUNA_OUTPUT_DIR" # Create directory for DB and logs
 echo "Optuna output will be saved in: $OPTUNA_OUTPUT_DIR"
 
+# Construct arguments for the python script
+OPTUNA_ARGS="--config $CONFIG_FILE --output-dir $OPTUNA_OUTPUT_DIR --study-name optuna_${EXP_NAME}"
+if [ -n "$NUM_TRIALS" ]; then
+    OPTUNA_ARGS="$OPTUNA_ARGS --n-trials $NUM_TRIALS"
+fi
+
 # --- Run Optuna Search ---
 echo "Running the Optuna search script..."
-srun python scripts/run_optuna_search.py \
-    --config "$CONFIG_FILE" \
-    --output-dir "$OPTUNA_OUTPUT_DIR" \
-    --study-name "optuna_${EXP_NAME}"
-    # --n-trials 50 # Optionally override n_trials from config here
+echo "Command: srun python scripts/run_optuna_search.py $OPTUNA_ARGS"
+srun python scripts/run_optuna_search.py $OPTUNA_ARGS
 
 EXIT_CODE=$?
 
