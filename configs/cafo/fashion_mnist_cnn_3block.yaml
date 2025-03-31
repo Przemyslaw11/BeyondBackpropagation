@@ -41,7 +41,7 @@ algorithm_params:
   lr: 0.001
   weight_decay: 0.0
   loss_type: "CrossEntropyLoss"
-  num_epochs_per_block: 5000 # Epochs for predictor training
+  epochs_per_block: 5000 # Epochs for predictor training
   log_interval: 200
 
 # Logging Configuration

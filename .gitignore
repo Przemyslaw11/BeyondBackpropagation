@@ -188,3 +188,7 @@ checkpoints/ # Ignore checkpoints directory
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+# SLURM output files
+slurm_logs/
+slurm-*.out # Older SLURM naming pattern, just in case
