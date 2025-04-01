@@ -5,6 +5,7 @@ import logging
 import time
 import os
 import contextlib
+import pynvml
 from typing import Dict, Any, Optional, Tuple, Callable
 
 from src.utils.config_parser import load_config
@@ -24,9 +25,6 @@ from src.algorithms import (
     get_training_function,
     get_evaluation_function,
 )  # Use factories
-
-# ... (get_model_and_adapter function remains unchanged) ...
-
 
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
@@ -514,21 +512,42 @@ def run_training(
     except Exception as e:
         logger.critical(
             f"A critical error occurred during the run: {e}", exc_info=True
-        )  # Use critical for top-level crash
+        )
         results["error"] = str(e)
         # Ensure W&B run is finished even on error if initialized
         if wandb_run and wandb_run.finish:
             try:
-                wandb_run.finish(exit_code=1)  # Indicate error exit
+                wandb_run.finish(exit_code=1)
                 logger.info("W&B run finished with error code.")
             except Exception as e_wandb:
                 logger.error(f"Error finishing W&B run after exception: {e_wandb}")
-        # Re-raise the exception after logging and cleanup attempt
-        raise e
+        raise e # Re-raise
     finally:
+        # --- Calculate Final Step ---
+        # Assuming 'epochs' is the total number of epochs actually run (or intended)
+        # This needs to be reliably determined. Let's assume the config value is sufficient for now.
+        try:
+            total_epochs_run = config.get("training", {}).get("epochs", 0)
+            batches_per_epoch = len(train_loader) # Get length of train_loader
+            final_step = total_epochs_run * batches_per_epoch
+            logger.debug(f"Calculated final step for summary logging: {final_step}")
+        except Exception:
+            # Fallback if loader/config not available (shouldn't happen here normally)
+            final_step = None 
+            logger.warning("Could not determine final step for summary logging.")
+
+        # --- Log Final Metrics with Consistent Step ---
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
-        log_metrics({"total_run_duration_sec": total_run_time}, wandb_run=wandb_run)
+        # Log these summary metrics AT the final step calculated above
+        log_metrics({"total_run_duration_sec": total_run_time}, step=final_step, wandb_run=wandb_run)
+        log_metrics({"total_gpu_energy_joules": results.get("total_gpu_energy_joules", float("nan"))}, step=final_step, wandb_run=wandb_run)
+        log_metrics({"total_gpu_energy_wh": results.get("total_gpu_energy_wh", float("nan"))}, step=final_step, wandb_run=wandb_run)
+        log_metrics({"peak_gpu_mem_used_mib": results.get("peak_gpu_mem_used_mib", float("nan"))}, step=final_step, wandb_run=wandb_run)
+        # Log test results also at the final step
+        log_metrics({"Test/Loss": results.get("BP/Test_Loss", float("nan"))}, step=final_step, wandb_run=wandb_run) # Use the key from results dict
+        log_metrics({"Test/Accuracy": results.get("BP/Test_Accuracy", float("nan"))}, step=final_step, wandb_run=wandb_run) # Use the key from results dict
+        
         logger.info(f"Total run duration: {format_time(total_run_time)}")
 
         # Let atexit handle NVML shutdown
@@ -541,6 +560,8 @@ def run_training(
             and os.environ.get("WANDB_MODE") != "offline"
         ):
             try:
+                # Explicitly commit remaining logs before finishing
+                wandb_run.log({}, commit=True) 
                 wandb_run.finish()
                 logger.info("W&B run finished.")
             except Exception as e:

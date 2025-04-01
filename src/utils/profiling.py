@@ -86,9 +86,9 @@ def profile_model_flops(
         forward_args = (dummy_input,)
         # Note: For models like CaFo needing specific forward methods, adjust here or profile externally.
         # This default profiles the __call__ method which usually calls forward().
-
+        # I had to comment profile_memory=False because my current version of torchprof doesn't support it (enable it in the future)
         with torchprof.Profile(
-            model, use_cuda=(device.type == "cuda"), profile_memory=False
+            model, use_cuda=(device.type == "cuda")
         ) as prof:
             with torch.no_grad():
                 # Call the model directly

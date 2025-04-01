@@ -25,18 +25,43 @@ def init_nvml() -> bool:
         if _nvml_initialized:
             return True
         try:
+            # Attempt to initialize NVML
             pynvml.nvmlInit()
             _nvml_initialized = True
             logger.info("NVML initialized successfully.")
-            # Log driver and NVML versions only once
+
+            # Log driver and NVML versions only once (more robustly)
             try:
-                driver_version = pynvml.nvmlSystemGetDriverVersion()
-                nvml_version = pynvml.nvmlSystemGetNvmlVersion()
-                logger.info(f"NVIDIA Driver Version: {driver_version}")
-                logger.info(f"NVML Library Version: {nvml_version}")
-            except pynvml.NVMLError as e:
-                logger.warning(f"Could not retrieve NVML/Driver version info: {e}")
+                # Attempt to get driver version
+                try:
+                    driver_version = pynvml.nvmlSystemGetDriverVersion()
+                    # Ensure driver_version is decoded if it's bytes (common in older pynvml)
+                    if isinstance(driver_version, bytes):
+                        driver_version = driver_version.decode('utf-8')
+                    logger.info(f"NVIDIA Driver Version: {driver_version}")
+                except AttributeError:
+                    logger.warning("pynvml.nvmlSystemGetDriverVersion() not found in this pynvml version.")
+                except pynvml.NVMLError as e:
+                    logger.warning(f"Could not retrieve Driver version info (NVML Error): {e}")
+
+                # Attempt to get NVML version
+                try:
+                    nvml_version = pynvml.nvmlSystemGetNvmlVersion()
+                    # Ensure nvml_version is decoded if it's bytes
+                    if isinstance(nvml_version, bytes):
+                        nvml_version = nvml_version.decode('utf-8')
+                    logger.info(f"NVML Library Version: {nvml_version}")
+                except AttributeError:
+                    logger.warning("pynvml.nvmlSystemGetNvmlVersion() not found in this pynvml version.")
+                except pynvml.NVMLError as e:
+                    logger.warning(f"Could not retrieve NVML version info (NVML Error): {e}")
+
+            except Exception as e: # Catch any other unexpected error during version logging
+                logger.warning(f"An unexpected error occurred while retrieving NVML/Driver version info: {e}")
+
+            # Return True because nvmlInit() succeeded, even if version logging failed
             return True
+
         except pynvml.NVMLError_LibraryNotFound:
             logger.error(
                 "NVML library not found. NVIDIA driver may not be installed or pynvml installation issue."
@@ -47,6 +72,10 @@ def init_nvml() -> bool:
             logger.error(f"Failed to initialize NVML: {error}", exc_info=True)
             _nvml_initialized = False
             return False
+        except Exception as e: # Catch potential unexpected errors during init itself
+             logger.error(f"An unexpected error occurred during NVML initialization: {e}", exc_info=True)
+             _nvml_initialized = False
+             return False
 
 
 def shutdown_nvml():
@@ -358,6 +387,4 @@ class GPUEnergyMonitor:
 # Ensure NVML shutdown happens at program exit
 import atexit
 
-# Check if already registered to avoid duplicates if module reloaded
-if "shutdown_nvml" not in [func for func, args, kwargs in atexit._exithandlers]:
-    atexit.register(shutdown_nvml)
+atexit.register(shutdown_nvml)

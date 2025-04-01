@@ -51,7 +51,7 @@ def train_bp_epoch(
             predicted_labels = torch.argmax(outputs, dim=1)
             total_correct += (predicted_labels == labels).sum().item()
         total_samples += batch_size
-        current_global_step = epoch_step + batch_idx
+        current_global_step = epoch_step + batch_idx + 1 # Use 1-based indexing for steps if preferred
 
         if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
             batch_accuracy = calculate_accuracy(outputs, labels)
@@ -100,6 +100,7 @@ def evaluate_bp_model(
     return avg_loss, avg_accuracy
 
 
+# --- Updated train_bp_model Function ---
 def train_bp_model(
     model: nn.Module,
     train_loader: DataLoader,
@@ -119,13 +120,11 @@ def train_bp_model(
     optimizer_config = config.get("optimizer", {})
     checkpoint_config = config.get("checkpointing", {})  # Get checkpoint config
 
-    # REMINDER: For BP baseline runs, ensure optimizer_config reflects the
-    # best hyperparameters found by Optuna (manually update the config file).
     logger.info("BP Training using optimizer config: %s", optimizer_config)
 
     optimizer_name = optimizer_config.get("type", "AdamW")
-    lr = optimizer_config.get("lr", 0.001)  # Should be from Optuna
-    weight_decay = optimizer_config.get("weight_decay", 0.0)  # Should be from Optuna
+    lr = optimizer_config.get("lr", 0.001)
+    weight_decay = optimizer_config.get("weight_decay", 0.0)
     optimizer_params_extra = optimizer_config.get("params", {})
 
     criterion_name = train_config.get("criterion", "CrossEntropyLoss")
@@ -136,10 +135,8 @@ def train_bp_model(
     checkpoint_dir = checkpoint_config.get("checkpoint_dir", None)
     save_best_metric = checkpoint_config.get(
         "save_best_metric", "bp_val_accuracy"
-    ).lower()  # 'bp_val_accuracy' or 'bp_val_loss'
-    save_best_metric_mode = (
-        "max" if "accuracy" in save_best_metric else "min"
-    )  # Determine if higher is better
+    ).lower()
+    save_best_metric_mode = "max" if "accuracy" in save_best_metric else "min"
 
     if criterion_name.lower() == "crossentropyloss":
         criterion = nn.CrossEntropyLoss()
@@ -173,7 +170,7 @@ def train_bp_model(
             elif scheduler_name.lower() == "reducelronplateau":
                 scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                     optimizer, mode=save_best_metric_mode, **scheduler_params
-                )  # Link to save metric mode
+                )
             else:
                 logger.warning(f"Unsupported scheduler: {scheduler_name}.")
         except Exception as e:
@@ -189,6 +186,7 @@ def train_bp_model(
     best_metric_value = (
         -float("inf") if save_best_metric_mode == "max" else float("inf")
     )
+    num_batches_per_epoch = len(train_loader) # Store length for step calculation
 
     for epoch in range(epochs):
         epoch_start_time = time.time()
@@ -212,7 +210,6 @@ def train_bp_model(
             val_loss, val_acc = evaluate_bp_model(
                 model, val_loader, criterion, device, input_adapter
             )
-            # Determine current value of the metric to track for saving best model
             if save_best_metric == "bp_val_accuracy":
                 current_metric_value = val_acc
             elif save_best_metric == "bp_val_loss":
@@ -242,7 +239,6 @@ def train_bp_model(
                         f"Epoch {epoch+1}: New best validation metric ({save_best_metric}): {best_metric_value:.4f}"
                     )
 
-            # --- Save Checkpoint ---
             if checkpoint_dir:
                 save_checkpoint(
                     state={
@@ -256,12 +252,17 @@ def train_bp_model(
                     },
                     is_best=is_best,
                     checkpoint_dir=checkpoint_dir,
-                    filename=f"bp_checkpoint_epoch_{epoch+1}.pth",  # Save epoch checkpoint
-                    best_filename=f"bp_{config.get('experiment_name', 'model')}_best.pth",  # Filename for best
+                    filename=f"bp_checkpoint_epoch_{epoch+1}.pth",
+                    best_filename=f"bp_{config.get('experiment_name', 'model')}_best.pth",
                 )
 
         epoch_duration = time.time() - epoch_start_time
         current_lr = optimizer.param_groups[0]["lr"]
+
+        # *** FIX FOR W&B STEP LOGGING ***
+        # Calculate the global step corresponding to the *end* of this epoch
+        final_global_step_epoch = (epoch + 1) * num_batches_per_epoch
+
         epoch_metrics = {
             "BP_Baseline/Train_Loss_Epoch": train_loss,
             "BP_Baseline/Train_Acc_Epoch": train_acc,
@@ -271,7 +272,10 @@ def train_bp_model(
             "BP_Baseline/Epoch_Duration_Sec": epoch_duration,
             "BP_Baseline/Learning_Rate": current_lr,
         }
-        log_metrics(epoch_metrics, step=epoch + 1, wandb_run=wandb_run)
+        # Log epoch metrics using the FINAL global step of that epoch
+        log_metrics(epoch_metrics, step=final_global_step_epoch, wandb_run=wandb_run)
+        # ********************************
+
         logger.info(
             f"BP Epoch {epoch+1}/{epochs} | LR: {current_lr:.6f} | Train Loss: {train_loss:.4f}, Acc: {train_acc:.2f}% | Val Loss: {val_loss:.4f}, Acc: {val_acc:.2f}% | Duration: {format_time(epoch_duration)}"
         )
@@ -279,11 +283,9 @@ def train_bp_model(
         if scheduler:
             try:
                 if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-                    scheduler.step(
-                        current_metric_value
-                        if current_metric_value is not None
-                        else float("inf")
-                    )  # Needs metric
+                    # Ensure current_metric_value is not None before stepping
+                    metric_for_scheduler = current_metric_value if current_metric_value is not None else (float('inf') if save_best_metric_mode == 'min' else -float('inf'))
+                    scheduler.step(metric_for_scheduler)
                 else:
                     scheduler.step()
             except Exception as e:
@@ -293,7 +295,10 @@ def train_bp_model(
     logger.info(
         f"Finished standard Backpropagation training. Total time: {format_time(total_training_time)}"
     )
+    # Log total training time using the final step count
+    final_total_step = epochs * num_batches_per_epoch
     log_metrics(
         {"BP_Baseline/Total_Training_Time_Sec": total_training_time},
+        step=final_total_step, # Log against the final step
         wandb_run=wandb_run,
     )

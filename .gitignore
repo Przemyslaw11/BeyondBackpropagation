@@ -2,6 +2,8 @@
 # Byte-compiled / optimized / DLL files
 
 a.txt
+wandb/
+wheels_3_10/
 
 __pycache__/
 *.py[cod]
