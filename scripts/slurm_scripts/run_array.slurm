@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000M
 #SBATCH --time=08:00:00      # Time limit PER TASK
-#SBATCH -A <your_grant_name>-gpu-a100 # ACCOUNT NAME - REPLACE <your_grant_name>
+#SBATCH -A plgoncotherapy-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out # Output file (%A=jobid, %a=taskid)
 #SBATCH --error=slurm_logs/%x-%A_%a.err  # Error file

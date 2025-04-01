@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=16   # Optuna trials might benefit from multiple cores if parallelized internally, but start with proportional
 #SBATCH --mem=128000M
 #SBATCH --time=12:00:00      # Optuna might take longer, allocate more time (e.g., 12 hours)
-#SBATCH -A <your_grant_name>-gpu-a100 # ACCOUNT NAME - REPLACE <your_grant_name>
+#SBATCH -A plgoncotherapy-gpu-a100
 #SBATCH -p plgrid-gpu-a100        # PARTITION name for A100 nodes
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file
 #SBATCH --error=slurm_logs/%x-%j.err  # Standard error log file
