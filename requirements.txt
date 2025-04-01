@@ -1,20 +1,20 @@
-# File: requirements.txt
+# File: requirements.txt (Updated)
 # Core ML/DL Framework
-torch==2.1.0
-torchvision==0.16.0 # Ensure compatibility with torch 2.1.0
+torch==2.4.0       # Latest stable version (check PyTorch website if needed)
+torchvision==0.19.0 # Version compatible with torch 2.4.0
 
 # Monitoring & Profiling
-pynvml>=11.5.0     # For NVIDIA GPU monitoring
-torchprof>=1.0.0   # For FLOPs profiling (adjust version as needed)
+pynvml             # Allow latest compatible
+torchprof          # Allow latest compatible
 
 # Experiment Tracking & Hyperparameter Optimization
-wandb>=0.15.0      # Weights & Biases
-optuna>=3.0.0      # Hyperparameter optimization
+wandb              # Allow latest compatible
+optuna             # Allow latest compatible
 
 # Configuration & Utilities
-PyYAML>=6.0        # For reading YAML configs
-numpy>=1.21.0      # Fundamental package for scientific computing
-scikit-learn>=1.0  # For potential utility functions like train/val split if needed beyond simple slicing
-tqdm>=4.60         # Progress bars
+PyYAML>=6.0        # Keep requirement, allow updates
+numpy>=1.21.0      # Keep requirement, allow updates
+scikit-learn       # Allow latest compatible
+tqdm               # Allow latest compatible
 
 # Add other specific dependencies as they arise
