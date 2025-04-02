@@ -37,8 +37,8 @@ cd $SLURM_SUBMIT_DIR || exit 1
 
 echo "Loading modules..."
 module purge # Start with a clean environment
-module load Python/3.10.4   # Use the SAME version
-module load CUDA/12.4.0     # Use the SAME version (Corrected)
+module load Python/3.10.4
+module load CUDA/12.4.0 
 
 echo "Modules loaded:"
 module list
@@ -51,6 +51,8 @@ export WANDB_API_KEY="321695dfc1a5a783589b5b811486e75ce772082b" # Your key inclu
 
 echo "Checking PyTorch CUDA..."
 python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN version: {torch.backends.cudnn.version()}')" || { echo "PyTorch check failed" >&2; exit 1; }
+echo "Packages with versions..."
+pip list | grep -E "torch|torchvision|pynvml|torchprof|wandb|optuna|PyYAML|numpy|scikit-learn|tqdm"
 
 # --- Run the Experiment ---
 echo "Running the TEST experiment script..."
