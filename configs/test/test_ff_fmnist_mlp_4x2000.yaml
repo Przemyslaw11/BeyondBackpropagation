@@ -39,7 +39,7 @@ algorithm_params:
   lr: 0.03
   weight_decay: 0.0
   threshold: 2.0
-  epochs_per_layer: 2 # << REDUCED for quick test
+  epochs_per_layer: 20 # << REDUCED for quick test
   log_interval: 10 # Log more frequently
 
 # Logging Configuration (DEBUG level)
