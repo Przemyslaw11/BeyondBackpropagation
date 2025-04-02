@@ -1,23 +1,22 @@
-# File: src/utils/profiling.py
+# File: src/utils/profiling.py (REVISED to use torch.profiler)
 import torch
 import torch.nn as nn
-import torchprof
+from torch.profiler import profile, record_function, ProfilerActivity
 import logging
-from typing import Tuple, Optional, Union, Callable  # Added Callable
+from typing import Tuple, Optional, Union, Callable
 
 logger = logging.getLogger(__name__)
-
 
 def profile_model_flops(
     model: nn.Module,
     input_constructor: Union[
         Tuple[int, ...], Callable[[], torch.Tensor]
-    ],  # Shape tuple or function returning input tensor
+    ],
     device: Optional[torch.device] = None,
-    verbose: bool = False,
+    verbose: bool = False, # Verbose now controls printing the profiler table
 ) -> Optional[float]:
     """
-    Estimates the FLOPs (specifically MACs reported by torchprof) for a model's forward pass.
+    Estimates the FLOPs (specifically MACs using torch.profiler) for a model's forward pass.
 
     Args:
         model: The PyTorch model (nn.Module) to profile.
@@ -25,146 +24,85 @@ def profile_model_flops(
                            OR a callable function that returns a sample input tensor.
                            Batch size should typically be 1 for representative FLOPs.
         device: The device ('cuda' or 'cpu') to run the profiling on. If None, uses model's device or CPU default.
-        verbose: If True, prints the detailed torchprof summary.
+        verbose: If True, prints the detailed profiler summary sorted by CPU time.
 
     Returns:
         Estimated GigaMACs (Giga Multiply-Accumulate operations), or None if profiling fails.
-        Note: GFLOPs is often estimated as 2 * GigaMACs.
+        Note: GFLOPs is often estimated as 2 * GigaMACs. Returns 0.0 if no FLOPs are recorded.
     """
     if device is None:
         try:
             device = next(model.parameters()).device
-        except StopIteration:  # Model might have no parameters
+        except StopIteration:
             device = torch.device("cpu")
-            logger.debug(
-                "Model has no parameters, defaulting device to CPU for profiling."
-            )
+            logger.debug("Model has no parameters, defaulting device to CPU for profiling.")
         except Exception as e:
             logger.warning(f"Could not infer model device, defaulting to CPU: {e}")
             device = torch.device("cpu")
-    logger.debug(f"Profiling on device: {device}")
+    logger.debug(f"Profiling with torch.profiler on device: {device}")
 
     # Ensure model is on the correct device and in eval mode
     original_mode = model.training
-    try:
-        model.eval()
-        model.to(device)
+    model.eval()
+    model.to(device)
 
-        # Create dummy input tensor
+    # Create dummy input tensor
+    try:
         if isinstance(input_constructor, tuple):
             input_shape = input_constructor
-            try:
-                dummy_input = torch.randn(input_shape, device=device)
-                logger.debug(f"Created dummy input with shape: {input_shape}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to create dummy input tensor with shape {input_shape} on device {device}: {e}",
-                    exc_info=True,
-                )
-                return None
+            dummy_input = torch.randn(input_shape, device=device)
+            logger.debug(f"Created dummy input with shape: {input_shape}")
         elif callable(input_constructor):
-            try:
-                dummy_input = input_constructor().to(device)
-                logger.debug(
-                    f"Created dummy input from constructor, shape: {dummy_input.shape}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to create dummy input using constructor function: {e}",
-                    exc_info=True,
-                )
-                return None
+            dummy_input = input_constructor().to(device)
+            logger.debug(f"Created dummy input from constructor, shape: {dummy_input.shape}")
         else:
-            logger.error(
-                "Invalid input_constructor provided. Must be a shape tuple or a callable returning a tensor."
-            )
+            logger.error("Invalid input_constructor provided.")
+            model.train(original_mode) # Restore mode
             return None
+    except Exception as e:
+        logger.error(f"Failed to create dummy input: {e}", exc_info=True)
+        model.train(original_mode) # Restore mode
+        return None
 
-        total_macs = None
-        # --- Profile the forward pass ---
-        # Wrap model forward if it requires specific args (unlikely for standard models)
-        forward_args = (dummy_input,)
-        # Note: For models like CaFo needing specific forward methods, adjust here or profile externally.
-        # This default profiles the __call__ method which usually calls forward().
-        # I had to comment profile_memory=False because my current version of torchprof doesn't support it (enable it in the future)
-        with torchprof.Profile(
-            model, use_cuda=(device.type == "cuda")
-        ) as prof:
-            with torch.no_grad():
-                # Call the model directly
-                model(*forward_args)
+    # Profile the forward pass using torch.profiler
+    total_macs = 0.0
+    try:
+        activities = [ProfilerActivity.CPU]
+        if device.type == 'cuda':
+            activities.append(ProfilerActivity.CUDA)
+
+        with profile(activities=activities, record_shapes=False, profile_memory=False, with_flops=True) as prof:
+             with record_function("model_inference"): # Add a label
+                 with torch.no_grad():
+                     model(dummy_input) # Call the model
 
         if verbose:
-            try:
-                print(prof)
-            except Exception as e:
-                logger.warning(f"Could not print torchprof summary: {e}")
+            # Print sorted by CPU total time
+            print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=15))
 
-        # --- Extract total MACs ---
-        try:
-            # Using the internal structured data is more robust if available
-            ops = prof.raw()  # Get raw operator data
-            total_macs = 0
-            for op in ops:
-                if (
-                    hasattr(op, "macs") and op.macs
-                ):  # Check if macs attribute exists and is not None/0
-                    total_macs += op.macs
-            if (
-                total_macs == 0
-            ):  # Fallback to parsing string if internal method yields 0 or fails
-                raise ValueError("Internal MACs sum is zero, trying string parsing.")
-            logger.debug(f"Retrieved MACs from prof.raw(): {total_macs}")
-        except Exception as e_internal:
-            logger.debug(
-                f"Could not retrieve MACs using internal method ({e_internal}), trying string parsing."
-            )
-            total_macs = None  # Reset for string parsing
-            try:
-                summary_str = str(prof)
-                for line in summary_str.split("\n"):
-                    if "Total MACs:" in line:
-                        mac_str = line.split(":")[-1].strip().upper()
-                        value = float(mac_str[:-1])
-                        if mac_str.endswith("K"):
-                            total_macs = value * 1e3
-                        elif mac_str.endswith("M"):
-                            total_macs = value * 1e6
-                        elif mac_str.endswith("G"):
-                            total_macs = value * 1e9
-                        elif mac_str.endswith("T"):
-                            total_macs = value * 1e12
-                        else:
-                            total_macs = float(mac_str)
-                        logger.debug(f"Parsed MACs from summary string: {total_macs}")
-                        break
-            except Exception as e_str:
-                logger.warning(
-                    f"Could not parse Total MACs from torchprof summary string: {e_str}"
-                )
-                total_macs = None
+        # Extract FLOPs (reported as MACs by PyTorch profiler's flop_count_table)
+        # Summing 'flops' from key_averages seems the most straightforward way
+        # Note: PyTorch profiler often counts MACs and labels them as 'flops'.
+        # We will treat the reported 'flops' as MACs here.
+        for event in prof.key_averages():
+             # event.flops is the total count for that operator instance
+             if event.flops > 0: # event.flops should be the MAC count
+                 total_macs += event.flops
 
-        if total_macs is None:
-            logger.warning("Failed to determine Total MACs from torchprof.")
+        if total_macs == 0:
+             logger.warning("torch.profiler recorded 0 FLOPs/MACs. Check model or profiler setup.")
 
-    except ImportError:
-        logger.error(
-            "torchprof not found. Please install it (`pip install torchprof`) for FLOPs profiling."
-        )
-        total_macs = None
+
     except Exception as e:
-        logger.error(f"Failed to profile model MACs/FLOPs: {e}", exc_info=True)
-        total_macs = None
+        logger.error(f"Failed during torch.profiler execution: {e}", exc_info=True)
+        total_macs = None # Indicate failure
     finally:
         model.train(original_mode)  # Restore original training mode
 
-    if total_macs is not None and total_macs > 0:
+    if total_macs is not None:
         gmacs = total_macs / 1e9
-        logger.info(f"Estimated Total MACs: {gmacs:.4f} G")
+        logger.info(f"Estimated Total MACs (via torch.profiler): {gmacs:.4f} G")
         return gmacs
     else:
-        if total_macs == 0:
-            logger.warning(
-                "FLOPs profiling resulted in 0 MACs. Check model structure or torchprof compatibility."
-            )
+        logger.warning("Failed to determine Total MACs from torch.profiler.")
         return None

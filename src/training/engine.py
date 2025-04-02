@@ -185,6 +185,8 @@ def run_training(
     gpu_handle = None
     monitor = None
     run_start_time = time.time()
+    max_logged_step = -1 # Initialize max step tracker
+
 
     try:
         # --- Setup ---
@@ -331,7 +333,7 @@ def run_training(
             except Exception as e:
                 logger.error(f"FLOPs profiling failed unexpectedly: {e}", exc_info=True)
 
-        # --- Training (Pass adapter consistently) ---
+       # --- Training ---
         logger.info("Starting training phase...")
         train_config = config.get("training", {})
         algorithm_name = config.get("algorithm", {}).get("name", "").lower()
@@ -340,6 +342,7 @@ def run_training(
         peak_gpu_mem = float("nan")
         train_loop_start_time = time.time()
         total_energy_joules = None
+        last_training_step = 0 # Initialize step counter
 
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
             # Determine arguments needed by the specific training function
@@ -349,41 +352,56 @@ def run_training(
                 "config": config,
                 "device": device,
                 "wandb_run": wandb_run,
+                # "max_step_tracker": max_logged_step # Option 1: Pass tracker down (more complex)
             }
+            # Add algorithm specific args
             if algorithm_name == "bp":
                 training_args["val_loader"] = val_loader
                 training_args["input_adapter"] = input_adapter
-            elif algorithm_name in ["mf"]: # Only MF needs it passed here now
+            elif algorithm_name in ["mf"]:
                 training_args["input_adapter"] = input_adapter
-            # CaFo doesn't use a generic input adapter here; handled internally
-            # FF handles adapter internally
 
-            # Call the training function with appropriate arguments
+            # Call the training function and potentially get the last step used
+            # Modification: Assume training_fn returns the last step if needed, or calculate it here
             training_fn(**training_args)
+
+            # Calculate last training step here based on epochs run/planned
+            # This assumes the training function ran for the configured epochs
+            try:
+                 epochs_run = config.get("training", {}).get("epochs", 0)
+                 batches_per_epoch = len(train_loader)
+                 last_training_step = epochs_run * batches_per_epoch
+                 max_logged_step = max(max_logged_step, last_training_step) # Update tracker
+            except Exception as e_step:
+                 logger.warning(f"Could not determine last training step: {e_step}")
+                 last_training_step = 0
 
         # --- Post-Training Monitoring ---
         train_loop_duration = time.time() - train_loop_start_time
         results["training_duration_sec"] = train_loop_duration
-        log_metrics({"training_duration_sec": train_loop_duration}, wandb_run=wandb_run)
+        # Log training duration at the step *after* the last training step
+        max_logged_step = max(max_logged_step, last_training_step)
+        log_metrics({"training_duration_sec": train_loop_duration}, step=max_logged_step + 1, wandb_run=wandb_run)
         logger.info(f"Training phase completed in: {format_time(train_loop_duration)}")
 
         if monitor:
             total_energy_joules = monitor.get_total_energy_joules()
             if total_energy_joules is not None:
-                results["total_gpu_energy_joules"] = total_energy_joules
-                results["total_gpu_energy_wh"] = total_energy_joules / 3600.0
-                log_metrics(
-                    {
-                        "total_gpu_energy_joules": total_energy_joules,
-                        "total_gpu_energy_wh": results["total_gpu_energy_wh"],
-                    },
-                    wandb_run=wandb_run,
-                )
-                logger.info(
-                    f"Total GPU Energy Consumed (Training): {total_energy_joules:.2f} J ({results['total_gpu_energy_wh']:.4f} Wh)"
-                )
-            else:
-                logger.warning("Energy monitoring failed to calculate total energy.")
+            results["total_gpu_energy_joules"] = total_energy_joules
+            results["total_gpu_energy_wh"] = total_energy_joules / 3600.0
+            log_metrics(
+                {
+                    "total_gpu_energy_joules": total_energy_joules,
+                    "total_gpu_energy_wh": results["total_gpu_energy_wh"],
+                },
+                step=max_logged_step + 1, # Use updated step
+                wandb_run=wandb_run,
+            )
+            logger.info(
+                f"Total GPU Energy Consumed (Training): {total_energy_joules:.2f} J ({results['total_gpu_energy_wh']:.4f} Wh)"
+            )
+        else:
+            logger.warning("Energy monitoring failed to calculate total energy.")
 
         if nvml_active and gpu_handle:
             # Short delay might help capture peak memory after training finishes
