@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import logging
 from tqdm import tqdm
+import pynvml # Import for type hint
 from typing import Dict, Any, Optional, Tuple, List, Callable
 import functools
 import os
@@ -14,11 +15,12 @@ import time
 
 from src.architectures.ff_mlp import FF_MLP
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists # Added create_dir
+from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists
+from src.utils.monitoring import get_gpu_memory_usage # Import memory usage function
 
 logger = logging.getLogger(__name__)
 
-# --- ff_loss_fn (no changes needed) ---
+# --- ff_loss_fn (no changes) ---
 def ff_loss_fn(
     pos_goodness: torch.Tensor, neg_goodness: torch.Tensor, threshold: float
 ) -> torch.Tensor:
@@ -42,7 +44,7 @@ def ff_loss_fn(
     loss = torch.mean(loss_pos + loss_neg)
     return loss
 
-# --- create_ff_pixel_label_input (no changes needed) ---
+# --- create_ff_pixel_label_input (no changes) ---
 def create_ff_pixel_label_input(
     original_images: torch.Tensor,
     labels: torch.Tensor,
@@ -83,7 +85,7 @@ def create_ff_pixel_label_input(
     flattened_modified_images = modified_images.view(batch_size, -1)
     return flattened_modified_images
 
-# --- generate_ff_pos_neg_pixel_data (no changes needed) ---
+# --- generate_ff_pos_neg_pixel_data (no changes) ---
 def generate_ff_pos_neg_pixel_data(
     base_images: torch.Tensor,
     base_labels: torch.Tensor,
@@ -140,27 +142,34 @@ def train_ff_layer(
     layer_index: int, # 0-based index of the effective hidden layer
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
-    step_ref: List[int] = [-1], # MODIFIED: Use step_ref list
-) -> None:
+    step_ref: List[int] = [-1],
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
+    nvml_active: bool = False, # ADDED
+) -> Tuple[float, float]: # Returns avg loss, peak memory
     """
     Trains a single effective layer (input adapter or subsequent FF_Layer) of the FF_MLP.
     Updates weights locally based on the FF loss calculated from positive/negative goodness.
+    Returns the average loss of the last epoch and the peak memory observed during its training.
     """
     layer_module.train()
     layer_module.to(device)
     logger.info(
         f"Starting FF training for Layer {layer_index + 1}"
     )
+    peak_mem_layer_train = 0.0 # Track peak memory for this layer's training phase
+    last_epoch_avg_loss = float('nan')
 
     for epoch in range(epochs):
         epoch_loss = 0.0
+        epoch_samples = 0
+        peak_mem_layer_epoch = 0.0 # Track peak memory for this specific epoch
         pbar = tqdm(
             train_loader,
             desc=f"FF Layer {layer_index+1} Epoch {epoch+1}/{epochs}",
             leave=False,
         )
         for batch_idx, (images, labels) in enumerate(pbar):
-            step_ref[0] += 1 # MODIFIED: Increment global step reference
+            step_ref[0] += 1
             current_global_step = step_ref[0]
 
             images, labels = images.to(device), labels.to(device)
@@ -191,6 +200,7 @@ def train_ff_layer(
                     pos_goodness = torch.sum(pos_act.pow(2), dim=1)
                     neg_goodness = torch.sum(neg_act.pow(2), dim=1)
                 else:
+                    # FF_Layer needs type ignore for custom method
                     _, pos_goodness = layer_module.forward_with_goodness( # type: ignore
                         pos_activation_input
                     )
@@ -223,37 +233,63 @@ def train_ff_layer(
             loss.backward()
             optimizer.step()
 
-            epoch_loss += loss.item()
+            batch_size = images.size(0) # Use input batch size for tracking samples
+            epoch_loss += loss.item() * batch_size
+            epoch_samples += batch_size
+
+            # --- Sample memory usage periodically or at end of batch ---
+            current_mem_used = float('nan')
+            if nvml_active and gpu_handle and ((batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1):
+                 mem_info = get_gpu_memory_usage(gpu_handle)
+                 if mem_info:
+                     current_mem_used = mem_info[0]
+                     peak_mem_layer_epoch = max(peak_mem_layer_epoch, current_mem_used)
+            # --- End memory sampling ---
 
             if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(loss=f"{avg_loss_batch:.4f}")
-                # MODIFIED: Add global_step to metrics dict
                 metrics_to_log = {
                     "global_step": current_global_step,
                     f"FF/Layer_{layer_index+1}/Train_Loss_Batch": avg_loss_batch,
                     f"FF/Layer_{layer_index+1}/Pos_Goodness_Mean": pos_goodness.mean().item(),
                     f"FF/Layer_{layer_index+1}/Neg_Goodness_Mean": neg_goodness.mean().item(),
                 }
-                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True) # Pass full dict
+                if not torch.isnan(torch.tensor(current_mem_used)):
+                    metrics_to_log[f"FF/Layer_{layer_index+1}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
+        # Check again if loss became NaN/Inf during the epoch
         if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
             logger.error(
                 f"Terminating training for Layer {layer_index+1} due to invalid loss in epoch {epoch+1}."
             )
             break
 
-        # --- REMOVED epoch summary logging from here, will be logged in train_ff_model ---
-        # avg_epoch_loss = epoch_loss / len(train_loader) if len(train_loader) > 0 else 0.0
-        # logger.info(
-        #     f"FF Layer {layer_index+1} Epoch {epoch+1}/{epochs} - Average Loss: {avg_epoch_loss:.4f}"
-        # )
-        # ... (removed log_metrics call for epoch loss) ...
+        # --- Calculate epoch loss and update layer peak memory ---
+        last_epoch_avg_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float('nan')
+        peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch) # Update peak for the entire layer training duration
 
-    logger.info(f"Finished FF training for Layer {layer_index + 1}")
+        logger.info(
+            f"FF Layer {layer_index+1} Epoch {epoch+1}/{epochs} - Avg Loss: {last_epoch_avg_loss:.4f}, Peak Mem Epoch: {peak_mem_layer_epoch:.1f} MiB"
+        )
+        # Log epoch summary metrics (optional, could be redundant with batch logs)
+        # epoch_summary_metrics = {
+        #     "global_step": current_global_step, # Use last step of epoch
+        #     f"FF/Layer_{layer_index+1}/Train_Loss_Epoch": last_epoch_avg_loss,
+        #     f"FF/Layer_{layer_index+1}/Peak_GPU_Mem_Epoch_MiB": peak_mem_layer_epoch,
+        # }
+        # log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
+
+    # Sample memory one last time at the very end of layer training
+    if nvml_active and gpu_handle:
+        mem_info = get_gpu_memory_usage(gpu_handle)
+        if mem_info:
+            peak_mem_layer_train = max(peak_mem_layer_train, mem_info[0])
+
+    logger.info(f"Finished FF training for Layer {layer_index + 1}. Overall Peak Mem for Layer: {peak_mem_layer_train:.1f} MiB")
     layer_module.eval()
-    # Return average loss for potential logging in the orchestrator
-    return epoch_loss / len(train_loader) if len(train_loader) > 0 else 0.0
+    return last_epoch_avg_loss, peak_mem_layer_train # Return last avg loss and peak mem for this layer's training
 
 
 # --- train_ff_model (MODIFIED) ---
@@ -264,11 +300,14 @@ def train_ff_model(
     device: torch.device,
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None, # Added to match signature, though FF uses pixel embedding
-    step_ref: List[int] = [-1], # MODIFIED: Accept step_ref
-):
+    step_ref: List[int] = [-1],
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
+    nvml_active: bool = False, # ADDED
+) -> float: # Returns overall peak memory
     """
     Orchestrates the layer-wise training of an FF_MLP model using pixel label embedding.
-    MODIFIED: Logs epoch summary metrics.
+    Logs layer summary metrics including peak memory for the layer.
+    Returns the overall peak GPU memory observed across all layer training phases.
     """
     model = model_instance
     model.to(device)
@@ -312,6 +351,8 @@ def train_ff_model(
                 images, labels, model_ref.num_classes
             )
             pos_flattened, neg_flattened = pos_flattened.to(device), neg_flattened.to(device)
+            # Ensure model is on the correct device for forward_upto
+            model_ref.to(device)
             pos_input_current = model_ref.forward_upto(pos_flattened, prev_layer_idx)
             neg_input_current = model_ref.forward_upto(neg_flattened, prev_layer_idx)
             return pos_input_current.detach().to(device), neg_input_current.detach().to(device)
@@ -319,17 +360,21 @@ def train_ff_model(
 
     # --- Train Layer by Layer ---
     current_layer_input_fn = get_initial_input_data
+    peak_mem_train = 0.0 # Track overall peak memory
 
     # 1. Train Input Adapter Layer (Effective Hidden Layer 0)
     logger.info(f"--- Training Input Adapter Layer (Layer 1/{num_hidden_layers}) ---")
     layer_module_0 = model.input_adapter_layer
     params_0 = list(layer_module_0.parameters())
+    layer_0_peak_mem = 0.0
+    final_avg_loss_layer_0 = float('nan')
+
     if params_0:
         optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
         optimizer_0 = getattr(optim, optimizer_type)(params_0, **optimizer_0_kwargs)
 
-        # Train the layer
-        final_avg_loss_layer_0 = train_ff_layer(
+        # Train the layer, get loss and peak memory for this layer
+        final_avg_loss_layer_0, layer_0_peak_mem = train_ff_layer(
             model=model,
             layer_module=layer_module_0,
             is_input_adapter_layer=True,
@@ -342,26 +387,35 @@ def train_ff_model(
             layer_index=0,
             wandb_run=wandb_run,
             log_interval=log_interval,
-            step_ref=step_ref, # Pass step_ref
+            step_ref=step_ref,
+            gpu_handle=gpu_handle, # Pass handle
+            nvml_active=nvml_active # Pass status
         )
-        # MODIFIED: Log layer summary after training completes
-        current_global_step = step_ref[0]
-        layer_summary_metrics = {
-            "global_step": current_global_step,
-            f"FF/Layer_1/Train_Loss_LayerAvg": final_avg_loss_layer_0,
-        }
-        log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
-        logger.debug(f"Logged FF Layer 1 summary at global_step {current_global_step}")
+        peak_mem_train = max(peak_mem_train, layer_0_peak_mem) # Update overall peak
 
+        # Freeze layer
         for param in params_0: param.requires_grad = False
         layer_module_0.eval()
-        if checkpoint_dir:
-            create_directory_if_not_exists(checkpoint_dir) # Ensure dir exists
-            save_checkpoint(
-                state={"state_dict": model.state_dict(), "layer_trained": 0},
-                is_best=False, filename=f"ff_layer_0_complete.pth", checkpoint_dir=checkpoint_dir,
-            )
-    else: logger.warning("Input adapter layer has no parameters.")
+
+    else:
+         logger.warning("Input adapter layer has no parameters. Skipping training.")
+
+    # Log layer summary after training completes
+    current_global_step = step_ref[0] # Get step after training this layer
+    layer_summary_metrics = {
+        "global_step": current_global_step,
+        f"FF/Layer_1/Train_Loss_LayerAvg": final_avg_loss_layer_0,
+        f"FF/Layer_1/Peak_GPU_Mem_Layer_MiB": layer_0_peak_mem, # Log layer peak mem
+    }
+    log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
+    logger.debug(f"Logged FF Layer 1 summary at global_step {current_global_step}")
+
+    if checkpoint_dir and params_0: # Only save if trained
+        create_directory_if_not_exists(checkpoint_dir)
+        save_checkpoint(
+            state={"state_dict": model.state_dict(), "layer_trained": 0},
+            is_best=False, filename=f"ff_layer_0_complete.pth", checkpoint_dir=checkpoint_dir,
+        )
 
     current_layer_input_fn = create_layer_input_closure(model, prev_layer_idx=0)
 
@@ -373,13 +427,16 @@ def train_ff_model(
 
         ff_layer_module = model.layers[i]
         params_i = list(ff_layer_module.parameters())
+        layer_i_peak_mem = 0.0
+        final_avg_loss_layer_i = float('nan')
+
         if not params_i:
             logger.warning(f"Hidden FF_Layer {layer_log_index} has no parameters.")
         else:
             optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
             optimizer_i = getattr(optim, optimizer_type)(params_i, **optimizer_i_kwargs)
 
-            final_avg_loss_layer_i = train_ff_layer(
+            final_avg_loss_layer_i, layer_i_peak_mem = train_ff_layer(
                 model=model,
                 layer_module=ff_layer_module,
                 is_input_adapter_layer=False,
@@ -392,30 +449,39 @@ def train_ff_model(
                 layer_index=effective_layer_index,
                 wandb_run=wandb_run,
                 log_interval=log_interval,
-                step_ref=step_ref, # Pass step_ref
+                step_ref=step_ref,
+                gpu_handle=gpu_handle, # Pass handle
+                nvml_active=nvml_active # Pass status
             )
-            # MODIFIED: Log layer summary after training completes
-            current_global_step = step_ref[0]
-            layer_summary_metrics = {
-                "global_step": current_global_step,
-                f"FF/Layer_{layer_log_index}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
-            }
-            log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
-            logger.debug(f"Logged FF Layer {layer_log_index} summary at global_step {current_global_step}")
+            peak_mem_train = max(peak_mem_train, layer_i_peak_mem) # Update overall peak
 
+            # Freeze layer
             for param in params_i: param.requires_grad = False
             ff_layer_module.eval()
-            if checkpoint_dir:
-                create_directory_if_not_exists(checkpoint_dir) # Ensure dir exists
-                save_checkpoint(
-                    state={"state_dict": model.state_dict(), "layer_trained": effective_layer_index},
-                    is_best=False, filename=f"ff_layer_{effective_layer_index}_complete.pth", checkpoint_dir=checkpoint_dir,
-                )
 
+        # Log layer summary after training completes
+        current_global_step = step_ref[0] # Get step after training this layer
+        layer_summary_metrics = {
+            "global_step": current_global_step,
+            f"FF/Layer_{layer_log_index}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
+            f"FF/Layer_{layer_log_index}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem, # Log layer peak
+        }
+        log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
+        logger.debug(f"Logged FF Layer {layer_log_index} summary at global_step {current_global_step}")
+
+        if checkpoint_dir and params_i: # Only save if trained
+            create_directory_if_not_exists(checkpoint_dir)
+            save_checkpoint(
+                state={"state_dict": model.state_dict(), "layer_trained": effective_layer_index},
+                is_best=False, filename=f"ff_layer_{effective_layer_index}_complete.pth", checkpoint_dir=checkpoint_dir,
+            )
+
+        # Prepare input function for the *next* layer's training
         if effective_layer_index < num_hidden_layers - 1:
             current_layer_input_fn = create_layer_input_closure(model, prev_layer_idx=effective_layer_index)
 
     logger.info("Finished all layer-wise FF training.")
+    return peak_mem_train # Return overall peak memory
 
 
 # --- evaluate_ff_model (no changes needed) ---

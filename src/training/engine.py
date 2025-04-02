@@ -1,11 +1,10 @@
-# File: src/training/engine.py
 import torch
 import torch.nn as nn
 import logging
 import time
 import os
 import contextlib
-import pynvml # Imported for type hinting
+import pynvml
 from typing import Dict, Any, Optional, Tuple, Callable, List
 
 from src.utils.config_parser import load_config
@@ -260,39 +259,35 @@ def run_training(
         train_loop_start_time = time.time()
         total_energy_joules = None
 
-        # Pass step_ref list and potentially handle/nvml status
+        # Pass step_ref list and gpu handle/status
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
             training_args = {
                 "model": model, "train_loader": train_loader, "config": config,
                 "device": device, "wandb_run": wandb_run,
-                "step_ref": step_ref
+                "step_ref": step_ref,
+                "gpu_handle": gpu_handle, # Pass handle to all trainers
+                "nvml_active": nvml_active # Pass status to all trainers
             }
-            # Add algorithm specific args, including handle/nvml status for sampling
+            # Add algorithm specific args (like val_loader for BP)
             if algorithm_name == "bp":
                 training_args["val_loader"] = val_loader
                 training_args["input_adapter"] = input_adapter
-                training_args["gpu_handle"] = gpu_handle # Pass handle
-                training_args["nvml_active"] = nvml_active # Pass status
+                # Handle/active already added above
             elif algorithm_name in ["mf", "ff", "cafo"]:
+                # Add input adapter if needed by these algos' orchestrator
+                # Note: Specific usage depends on the orchestrator implementation
                 training_args["input_adapter"] = input_adapter
-                # NOTE: Handle/active status passing is NOT currently implemented
-                # for layer-wise algorithms FF, CaFo, MF in this code.
-                # If accurate peak memory for the *entire* layer-wise training
-                # is required, their respective training functions need similar
-                # modifications as done for BP.
-                logger.warning(f"Peak GPU memory sampling within layer-wise training for '{algorithm_name}' is not implemented. Peak memory will be reported as NaN.")
+                # Handle/active already added above
 
-            # Call the training function - MODIFIED to get peak memory back for BP
+            # Call the training function and get peak memory back
             train_output = training_fn(**training_args)
 
-            # Store the returned peak memory if the function returns it (like train_bp_model now does)
+            # Store the returned peak memory if the function returns it
             if isinstance(train_output, (float, int)): # Check if a single numeric value was returned
                 peak_gpu_mem_during_training = train_output
                 logger.info(f"Received Peak GPU Memory (sampled during training): {peak_gpu_mem_during_training:.2f} MiB")
             else:
-                 # Only log warning if BP was run, as others are not expected to return it yet
-                 if algorithm_name == 'bp':
-                     logger.warning(f"Training function for '{algorithm_name}' did not return expected peak memory value. Peak memory will be NaN.")
+                 logger.warning(f"Training function for '{algorithm_name}' did not return expected peak memory value. Peak memory will be NaN.")
                  peak_gpu_mem_during_training = float('nan')
 
 
@@ -383,10 +378,6 @@ def run_training(
             "final/estimated_gflops": results.get("estimated_gflops", float("nan")),
             "final/estimated_gmacs": results.get("estimated_gmacs", float("nan")),
         }
-
-        # Filter out NaN values before logging if desired (optional)
-        # final_summary_metrics_clean = {k: v for k, v in final_summary_metrics.items() if not (isinstance(v, float) and torch.isnan(torch.tensor(v)))}
-        # log_metrics(final_summary_metrics_clean, wandb_run=wandb_run, commit=True)
 
         log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
 

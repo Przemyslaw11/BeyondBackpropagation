@@ -1,0 +1,64 @@
+# File: configs/test/test_mf_fmnist_mlp_2x1000.yaml
+# Configuration for a QUICK TEST RUN of MF on Fashion-MNIST with 2x1000 MLP
+
+# Experiment Identification
+experiment_name: "TEST_mf_fashion_mnist_mlp_2x1000"
+algorithm:
+  name: "MF"
+
+# Dataset Configuration (Match MF original)
+data:
+  name: "FashionMNIST"
+  root: "./data"
+  val_split: 0.1 # Not strictly needed for MF training
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+# Model Architecture Configuration (Match MF original)
+model:
+  name: "MF_MLP"
+  params:
+    # input_dim: 784 # Calculated
+    hidden_dims: [1000, 1000]
+    activation: "ReLU"
+    bias: true
+    # num_classes: 10 # Calculated
+
+# Algorithm Specific Configuration (REDUCED FOR TEST)
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.0001
+  weight_decay: 0.0
+  epochs_per_layer: 2 # << REDUCED for quick test
+  log_interval: 10 # Log more frequently
+
+# Logging Configuration (DEBUG level)
+logging:
+  level: "DEBUG"
+  wandb:
+    use_wandb: true
+    project: "BeyondBackpropagation"
+
+# Checkpointing (DISABLED FOR TEST)
+checkpointing:
+  checkpoint_dir: null
+
+# Monitoring/Profiling (Ensure enabled, verbose profiling)
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: true
+
+# Tuning (DISABLED)
+tuning:
+  enabled: false

@@ -1,6 +1,4 @@
-# --------------------------------------------------------------------------------
-# File: ./src/architectures/ff_mlp.py
-# --------------------------------------------------------------------------------
+# File: src/architectures/ff_mlp.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -250,6 +248,26 @@ class FF_MLP(nn.Module):
         )
         all_layer_dims_str = " -> ".join(map(str, [input_dim] + hidden_dims))
         logger.info(f"Layer dimensions: {all_layer_dims_str}")
+
+    # *** ADDED standard forward method for compatibility with profiler ***
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Basic forward pass for compatibility (e.g., with torch.profiler).
+        Returns the normalized output of the *last* layer.
+        Assumes input 'x' is already flattened.
+        Note: This is NOT used for FF training or standard FF evaluation.
+        """
+        # Pass through layer 0 (input_adapter_layer -> activation -> norm)
+        current_activation = self.input_adapter_layer(x)
+        current_activation = self.first_layer_activation(current_activation)
+        current_activation = self.first_layer_norm(current_activation)
+
+        # Pass through subsequent FF_Layers
+        for layer in self.layers:
+            current_activation = layer(current_activation) # FF_Layer.forward applies norm
+
+        return current_activation # Return the final layer's normalized output
+    # *** END ADDED forward method ***
 
     def forward_upto(
         self, x_flattened_modified: torch.Tensor, layer_idx: int

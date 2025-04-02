@@ -5,14 +5,16 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import logging
 from tqdm import tqdm
-from typing import Dict, Any, Optional, Callable, List, Type, Tuple # Added List, Tuple
+import pynvml # Import for type hint
+from typing import Dict, Any, Optional, Callable, List, Type, Tuple
 import os
 import time
 
 from src.architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
 from src.utils.metrics import calculate_accuracy
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, create_directory_if_not_exists # Added create_dir
+from src.utils.helpers import save_checkpoint, create_directory_if_not_exists
+from src.utils.monitoring import get_gpu_memory_usage # Import memory usage function
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +31,13 @@ def train_cafo_predictor_only(
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     block_index: int = 0,  # For logging
-    step_ref: List[int] = [-1], # MODIFIED: Use step_ref list
-) -> Tuple[float, float]: # Return avg loss, avg accuracy
+    step_ref: List[int] = [-1],
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
+    nvml_active: bool = False, # ADDED
+) -> Tuple[float, float, float]: # Return avg loss, avg accuracy, peak memory
     """
     Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
-    MODIFIED: Accepts step_ref, logs batch metrics, returns avg loss/acc.
+    MODIFIED: Accepts handle/active, samples memory, returns avg loss/acc and peak memory.
     """
     block.eval()
     predictor.train()
@@ -43,6 +47,7 @@ def train_cafo_predictor_only(
         f"Starting CaFo training for Predictor {block_index + 1} (Block {block_index+1} frozen)"
     )
 
+    peak_mem_predictor_train = 0.0 # Track peak memory for this predictor's training
     final_avg_epoch_loss = float('nan')
     final_avg_epoch_accuracy = float('nan')
 
@@ -50,13 +55,14 @@ def train_cafo_predictor_only(
         epoch_loss = 0.0
         epoch_correct = 0
         epoch_samples = 0
+        peak_mem_predictor_epoch = 0.0 # Track peak memory for this specific epoch
         pbar = tqdm(
             train_loader,
             desc=f"Predictor {block_index+1} Epoch {epoch+1}/{epochs}",
             leave=False,
         )
         for batch_idx, (images, labels) in enumerate(pbar):
-            step_ref[0] += 1 # MODIFIED: Increment global step
+            step_ref[0] += 1
             current_global_step = step_ref[0]
 
             images, labels = images.to(device), labels.to(device)
@@ -83,31 +89,50 @@ def train_cafo_predictor_only(
             epoch_correct += batch_correct
             epoch_samples += batch_size
 
+            # --- Sample memory usage periodically or at end of batch ---
+            current_mem_used = float('nan')
+            if nvml_active and gpu_handle and ((batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1):
+                 mem_info = get_gpu_memory_usage(gpu_handle)
+                 if mem_info:
+                     current_mem_used = mem_info[0]
+                     peak_mem_predictor_epoch = max(peak_mem_predictor_epoch, current_mem_used)
+            # --- End memory sampling ---
+
             if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(
                     loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%"
                 )
-                # MODIFIED: Add global_step to metrics dict
                 metrics_to_log = {
                     "global_step": current_global_step,
                     f"Predictor_{block_index+1}/Train_Loss_Batch": avg_loss_batch,
                     f"Predictor_{block_index+1}/Train_Acc_Batch": batch_accuracy,
                 }
-                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True) # Pass full dict
+                if not torch.isnan(torch.tensor(current_mem_used)):
+                     metrics_to_log[f"Predictor_{block_index+1}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
         # Calculate averages for the epoch
         final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else 0.0
         final_avg_epoch_accuracy = (epoch_correct / epoch_samples) * 100.0 if epoch_samples > 0 else 0.0
+        peak_mem_predictor_train = max(peak_mem_predictor_train, peak_mem_predictor_epoch) # Update peak for the predictor
 
         logger.info(
-            f"Predictor {block_index+1} Epoch {epoch+1}/{epochs} - Avg Loss: {final_avg_epoch_loss:.4f}, Avg Acc: {final_avg_epoch_accuracy:.2f}%"
+            f"Predictor {block_index+1} Epoch {epoch+1}/{epochs} - Avg Loss: {final_avg_epoch_loss:.4f}, Avg Acc: {final_avg_epoch_accuracy:.2f}%, Peak Mem Epoch: {peak_mem_predictor_epoch:.1f} MiB"
         )
-        # --- REMOVED epoch summary logging from here ---
+        # Log epoch summary metrics (optional)
+        # epoch_summary_metrics = { ... }
+        # log_metrics(epoch_summary_metrics, ...)
 
-    logger.info(f"Finished CaFo training for Predictor {block_index + 1}")
+    # Sample memory one last time
+    if nvml_active and gpu_handle:
+        mem_info = get_gpu_memory_usage(gpu_handle)
+        if mem_info:
+            peak_mem_predictor_train = max(peak_mem_predictor_train, mem_info[0])
+
+    logger.info(f"Finished CaFo training for Predictor {block_index + 1}. Overall Peak Mem Predictor: {peak_mem_predictor_train:.1f} MiB")
     predictor.eval()
-    return final_avg_epoch_loss, final_avg_epoch_accuracy
+    return final_avg_epoch_loss, final_avg_epoch_accuracy, peak_mem_predictor_train
 
 
 # --- train_cafo_model (MODIFIED) ---
@@ -118,11 +143,14 @@ def train_cafo_model(
     device: torch.device,
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None, # Added for signature consistency, not used
-    step_ref: List[int] = [-1], # MODIFIED: Accept step_ref
-):
+    step_ref: List[int] = [-1],
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
+    nvml_active: bool = False, # ADDED
+) -> float: # Returns overall peak memory
     """
     Orchestrates the layer-wise training of CaFo_CNN predictors (CaFo-Rand-CE variant).
-    MODIFIED: Logs predictor summary metrics.
+    Logs predictor summary metrics including peak memory.
+    Returns the overall peak GPU memory observed across all predictor training phases.
     """
     model.to(device)
     model.eval()  # Blocks are frozen
@@ -168,29 +196,26 @@ def train_cafo_model(
     # --- Train Predictor by Predictor ---
     # Initial input is the raw image batch
     current_block_input_fn = lambda img: img.to(device)
+    peak_mem_train = 0.0 # Track overall peak memory
 
     for i in range(num_blocks):
-        logger.info(f"--- Training Predictor {i+1}/{num_blocks} ---")
+        predictor_log_idx = i + 1
+        logger.info(f"--- Training Predictor {predictor_log_idx}/{num_blocks} ---")
         block = model.blocks[i]
         predictor = predictors[i]
         params_to_optimize = list(predictor.parameters())
+        predictor_peak_mem = 0.0
+        final_avg_loss = float('nan')
+        final_avg_acc = float('nan')
 
         if not any(p.requires_grad for p in params_to_optimize):
-            logger.warning(f"Predictor {i+1} has no parameters requiring gradients. Skipping training.")
-             # Log placeholder loss/acc
-            current_global_step = step_ref[0] # Step doesn't advance
-            predictor_summary_metrics = {
-                "global_step": current_global_step,
-                f"Predictor_{i+1}/Train_Loss_LayerAvg": float('nan'),
-                f"Predictor_{i+1}/Train_Acc_LayerAvg": float('nan'),
-            }
-            log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
+            logger.warning(f"Predictor {predictor_log_idx} has no parameters requiring gradients. Skipping training.")
         else:
             optimizer_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
             optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_kwargs)
 
-            # Train the predictor
-            final_avg_loss, final_avg_acc = train_cafo_predictor_only(
+            # Train the predictor, get loss, acc, and peak mem for this predictor
+            final_avg_loss, final_avg_acc, predictor_peak_mem = train_cafo_predictor_only(
                 block=block,
                 predictor=predictor,
                 optimizer=optimizer,
@@ -202,29 +227,33 @@ def train_cafo_model(
                 wandb_run=wandb_run,
                 log_interval=log_interval,
                 block_index=i,
-                step_ref=step_ref, # Pass step_ref
+                step_ref=step_ref,
+                gpu_handle=gpu_handle, # Pass handle
+                nvml_active=nvml_active # Pass status
             )
-
-            # MODIFIED: Log predictor summary after training completes
-            current_global_step = step_ref[0]
-            predictor_summary_metrics = {
-                "global_step": current_global_step,
-                f"Predictor_{i+1}/Train_Loss_LayerAvg": final_avg_loss,
-                f"Predictor_{i+1}/Train_Acc_LayerAvg": final_avg_acc,
-            }
-            log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
-            logger.debug(f"Logged CaFo Predictor {i+1} summary at global_step {current_global_step}")
+            peak_mem_train = max(peak_mem_train, predictor_peak_mem) # Update overall peak
 
             # Freeze predictor after training
             for param in predictor.parameters(): param.requires_grad = False
             predictor.eval()
 
-            if checkpoint_dir:
-                create_directory_if_not_exists(checkpoint_dir) # Ensure dir exists
-                save_checkpoint(
-                    state={"state_dict": predictor.state_dict(), "predictor_index": i},
-                    is_best=False, filename=f"cafo_predictor_{i}_complete.pth", checkpoint_dir=checkpoint_dir,
-                )
+        # Log predictor summary after training completes
+        current_global_step = step_ref[0]
+        predictor_summary_metrics = {
+            "global_step": current_global_step,
+            f"Predictor_{predictor_log_idx}/Train_Loss_LayerAvg": final_avg_loss,
+            f"Predictor_{predictor_log_idx}/Train_Acc_LayerAvg": final_avg_acc,
+            f"Predictor_{predictor_log_idx}/Peak_GPU_Mem_Layer_MiB": predictor_peak_mem, # Log predictor peak
+        }
+        log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
+        logger.debug(f"Logged CaFo Predictor {predictor_log_idx} summary at global_step {current_global_step}")
+
+        if checkpoint_dir and any(p.requires_grad for p in params_to_optimize): # Only save if trained
+            create_directory_if_not_exists(checkpoint_dir)
+            save_checkpoint(
+                state={"state_dict": predictor.state_dict(), "predictor_index": i},
+                is_best=False, filename=f"cafo_predictor_{i}_complete.pth", checkpoint_dir=checkpoint_dir,
+            )
 
         # Prepare the input function for the *next* predictor training stage
         def create_next_input_fn(trained_block_idx: int, previous_input_fn: Callable):
@@ -243,6 +272,7 @@ def train_cafo_model(
     logger.info("Finished all layer-wise CaFo predictor training.")
     # Store trained predictors on the model instance for evaluation
     model.trained_predictors = predictors
+    return peak_mem_train # Return overall peak memory
 
 
 # --- evaluate_cafo_model (no changes needed) ---
