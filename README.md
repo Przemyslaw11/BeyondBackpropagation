@@ -14,33 +14,31 @@ These are compared against standard **Backpropagation (BP)** baselines using ide
 
 ## Repository Structure
 
-```
 .
 ├── .gitignore
 ├── LICENSE
-├── README.md                 # This file
-├── configs/                  # Experiment configuration files (YAML)
-│   ├── base.yaml             # Base configuration defaults
-│   ├── bp_baselines/         # Configs for BP baselines (tuned)
-│   ├── cafo/                 # Configs for CaFo experiments
-│   ├── ff/                   # Configs for FF experiments
-│   └── mf/                   # Configs for MF experiments
-├── data/                     # (Gitignored) Datasets downloaded here
-├── notebooks/                # Jupyter notebooks for analysis, visualization
-├── requirements.txt          # Python package dependencies (targets latest compatible versions)
-├── results/                  # (Gitignored) Parent dir for generated outputs
-│   ├── logs/                 # Python application logs
-│   └── optuna/               # Optuna study databases
-├── scripts/                  # Main Python execution scripts
-│   ├── run_experiment.py     # Run a single experiment from a config file
-│   ├── run_optuna_search.py  # Run Optuna hyperparameter search for BP baselines
-│   └── slurm_scripts/        # SLURM submission scripts for Athena cluster
-│       ├── run_array.slurm       # Example for running multiple configs via job array
-│       ├── run_optuna.slurm      # Submit an Optuna search job
-│       └── run_single_experiment.slurm # Submit a single experiment job
-├── slurm_logs/               # (Gitignored) SLURM stdout/stderr files
-└── venv/                     # (Gitignored) Python virtual environment
-```
+├── README.md # This file
+├── configs/ # Experiment configuration files (YAML)
+│ ├── base.yaml # Base configuration defaults
+│ ├── bp_baselines/ # Configs for BP baselines (tuned)
+│ ├── cafo/ # Configs for CaFo experiments
+│ ├── ff/ # Configs for FF experiments
+│ └── mf/ # Configs for MF experiments
+├── data/ # (Gitignored) Datasets downloaded here
+├── notebooks/ # Jupyter notebooks for analysis, visualization
+├── requirements.txt # Python package dependencies (targets latest compatible versions)
+├── results/ # (Gitignored) Parent dir for generated outputs
+│ ├── logs/ # Python application logs
+│ └── optuna/ # Optuna study databases
+├── scripts/ # Main Python execution scripts
+│ ├── run_experiment.py # Run a single experiment from a config file
+│ ├── run_optuna_search.py # Run Optuna hyperparameter search for BP baselines
+│ └── slurm_scripts/ # SLURM submission scripts for Athena cluster
+│ ├── run_array.slurm # Example for running multiple configs via job array
+│ ├── run_optuna.slurm # Submit an Optuna search job
+│ └── run_single_experiment.slurm # Submit a single experiment job
+├── slurm_logs/ # (Gitignored) SLURM stdout/stderr files
+└── venv/ # (Gitignored) Python virtual environment
 
 ## Setup
 
@@ -109,26 +107,35 @@ Experiments are designed to run on the `plgrid-gpu-a100` partition of the Athena
 
 ## Running Experiments
 
-All commands below assume you are in the project's root directory (`$SCRATCH/BeyondBackpropagation/`). **Remember to edit the Slurm scripts in `scripts/slurm_scripts/` to set your grant account correctly: `#SBATCH -A plgoncotherapy-gpu-a100`**.
+All commands below assume you are in the project's root directory (`$SCRATCH/BeyondBackpropagation/`). **Remember to edit the Slurm scripts in `scripts/slurm_scripts/` to set your grant account correctly: `#SBATCH -A <your_grant_name>-gpu-a100`**.
 
 ### Running a Single Experiment
 
 *   **On Athena (using Slurm):**
-    1.  Verify/Edit `scripts/slurm_scripts/run_single_experiment.slurm`, ensuring the `-A plgoncotherapy-gpu-a100` line is correct and the loaded modules match the setup (Python 3.10.4, CUDA 12.4.0).
-    2.  Submit the job using `sbatch`, passing the config file path relative to the project root as an argument:
+    1.  Verify/Edit `scripts/slurm_scripts/run_single_experiment.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and the loaded modules match the setup (Python 3.10.4, CUDA 12.4.0).
+    2.  **Offline Wandb:** The Slurm scripts are configured to run Weights & Biases in offline mode (`export WANDB_MODE=offline`) to avoid network errors on compute nodes. Logs will be stored locally in the `wandb/` directory.
+    3.  Submit the job using `sbatch`, passing the config file path relative to the project root as an argument:
         ```bash
+        # Example: sbatch --job-name="CaFo_Test" scripts/slurm_scripts/run_single_experiment.slurm configs/cafo/fashion_mnist_cnn_3block.yaml
         sbatch scripts/slurm_scripts/run_single_experiment.slurm configs/<algo_or_baseline>/<config_name>.yaml
         ```
         *Example (MF):*
         ```bash
         sbatch scripts/slurm_scripts/run_single_experiment.slurm configs/mf/cifar10_mlp_3x2000.yaml
         ```
-    3.  Slurm output logs will be saved in `slurm_logs/`. Experiment results (metrics, logs) will be saved in `results/`.
+    4.  Slurm output logs will be saved in `slurm_logs/`. Experiment results (metrics, logs) will be saved in `results/`. Wandb offline logs are in `wandb/`.
+    5.  **Syncing Offline Wandb:** After the job finishes, sync the results from the Athena login node (or another machine with internet):
+        ```bash
+        cd $SCRATCH/BeyondBackpropagation # Navigate to project root
+        source venv/bin/activate          # Activate environment
+        wandb login                       # Log in if needed
+        wandb sync wandb/offline-run-*    # Sync the run(s)
+        ```
 
 ### Running Hyperparameter Optimization (Optuna for BP Baselines)
 
 *   **On Athena (using Slurm):**
-    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A plgoncotherapy-gpu-a100` line is correct and modules match.
+    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and modules match. Note that Wandb is typically *disabled* for Optuna trials to reduce overhead, but the script is set up for offline mode if enabled in the config.
     2.  Submit the job using `sbatch`, passing the baseline config file path and optionally the number of trials:
         ```bash
         sbatch scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/<config_name>.yaml <num_trials>
@@ -145,18 +152,19 @@ All commands below assume you are in the project's root directory (`$SCRATCH/Bey
 The `scripts/slurm_scripts/run_array.slurm` script provides an example.
 
 1.  Modify `scripts/slurm_scripts/run_array.slurm`:
-    *   Set the correct account: `-A plgoncotherapy-gpu-a100`.
+    *   Set the correct account: `-A <your_grant_name>-gpu-a100`.
     *   Update the `CONFIG_FILES` array with desired config paths.
     *   Adjust the `--array=1-N` range (where N is the number of configs).
-    *   Ensure loaded modules match the setup.
+    *   Ensure loaded modules match the setup. (Wandb will run offline per task).
 2.  Submit the job array:
     ```bash
     sbatch scripts/slurm_scripts/run_array.slurm
     ```
+3.  After completion, sync all offline runs using `wandb sync wandb/offline-run-*`.
 
 ## Monitoring and Logging
 
-*   **Weights & Biases (WandB):** Experiments log to WandB if configured (`use_wandb: true`). Set up your account and API key (e.g., `export WANDB_API_KEY=your_key` before `sbatch` or inside script). Project: `BeyondBackpropagation`.
+*   **Weights & Biases (WandB):** Experiments log to WandB. When running on Athena compute nodes, logs are saved offline to the `wandb/` directory. Sync them later using `wandb sync wandb/offline-run-*` from the login node. Project: `BeyondBackpropagation`.
 *   **Local Logs:** Python logs are saved to `results/<experiment_name>/`.
 *   **Slurm Logs:** Standard output/error from Slurm jobs are saved to `slurm_logs/`. Check these first for submission/environment errors.
 *   **Energy Monitoring:** GPU energy consumption is monitored using `pynvml` and logged.
@@ -175,3 +183,4 @@ If you use this code or methodology, please cite the relevant papers for the alg
 *   **Slow `pip install` on Athena:** Compute nodes (and sometimes login nodes) have slow external internet. Download wheels locally first using `python -m pip download -r requirements.txt -d ./wheels/`, transfer the `wheels` directory to Athena's `$SCRATCH`, then install offline on the login node using `pip install --no-index --find-links=./wheels -r requirements.txt` inside the activated venv (after loading modules).
 *   **`CUDA Available: False`:** This is normal on the *login node*. Verify CUDA availability within an interactive GPU job (`srun ...`) or check the output of your actual experiment Slurm jobs.
 *   **Module/Environment Conflicts:** Always `module purge` before loading your specific required modules (`Python/3.10.4`, `CUDA/12.4.0`). Ensure you activate the correct virtual environment (`source venv/bin/activate`).
+*   **Wandb Errors:** If you see network errors related to Wandb in `.err` files, ensure your Slurm script sets `export WANDB_MODE=offline`. Remember to sync runs later.
