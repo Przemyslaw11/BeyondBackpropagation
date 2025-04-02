@@ -68,12 +68,14 @@ def train_bp_epoch(
         epoch_total_correct += batch_correct
         epoch_total_samples += batch_size
 
-        # Sample memory usage periodically or at end of batch
+        # --- Sample memory usage periodically or at end of batch ---
+        current_mem_used = float('nan') # Default value if not measured
         if nvml_active and gpu_handle and ((batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1):
              mem_info = get_gpu_memory_usage(gpu_handle)
              if mem_info:
-                 current_mem_used = mem_info[0]
+                 current_mem_used = mem_info[0] # Used memory in MiB
                  peak_mem_epoch = max(peak_mem_epoch, current_mem_used)
+        # --- End memory sampling ---
 
         # Log batch metrics periodically
         if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
@@ -84,14 +86,20 @@ def train_bp_epoch(
                 "BP_Baseline/Train_Loss_Batch": batch_loss_value,
                 "BP_Baseline/Train_Acc_Batch": batch_accuracy,
             }
-             # Log current memory usage alongside batch metrics if available
-            if nvml_active and gpu_handle and 'current_mem_used' in locals() and mem_info:
-                 metrics_to_log["BP_Baseline/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+            # Log current memory usage alongside batch metrics if available
+            if not torch.isnan(torch.tensor(current_mem_used)): # Check if valid value was obtained
+                metrics_to_log["BP_Baseline/GPU_Mem_Used_MiB_Batch"] = current_mem_used
             log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
     # --- End of Epoch ---
     avg_epoch_loss = epoch_total_loss / epoch_total_samples if epoch_total_samples > 0 else 0.0
     avg_epoch_accuracy = (epoch_total_correct / epoch_total_samples) * 100.0 if epoch_total_samples > 0 else 0.0
+
+    # If memory was never sampled (e.g., very short epoch), sample it once at the end
+    if nvml_active and gpu_handle and peak_mem_epoch == 0.0 and epoch_total_samples > 0:
+        mem_info = get_gpu_memory_usage(gpu_handle)
+        if mem_info:
+             peak_mem_epoch = mem_info[0]
 
     return avg_epoch_loss, avg_epoch_accuracy, peak_mem_epoch # Return peak mem
 
@@ -210,7 +218,7 @@ def train_bp_model(
 
             if current_metric_value is not None:
                 metric_improved = (save_best_metric_mode == "max" and current_metric_value > best_metric_value) or \
-                                (save_best_metric_mode == "min" and current_metric_value < best_metric_value)
+                                  (save_best_metric_mode == "min" and current_metric_value < best_metric_value)
                 if metric_improved:
                     best_metric_value = current_metric_value
                     is_best = True

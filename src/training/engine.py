@@ -5,7 +5,7 @@ import logging
 import time
 import os
 import contextlib
-import pynvml
+import pynvml # Imported for type hinting
 from typing import Dict, Any, Optional, Tuple, Callable, List
 
 from src.utils.config_parser import load_config
@@ -26,7 +26,7 @@ from src.algorithms import (
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function (no changes needed here) ---
+# --- get_model_and_adapter function (No changes) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[
@@ -126,6 +126,7 @@ def get_model_and_adapter(
 
     logger.info(f"Model '{arch_name}' (BP: {is_bp_baseline}) and input adapter (type: {type(input_adapter)}) created.")
     return model, input_adapter
+
 
 # --- run_training (MODIFIED) ---
 def run_training(
@@ -256,7 +257,6 @@ def run_training(
         algorithm_name = config.get("algorithm", {}).get("name", "").lower()
         training_fn = get_training_function(algorithm_name)
 
-        #peak_gpu_mem = float("nan") # Removed old definition
         train_loop_start_time = time.time()
         total_energy_joules = None
 
@@ -275,9 +275,12 @@ def run_training(
                 training_args["nvml_active"] = nvml_active # Pass status
             elif algorithm_name in ["mf", "ff", "cafo"]:
                 training_args["input_adapter"] = input_adapter
-                # TODO: Add handle/active status passing to layer-wise trainers if peak memory *during* layer training is needed
-                # Currently, peak memory for these algorithms will rely on sampling outside the layer-specific loops
-                # or need modifications similar to BP within their respective training functions.
+                # NOTE: Handle/active status passing is NOT currently implemented
+                # for layer-wise algorithms FF, CaFo, MF in this code.
+                # If accurate peak memory for the *entire* layer-wise training
+                # is required, their respective training functions need similar
+                # modifications as done for BP.
+                logger.warning(f"Peak GPU memory sampling within layer-wise training for '{algorithm_name}' is not implemented. Peak memory will be reported as NaN.")
 
             # Call the training function - MODIFIED to get peak memory back for BP
             train_output = training_fn(**training_args)
@@ -287,7 +290,9 @@ def run_training(
                 peak_gpu_mem_during_training = train_output
                 logger.info(f"Received Peak GPU Memory (sampled during training): {peak_gpu_mem_during_training:.2f} MiB")
             else:
-                 logger.warning(f"Training function for '{algorithm_name}' did not return expected peak memory value. Peak memory will be NaN.")
+                 # Only log warning if BP was run, as others are not expected to return it yet
+                 if algorithm_name == 'bp':
+                     logger.warning(f"Training function for '{algorithm_name}' did not return expected peak memory value. Peak memory will be NaN.")
                  peak_gpu_mem_during_training = float('nan')
 
 
@@ -308,6 +313,7 @@ def run_training(
         # Add the sampled peak memory to results
         results["peak_gpu_mem_used_mib"] = peak_gpu_mem_during_training
 
+        # Log memory usage at the very end of the run
         if nvml_active and gpu_handle:
              mem_info_end = get_gpu_memory_usage(gpu_handle)
              if mem_info_end: logger.info(f"GPU Mem (End): {mem_info_end[0]:.2f} MiB Used / {mem_info_end[1]:.2f} MiB Total")
@@ -360,6 +366,8 @@ def run_training(
         # --- Final Summary Logging (Single Call) ---
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
+        # Use the final_summary_step calculated after training loop (or 0 if training failed early)
+        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0
         logger.debug(f"Final summary logging step: {final_summary_step}")
 
         final_summary_metrics = {
@@ -376,9 +384,16 @@ def run_training(
             "final/estimated_gmacs": results.get("estimated_gmacs", float("nan")),
         }
 
+        # Filter out NaN values before logging if desired (optional)
+        # final_summary_metrics_clean = {k: v for k, v in final_summary_metrics.items() if not (isinstance(v, float) and torch.isnan(torch.tensor(v)))}
+        # log_metrics(final_summary_metrics_clean, wandb_run=wandb_run, commit=True)
+
         log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
 
         logger.info(f"Total run duration: {format_time(total_run_time)}")
+
+        # Ensure NVML shutdown happens via atexit, no explicit call needed here normally.
+        # shutdown_nvml() # Usually handled by atexit
 
         if wandb_run and hasattr(wandb_run, 'finish') and results.get("error") is None and os.environ.get("WANDB_MODE") != "offline":
             try:
