@@ -32,7 +32,7 @@ def mf_local_loss_fn(
     return loss
 
 
-# --- train_mf_matrix_only (MODIFIED) ---
+# --- train_mf_matrix_only (MODIFIED - No code changes needed here, logic was correct) ---
 def train_mf_matrix_only(
     model: MF_MLP,
     matrix_index: int,
@@ -134,11 +134,11 @@ def train_mf_matrix_only(
             peak_mem_matrix_train = max(peak_mem_matrix_train, mem_info[0])
 
     logger.info(f"Finished MF training for Matrix M_{matrix_index}. Overall Peak Mem Matrix: {peak_mem_matrix_train:.1f} MiB")
-    projection_matrix.requires_grad_(False)
+    projection_matrix.requires_grad_(False) # Freeze after training
     return final_avg_epoch_loss, peak_mem_matrix_train # Return loss and peak mem
 
 
-# --- train_mf_layer (MODIFIED) ---
+# --- train_mf_layer (MODIFIED - No code changes needed here, logic was correct) ---
 def train_mf_layer(
     model: MF_MLP,
     layer_index: int,  # Index i=0..L-1. Trains W_{i+1} and M_{i+1}.
@@ -171,15 +171,17 @@ def train_mf_layer(
     act_layer = model.layers[act_layer_idx]  # sigma_{i+1}
     projection_matrix = model.get_projection_matrix(proj_matrix_idx)  # M_{i+1}
 
-    # Ensure only W_{i+1} and M_{i+1} require gradients
-    for p in model.parameters(): p.requires_grad_(False)
-    for p in linear_layer.parameters(): p.requires_grad_(True)
-    projection_matrix.requires_grad_(True)
+    # Ensure only W_{i+1} and M_{i+1} require gradients FOR THIS TRAINING PHASE
+    # Other parameters should already be frozen by the outer loop (train_mf_model)
+    # This function *internally* sets the requires_grad for the specific layers it needs
+    for p in model.parameters(): p.requires_grad_(False) # Reset all first
+    for p in linear_layer.parameters(): p.requires_grad_(True) # Enable W_{i+1}
+    projection_matrix.requires_grad_(True) # Enable M_{i+1}
 
     model.to(device)
-    # Set layers to train, others to eval
-    model.eval()
-    linear_layer.train()
+    # Set *these specific* layers to train, others remain eval
+    model.eval() # Put model in eval mode by default
+    linear_layer.train() # Set W_{i+1} to train mode
     act_layer.train() # Activation doesn't have params but adheres to train/eval state
 
     logger.info(f"Starting MF training for Layer W_{w_layer_log_idx} / Matrix M_{m_matrix_log_idx}")
@@ -255,13 +257,14 @@ def train_mf_layer(
             peak_mem_layer_train = max(peak_mem_layer_train, mem_info[0])
 
     logger.info(f"Finished MF training for Layer (W{w_layer_log_idx}/M{m_matrix_log_idx}). Overall Peak Mem Layer: {peak_mem_layer_train:.1f} MiB")
+    # Freeze parameters after training this layer
     linear_layer.eval()
     act_layer.eval()
     projection_matrix.requires_grad_(False)
     return final_avg_epoch_loss, peak_mem_layer_train # Return loss and peak mem
 
 
-# --- train_mf_model (MODIFIED) ---
+# --- train_mf_model (MODIFIED - Core loop logic fixed) ---
 def train_mf_model(
     model: MF_MLP,
     train_loader: DataLoader,
@@ -300,13 +303,15 @@ def train_mf_model(
 
     peak_mem_train = 0.0 # Track overall peak memory
 
+    # --- Train M0 ---
     logger.info("--- Training Projection Matrix M_0 ---")
     projection_matrix_0 = model.get_projection_matrix(0)
     params_m0 = [projection_matrix_0]
     m0_peak_mem = 0.0
     final_avg_loss_m0 = float('nan')
 
-    # Check if requires_grad is True before trying to train
+    # Train M0 only if it requires gradients
+    # (should be true by default, but check added for robustness)
     if projection_matrix_0.requires_grad:
         optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
         optimizer_0 = getattr(optim, optimizer_name)(params_m0, **optimizer_0_kwargs)
@@ -319,11 +324,11 @@ def train_mf_model(
             nvml_active=nvml_active # Pass status
         )
         peak_mem_train = max(peak_mem_train, m0_peak_mem) # Update overall peak
+        projection_matrix_0.requires_grad_(False) # Freeze after training
     else:
         logger.warning("M_0 does not require gradients. Skipping training.")
-        # If skipped, peak mem for this part is effectively 0, no update needed
 
-    # Log layer summary after training M0 (or skipping)
+    # Log M0 summary
     current_global_step = step_ref[0]
     layer_summary_metrics = {
         "global_step": current_global_step,
@@ -333,57 +338,58 @@ def train_mf_model(
     log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
     logger.debug(f"Logged MF Layer M0 summary at global_step {current_global_step}")
 
-    if checkpoint_dir and projection_matrix_0.requires_grad: # Only save if trained
+    if checkpoint_dir and final_avg_loss_m0 != float('nan'): # Only save if M0 was trained
         create_directory_if_not_exists(checkpoint_dir)
         save_checkpoint(
             state={"state_dict": model.state_dict(), "layer_trained_index": -1}, # Use -1 for M0
             is_best=False, filename="mf_matrix_M0_complete.pth", checkpoint_dir=checkpoint_dir,
         )
 
+    # --- Prepare input function for first hidden layer ---
     current_layer_input_fn = get_a0_input
 
+    # --- Train Hidden Layers (W_{i+1} and M_{i+1}) ---
     for i in range(num_hidden_layers):
         w_layer_log_idx = i + 1
         m_matrix_log_idx = i + 1
         logger.info(f"--- Training Hidden Layer W_{w_layer_log_idx} / Matrix M_{m_matrix_log_idx} ---")
 
-        linear_layer = model.layers[i * 2]
-        projection_matrix = model.get_projection_matrix(i + 1)
+        linear_layer = model.layers[i * 2] # W_{i+1}
+        projection_matrix = model.get_projection_matrix(i + 1) # M_{i+1}
         layer_i_peak_mem = 0.0
         final_avg_loss_layer_i = float('nan')
 
-        # Check if parameters require grad before setting up optimizer and training
-        params_to_optimize = []
-        if any(p.requires_grad for p in linear_layer.parameters()):
-            params_to_optimize.extend(linear_layer.parameters())
-        if projection_matrix.requires_grad:
-            params_to_optimize.append(projection_matrix)
+        # *** FIX START ***
+        # Construct the list of parameters for THIS layer's optimizer
+        params_to_optimize = list(linear_layer.parameters()) + [projection_matrix]
 
-        if not params_to_optimize:
-            logger.warning(f"Skipping W{w_layer_log_idx}/M{m_matrix_log_idx}: No parameters require gradients.")
-            # Peak mem for this layer is 0 if skipped
-        else:
-            # Ensure grads are enabled on the parameters *before* optimizer creation
-            for p in params_to_optimize: p.requires_grad_(True)
+        # Set requires_grad to True for only these parameters *before* optimizer creation
+        # (Although train_mf_layer also does this, doing it here ensures the optimizer sees them)
+        for p in model.parameters(): p.requires_grad_(False) # Freeze all first
+        for p in params_to_optimize: p.requires_grad_(True) # Enable W_{i+1} and M_{i+1}
 
-            optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
-            optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_i_kwargs)
+        # Create the optimizer for this specific layer
+        optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
+        optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_i_kwargs)
+        # *** FIX END ***
 
-            final_avg_loss_layer_i, layer_i_peak_mem = train_mf_layer(
-                model=model, layer_index=i, optimizer=optimizer, criterion=mf_criterion,
-                train_loader=train_loader, epochs=epochs_per_layer, device=device,
-                get_layer_input_fn=current_layer_input_fn, wandb_run=wandb_run, log_interval=log_interval,
-                step_ref=step_ref,
-                gpu_handle=gpu_handle, # Pass handle
-                nvml_active=nvml_active # Pass status
-            )
-            peak_mem_train = max(peak_mem_train, layer_i_peak_mem) # Update overall peak
+        # Call the training function for this layer
+        # It will handle the actual training steps and internal gradient settings
+        final_avg_loss_layer_i, layer_i_peak_mem = train_mf_layer(
+            model=model, layer_index=i, optimizer=optimizer, criterion=mf_criterion,
+            train_loader=train_loader, epochs=epochs_per_layer, device=device,
+            get_layer_input_fn=current_layer_input_fn, wandb_run=wandb_run, log_interval=log_interval,
+            step_ref=step_ref,
+            gpu_handle=gpu_handle, # Pass handle
+            nvml_active=nvml_active # Pass status
+        )
+        peak_mem_train = max(peak_mem_train, layer_i_peak_mem) # Update overall peak
 
-            # Freeze parameters after training
-            for param in params_to_optimize: param.requires_grad_(False)
-            linear_layer.eval(); model.layers[i * 2 + 1].eval()
+        # Freeze parameters after training (train_mf_layer already does this, but redundant doesn't hurt)
+        for param in params_to_optimize: param.requires_grad_(False)
+        linear_layer.eval(); model.layers[i * 2 + 1].eval()
 
-        # Log layer summary after training (or skipping)
+        # Log layer summary after training
         current_global_step = step_ref[0]
         layer_summary_metrics = {
             "global_step": current_global_step,
@@ -393,7 +399,7 @@ def train_mf_model(
         log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.debug(f"Logged MF Layer W{w_layer_log_idx}/M{m_matrix_log_idx} summary at global_step {current_global_step}")
 
-        if checkpoint_dir and params_to_optimize: # Only save if trained
+        if checkpoint_dir:
             create_directory_if_not_exists(checkpoint_dir)
             chkpt_filename = f"mf_hidden_layer_W{w_layer_log_idx}_M{m_matrix_log_idx}_complete.pth"
             save_checkpoint(
@@ -402,15 +408,14 @@ def train_mf_model(
             )
 
         # Prepare input function for the *next* layer
+        # Need a closure to capture the correct layer index 'i'
         def create_next_input_fn(trained_layer_idx: int, previous_input_fn: Callable):
-            # Capture current layer's index correctly
             lin_layer_k, act_layer_k = model.layers[trained_layer_idx*2], model.layers[trained_layer_idx*2+1]
             lin_layer_k.eval(); act_layer_k.eval() # Ensure they are in eval mode
             @torch.no_grad()
             def next_input_fn(img_batch: torch.Tensor) -> torch.Tensor:
                 a_prev = previous_input_fn(img_batch)
-                # Ensure model components are on the correct device inside the closure
-                lin_layer_k.to(device); act_layer_k.to(device)
+                lin_layer_k.to(device); act_layer_k.to(device) # Ensure on device
                 a_current = act_layer_k(lin_layer_k(a_prev.to(device)))
                 return a_current.detach()
             return next_input_fn
@@ -421,7 +426,7 @@ def train_mf_model(
     return peak_mem_train # Return overall peak memory
 
 
-# --- evaluate_mf_model (no changes needed) ---
+# --- evaluate_mf_model (No changes needed) ---
 def evaluate_mf_model(
     model: MF_MLP,
     data_loader: DataLoader,

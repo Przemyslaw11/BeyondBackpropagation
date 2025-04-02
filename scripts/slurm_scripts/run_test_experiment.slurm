@@ -47,7 +47,7 @@ echo "Activating virtual environment..."
 source venv/bin/activate || { echo "Failed to activate venv" >&2; exit 1; }
 
 # --- Set WandB to Offline Mode ---
-export WANDB_MODE=offline
+# export WANDB_MODE=offline
 echo "Set WANDB_MODE=offline"
 
 # Set WANDB API Key if needed (still good practice even if offline for potential sync later)
