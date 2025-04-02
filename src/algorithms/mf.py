@@ -19,7 +19,7 @@ from src.utils.monitoring import get_gpu_memory_usage # Import memory usage func
 
 logger = logging.getLogger(__name__)
 
-# --- mf_local_loss_fn (no changes) ---
+# --- mf_local_loss_fn (No changes needed) ---
 def mf_local_loss_fn(
     activation_i: torch.Tensor,
     projection_matrix_i: nn.Parameter,
@@ -32,11 +32,11 @@ def mf_local_loss_fn(
     return loss
 
 
-# --- train_mf_matrix_only (MODIFIED - No code changes needed here, logic was correct) ---
+# --- train_mf_matrix_only (MODIFIED) ---
 def train_mf_matrix_only(
-    model: MF_MLP,
+    model: MF_MLP, # Model reference is fine, but we won't modify other params here
     matrix_index: int,
-    optimizer: optim.Optimizer,
+    optimizer: optim.Optimizer, # Optimizer should *only* contain M_i
     criterion: nn.Module,
     train_loader: DataLoader,
     epochs: int,
@@ -45,22 +45,29 @@ def train_mf_matrix_only(
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
 ) -> Tuple[float, float]: # Return avg loss, peak memory
     """
     Trains a single projection matrix using local loss based on its corresponding activation.
-    MODIFIED: Accepts handle/active, samples memory, returns avg loss and peak memory.
+    MODIFIED: No longer globally sets requires_grad=False. Assumes optimizer only contains M_i.
     """
     if matrix_index < 0 or matrix_index >= len(model.projection_matrices):
          raise IndexError(f"Matrix index {matrix_index} out of bounds.")
 
     projection_matrix = model.get_projection_matrix(matrix_index)
-    # Ensure only this matrix requires grad for this phase
-    for p in model.parameters(): p.requires_grad_(False)
-    projection_matrix.requires_grad_(True)
+
+    # <<< REMOVED: Global requires_grad setting >>>
+    # for p in model.parameters(): p.requires_grad_(False) # <<< REMOVED
+
+    # Ensure the target matrix is trainable (should be handled by train_mf_model orchestrator)
+    if not projection_matrix.requires_grad:
+        logger.error(f"Projection Matrix M_{matrix_index} was passed to train_mf_matrix_only but requires_grad is False. Check orchestrator.")
+        return float('nan'), 0.0 # Return NaN loss and 0 peak memory if not trainable
+
+    # Keep the rest of the model in eval mode, M_i is handled by optimizer
     model.to(device)
-    model.eval() # Keep model blocks in eval mode
+    model.eval() # Keep model blocks in eval mode (M_i grad status is handled externally)
 
     logger.info(f"Starting MF training for Projection Matrix M_{matrix_index}")
 
@@ -80,7 +87,11 @@ def train_mf_matrix_only(
 
             images, labels = images.to(device), labels.to(device)
             # Use the provided function to get the correct activation (a_i)
-            activation_a_i = get_matrix_input_fn(images).detach()
+            activation_a_i = get_matrix_input_fn(images).detach() # Detach input activation
+
+            # Make sure M_i is on the correct device (it should be if model is)
+            projection_matrix = projection_matrix.to(device)
+
             loss = mf_local_loss_fn(activation_a_i, projection_matrix, labels, criterion)
 
             if torch.isnan(loss) or torch.isinf(loss):
@@ -89,7 +100,7 @@ def train_mf_matrix_only(
 
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            optimizer.step() # Only updates M_i because optimizer was configured that way
 
             batch_size = images.size(0)
             epoch_loss += loss.item() * batch_size
@@ -121,11 +132,10 @@ def train_mf_matrix_only(
             break # Exit epoch loop
 
         # Calculate average loss for the epoch and update overall peak mem
-        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else 0.0
+        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float('nan')
         peak_mem_matrix_train = max(peak_mem_matrix_train, peak_mem_matrix_epoch)
 
         logger.info(f"Matrix M{matrix_index} Epoch {epoch+1}/{epochs} - Avg Local Loss: {final_avg_epoch_loss:.6f}, Peak Mem Epoch: {peak_mem_matrix_epoch:.1f} MiB")
-        # Log epoch summary (optional)
 
     # Sample memory one last time
     if nvml_active and gpu_handle:
@@ -134,15 +144,16 @@ def train_mf_matrix_only(
             peak_mem_matrix_train = max(peak_mem_matrix_train, mem_info[0])
 
     logger.info(f"Finished MF training for Matrix M_{matrix_index}. Overall Peak Mem Matrix: {peak_mem_matrix_train:.1f} MiB")
-    projection_matrix.requires_grad_(False) # Freeze after training
+    # <<< REMOVED: No longer setting grad status here >>>
+    # projection_matrix.requires_grad_(False)
     return final_avg_epoch_loss, peak_mem_matrix_train # Return loss and peak mem
 
 
-# --- train_mf_layer (MODIFIED - No code changes needed here, logic was correct) ---
+# --- train_mf_layer (MODIFIED) ---
 def train_mf_layer(
-    model: MF_MLP,
+    model: MF_MLP, # Model reference is fine
     layer_index: int,  # Index i=0..L-1. Trains W_{i+1} and M_{i+1}.
-    optimizer: optim.Optimizer,
+    optimizer: optim.Optimizer, # Optimizer should *only* contain W_{i+1} and M_{i+1}
     criterion: nn.Module,
     train_loader: DataLoader,
     epochs: int,
@@ -151,12 +162,12 @@ def train_mf_layer(
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
 ) -> Tuple[float, float]: # Return avg loss, peak memory
     """
     Trains a single layer 'i+1' (W_{i+1} and M_{i+1}) of an MF_MLP using local loss.
-    MODIFIED: Accepts handle/active, samples memory, returns avg loss and peak memory.
+    MODIFIED: No longer globally sets requires_grad=False. Assumes optimizer only contains relevant params.
     """
     if not (0 <= layer_index < model.num_hidden_layers):
         raise IndexError(f"Layer index {layer_index} out of bounds.")
@@ -171,17 +182,19 @@ def train_mf_layer(
     act_layer = model.layers[act_layer_idx]  # sigma_{i+1}
     projection_matrix = model.get_projection_matrix(proj_matrix_idx)  # M_{i+1}
 
-    # Ensure only W_{i+1} and M_{i+1} require gradients FOR THIS TRAINING PHASE
-    # Other parameters should already be frozen by the outer loop (train_mf_model)
-    # This function *internally* sets the requires_grad for the specific layers it needs
-    for p in model.parameters(): p.requires_grad_(False) # Reset all first
-    for p in linear_layer.parameters(): p.requires_grad_(True) # Enable W_{i+1}
-    projection_matrix.requires_grad_(True) # Enable M_{i+1}
+    # <<< REMOVED: Global requires_grad setting >>>
+    # for p in model.parameters(): p.requires_grad_(False)
+
+    # Ensure the target parameters are trainable (handled by orchestrator)
+    params_require_grad = [p.requires_grad for p in linear_layer.parameters()] + [projection_matrix.requires_grad]
+    if not any(params_require_grad):
+        logger.error(f"Layer W{w_layer_log_idx}/M{m_matrix_log_idx} was passed to train_mf_layer but no parameters require gradients. Check orchestrator.")
+        return float('nan'), 0.0 # Return NaN loss and 0 peak memory if not trainable
 
     model.to(device)
-    # Set *these specific* layers to train, others remain eval
-    model.eval() # Put model in eval mode by default
-    linear_layer.train() # Set W_{i+1} to train mode
+    # Set relevant layers to train mode, keep rest in eval
+    model.eval()
+    linear_layer.train()
     act_layer.train() # Activation doesn't have params but adheres to train/eval state
 
     logger.info(f"Starting MF training for Layer W_{w_layer_log_idx} / Matrix M_{m_matrix_log_idx}")
@@ -203,7 +216,11 @@ def train_mf_layer(
             current_global_step = step_ref[0]
 
             images, labels = images.to(device), labels.to(device)
-            prev_activation_a_i = get_layer_input_fn(images).detach() # Get a_i
+            prev_activation_a_i = get_layer_input_fn(images).detach() # Get a_i detached
+
+            # Ensure layers are on the correct device
+            linear_layer.to(device); act_layer.to(device); projection_matrix.to(device)
+
             pre_activation_z_next = linear_layer(prev_activation_a_i) # z_{i+1}
             activation_a_next = act_layer(pre_activation_z_next) # a_{i+1}
             loss = mf_local_loss_fn(activation_a_next, projection_matrix, labels, criterion)
@@ -214,7 +231,7 @@ def train_mf_layer(
 
             optimizer.zero_grad()
             loss.backward()
-            optimizer.step() # Updates W_{i+1} and M_{i+1}
+            optimizer.step() # Updates W_{i+1} and M_{i+1} as configured in optimizer
 
             batch_size = images.size(0)
             epoch_loss += loss.item() * batch_size
@@ -244,11 +261,10 @@ def train_mf_layer(
             logger.error(f"Terminating W{w_layer_log_idx}/M{m_matrix_log_idx} training due to invalid loss.")
             break # Exit epoch loop
 
-        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else 0.0
+        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float('nan')
         peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch)
 
         logger.info(f"Layer (W{w_layer_log_idx}/M{m_matrix_log_idx}) Epoch {epoch+1}/{epochs} - Avg Local Loss: {final_avg_epoch_loss:.6f}, Peak Mem Epoch: {peak_mem_layer_epoch:.1f} MiB")
-        # Log epoch summary (optional)
 
     # Sample memory one last time
     if nvml_active and gpu_handle:
@@ -257,14 +273,14 @@ def train_mf_layer(
             peak_mem_layer_train = max(peak_mem_layer_train, mem_info[0])
 
     logger.info(f"Finished MF training for Layer (W{w_layer_log_idx}/M{m_matrix_log_idx}). Overall Peak Mem Layer: {peak_mem_layer_train:.1f} MiB")
-    # Freeze parameters after training this layer
-    linear_layer.eval()
-    act_layer.eval()
-    projection_matrix.requires_grad_(False)
+    # <<< REMOVED: No longer setting grad status here >>>
+    # linear_layer.eval()
+    # act_layer.eval()
+    # projection_matrix.requires_grad_(False)
     return final_avg_epoch_loss, peak_mem_layer_train # Return loss and peak mem
 
 
-# --- train_mf_model (MODIFIED - Core loop logic fixed) ---
+# --- train_mf_model (MODIFIED) ---
 def train_mf_model(
     model: MF_MLP,
     train_loader: DataLoader,
@@ -273,11 +289,12 @@ def train_mf_model(
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None,
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
 ) -> float: # Returns overall peak memory
     """
     Orchestrates the layer-wise training of an MF_MLP model.
+    MODIFIED: Handles requires_grad centrally.
     Returns the overall peak GPU memory observed across all layer training phases.
     """
     model.to(device)
@@ -297,38 +314,39 @@ def train_mf_model(
     mf_criterion = nn.CrossEntropyLoss()
 
     def get_a0_input(img_batch):
-        # Apply adapter if provided (typically flattening)
         adapted_input = input_adapter(img_batch) if input_adapter else img_batch.view(img_batch.shape[0], -1)
         return adapted_input.to(device)
 
     peak_mem_train = 0.0 # Track overall peak memory
 
+    # --- Freeze All Parameters Initially ---
+    logger.debug("Freezing all model parameters initially.")
+    for param in model.parameters():
+        param.requires_grad_(False)
+    model.eval() # Set model to eval mode initially
+
     # --- Train M0 ---
     logger.info("--- Training Projection Matrix M_0 ---")
     projection_matrix_0 = model.get_projection_matrix(0)
-    params_m0 = [projection_matrix_0]
     m0_peak_mem = 0.0
     final_avg_loss_m0 = float('nan')
 
-    # Train M0 only if it requires gradients
-    # (should be true by default, but check added for robustness)
-    if projection_matrix_0.requires_grad:
-        optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
-        optimizer_0 = getattr(optim, optimizer_name)(params_m0, **optimizer_0_kwargs)
-        final_avg_loss_m0, m0_peak_mem = train_mf_matrix_only(
-            model=model, matrix_index=0, optimizer=optimizer_0, criterion=mf_criterion,
-            train_loader=train_loader, epochs=epochs_per_layer, device=device,
-            get_matrix_input_fn=get_a0_input, wandb_run=wandb_run, log_interval=log_interval,
-            step_ref=step_ref,
-            gpu_handle=gpu_handle, # Pass handle
-            nvml_active=nvml_active # Pass status
-        )
-        peak_mem_train = max(peak_mem_train, m0_peak_mem) # Update overall peak
-        projection_matrix_0.requires_grad_(False) # Freeze after training
-    else:
-        logger.warning("M_0 does not require gradients. Skipping training.")
+    projection_matrix_0.requires_grad_(True) # Unfreeze M0
+    params_m0 = [projection_matrix_0] # Only M0
 
-    # Log M0 summary
+    optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
+    optimizer_0 = getattr(optim, optimizer_name)(params_m0, **optimizer_0_kwargs)
+
+    final_avg_loss_m0, m0_peak_mem = train_mf_matrix_only(
+        model=model, matrix_index=0, optimizer=optimizer_0, criterion=mf_criterion,
+        train_loader=train_loader, epochs=epochs_per_layer, device=device,
+        get_matrix_input_fn=get_a0_input, wandb_run=wandb_run, log_interval=log_interval,
+        step_ref=step_ref, gpu_handle=gpu_handle, nvml_active=nvml_active
+    )
+    peak_mem_train = max(peak_mem_train, m0_peak_mem)
+    projection_matrix_0.requires_grad_(False) # Freeze M0 after training
+
+    # Log layer summary after training M0
     current_global_step = step_ref[0]
     layer_summary_metrics = {
         "global_step": current_global_step,
@@ -338,56 +356,51 @@ def train_mf_model(
     log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
     logger.debug(f"Logged MF Layer M0 summary at global_step {current_global_step}")
 
-    if checkpoint_dir and final_avg_loss_m0 != float('nan'): # Only save if M0 was trained
+    if checkpoint_dir:
         create_directory_if_not_exists(checkpoint_dir)
         save_checkpoint(
-            state={"state_dict": model.state_dict(), "layer_trained_index": -1}, # Use -1 for M0
+            state={"state_dict": model.state_dict(), "layer_trained_index": -1},
             is_best=False, filename="mf_matrix_M0_complete.pth", checkpoint_dir=checkpoint_dir,
         )
 
-    # --- Prepare input function for first hidden layer ---
     current_layer_input_fn = get_a0_input
 
-    # --- Train Hidden Layers (W_{i+1} and M_{i+1}) ---
+    # --- Train Hidden Layers (W_i+1, M_i+1) ---
     for i in range(num_hidden_layers):
         w_layer_log_idx = i + 1
         m_matrix_log_idx = i + 1
         logger.info(f"--- Training Hidden Layer W_{w_layer_log_idx} / Matrix M_{m_matrix_log_idx} ---")
 
         linear_layer = model.layers[i * 2] # W_{i+1}
+        act_layer = model.layers[i * 2 + 1] # Activation (no params)
         projection_matrix = model.get_projection_matrix(i + 1) # M_{i+1}
         layer_i_peak_mem = 0.0
         final_avg_loss_layer_i = float('nan')
 
-        # *** FIX START ***
-        # Construct the list of parameters for THIS layer's optimizer
-        params_to_optimize = list(linear_layer.parameters()) + [projection_matrix]
+        # Unfreeze current layer's parameters
+        params_to_optimize = []
+        for p in linear_layer.parameters():
+            p.requires_grad_(True)
+            params_to_optimize.append(p)
+        projection_matrix.requires_grad_(True)
+        params_to_optimize.append(projection_matrix)
 
-        # Set requires_grad to True for only these parameters *before* optimizer creation
-        # (Although train_mf_layer also does this, doing it here ensures the optimizer sees them)
-        for p in model.parameters(): p.requires_grad_(False) # Freeze all first
-        for p in params_to_optimize: p.requires_grad_(True) # Enable W_{i+1} and M_{i+1}
-
-        # Create the optimizer for this specific layer
+        # Create optimizer for ONLY these parameters
         optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
         optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_i_kwargs)
-        # *** FIX END ***
 
-        # Call the training function for this layer
-        # It will handle the actual training steps and internal gradient settings
         final_avg_loss_layer_i, layer_i_peak_mem = train_mf_layer(
             model=model, layer_index=i, optimizer=optimizer, criterion=mf_criterion,
             train_loader=train_loader, epochs=epochs_per_layer, device=device,
             get_layer_input_fn=current_layer_input_fn, wandb_run=wandb_run, log_interval=log_interval,
-            step_ref=step_ref,
-            gpu_handle=gpu_handle, # Pass handle
-            nvml_active=nvml_active # Pass status
+            step_ref=step_ref, gpu_handle=gpu_handle, nvml_active=nvml_active
         )
-        peak_mem_train = max(peak_mem_train, layer_i_peak_mem) # Update overall peak
+        peak_mem_train = max(peak_mem_train, layer_i_peak_mem)
 
-        # Freeze parameters after training (train_mf_layer already does this, but redundant doesn't hurt)
-        for param in params_to_optimize: param.requires_grad_(False)
-        linear_layer.eval(); model.layers[i * 2 + 1].eval()
+        # Freeze parameters after training
+        for p in params_to_optimize:
+            p.requires_grad_(False)
+        linear_layer.eval(); act_layer.eval() # Ensure layers are in eval mode
 
         # Log layer summary after training
         current_global_step = step_ref[0]
@@ -408,21 +421,20 @@ def train_mf_model(
             )
 
         # Prepare input function for the *next* layer
-        # Need a closure to capture the correct layer index 'i'
         def create_next_input_fn(trained_layer_idx: int, previous_input_fn: Callable):
             lin_layer_k, act_layer_k = model.layers[trained_layer_idx*2], model.layers[trained_layer_idx*2+1]
             lin_layer_k.eval(); act_layer_k.eval() # Ensure they are in eval mode
             @torch.no_grad()
             def next_input_fn(img_batch: torch.Tensor) -> torch.Tensor:
                 a_prev = previous_input_fn(img_batch)
-                lin_layer_k.to(device); act_layer_k.to(device) # Ensure on device
+                lin_layer_k.to(device); act_layer_k.to(device) # Ensure device placement
                 a_current = act_layer_k(lin_layer_k(a_prev.to(device)))
                 return a_current.detach()
             return next_input_fn
         current_layer_input_fn = create_next_input_fn(i, current_layer_input_fn)
 
     logger.info("Finished all layer-wise MF training.")
-    model.eval()
+    model.eval() # Ensure model is in eval mode finally
     return peak_mem_train # Return overall peak memory
 
 
@@ -468,7 +480,8 @@ def evaluate_mf_model(
                 logger.error(f"Activation list len ({len(all_activations)}) too short for a_{last_activation_index}.")
                 continue
 
-            last_hidden_activation = all_activations[last_activation_index] # This is a_L
+            last_hidden_activation = all_activations[last_activation_index].to(device) # Ensure activation is on device
+            last_projection_matrix = last_projection_matrix.to(device) # Ensure matrix is on device
             goodness_scores = torch.matmul(last_hidden_activation, last_projection_matrix.t())
             predicted_labels = torch.argmax(goodness_scores, dim=1)
 
