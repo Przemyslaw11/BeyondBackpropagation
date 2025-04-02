@@ -126,9 +126,9 @@ def generate_ff_pos_neg_pixel_data(
     return pos_flattened_images, neg_flattened_images
 
 
-# --- train_ff_layer (MODIFIED) ---
+# --- train_ff_layer (MODIFIED - No code changes here, but uses modified `model` param from train_ff_model) ---
 def train_ff_layer(
-    model: FF_MLP,
+    model: FF_MLP, # <<< This is now used by train_ff_model's local calls
     layer_module: nn.Module,
     is_input_adapter_layer: bool,
     optimizer: optim.Optimizer,
@@ -143,8 +143,8 @@ def train_ff_layer(
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
 ) -> Tuple[float, float]: # Returns avg loss, peak memory
     """
     Trains a single effective layer (input adapter or subsequent FF_Layer) of the FF_MLP.
@@ -195,8 +195,8 @@ def train_ff_layer(
                 if is_input_adapter_layer:
                     pos_lin = layer_module(pos_activation_input)
                     neg_lin = layer_module(neg_activation_input)
-                    pos_act = model.first_layer_activation(pos_lin)
-                    neg_act = model.first_layer_activation(neg_lin)
+                    pos_act = model.first_layer_activation(pos_lin) # Use model reference here
+                    neg_act = model.first_layer_activation(neg_lin) # Use model reference here
                     pos_goodness = torch.sum(pos_act.pow(2), dim=1)
                     neg_goodness = torch.sum(neg_act.pow(2), dim=1)
                 else:
@@ -292,24 +292,24 @@ def train_ff_layer(
     return last_epoch_avg_loss, peak_mem_layer_train # Return last avg loss and peak mem for this layer's training
 
 
-# --- train_ff_model (MODIFIED) ---
+# --- train_ff_model (MODIFIED - Parameter name changed) ---
 def train_ff_model(
-    model_instance: FF_MLP,
+    model: FF_MLP, # <<< RENAMED from model_instance to model
     train_loader: DataLoader,
     config: Dict[str, Any],
     device: torch.device,
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None, # Added to match signature, though FF uses pixel embedding
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
 ) -> float: # Returns overall peak memory
     """
     Orchestrates the layer-wise training of an FF_MLP model using pixel label embedding.
     Logs layer summary metrics including peak memory for the layer.
     Returns the overall peak GPU memory observed across all layer training phases.
     """
-    model = model_instance
+    # model = model_instance # No need for this line anymore
     model.to(device)
     num_hidden_layers = len(model.hidden_dims)
     logger.info(
@@ -375,7 +375,7 @@ def train_ff_model(
 
         # Train the layer, get loss and peak memory for this layer
         final_avg_loss_layer_0, layer_0_peak_mem = train_ff_layer(
-            model=model,
+            model=model, # Pass the model reference here
             layer_module=layer_module_0,
             is_input_adapter_layer=True,
             optimizer=optimizer_0,
@@ -388,8 +388,8 @@ def train_ff_model(
             wandb_run=wandb_run,
             log_interval=log_interval,
             step_ref=step_ref,
-            gpu_handle=gpu_handle, # Pass handle
-            nvml_active=nvml_active # Pass status
+            gpu_handle=gpu_handle,
+            nvml_active=nvml_active
         )
         peak_mem_train = max(peak_mem_train, layer_0_peak_mem) # Update overall peak
 
@@ -405,7 +405,7 @@ def train_ff_model(
     layer_summary_metrics = {
         "global_step": current_global_step,
         f"FF/Layer_1/Train_Loss_LayerAvg": final_avg_loss_layer_0,
-        f"FF/Layer_1/Peak_GPU_Mem_Layer_MiB": layer_0_peak_mem, # Log layer peak mem
+        f"FF/Layer_1/Peak_GPU_Mem_Layer_MiB": layer_0_peak_mem,
     }
     log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
     logger.debug(f"Logged FF Layer 1 summary at global_step {current_global_step}")
@@ -437,7 +437,7 @@ def train_ff_model(
             optimizer_i = getattr(optim, optimizer_type)(params_i, **optimizer_i_kwargs)
 
             final_avg_loss_layer_i, layer_i_peak_mem = train_ff_layer(
-                model=model,
+                model=model, # Pass model reference here too
                 layer_module=ff_layer_module,
                 is_input_adapter_layer=False,
                 optimizer=optimizer_i,
@@ -450,8 +450,8 @@ def train_ff_model(
                 wandb_run=wandb_run,
                 log_interval=log_interval,
                 step_ref=step_ref,
-                gpu_handle=gpu_handle, # Pass handle
-                nvml_active=nvml_active # Pass status
+                gpu_handle=gpu_handle,
+                nvml_active=nvml_active
             )
             peak_mem_train = max(peak_mem_train, layer_i_peak_mem) # Update overall peak
 
@@ -464,7 +464,7 @@ def train_ff_model(
         layer_summary_metrics = {
             "global_step": current_global_step,
             f"FF/Layer_{layer_log_index}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
-            f"FF/Layer_{layer_log_index}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem, # Log layer peak
+            f"FF/Layer_{layer_log_index}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem,
         }
         log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.debug(f"Logged FF Layer {layer_log_index} summary at global_step {current_global_step}")
@@ -486,7 +486,7 @@ def train_ff_model(
 
 # --- evaluate_ff_model (no changes needed) ---
 def evaluate_ff_model(
-    model_instance: FF_MLP,
+    model: FF_MLP, # <<< RENAMED from model_instance
     data_loader: DataLoader,
     device: torch.device,
     **kwargs, # Accept potential criterion/adapter but ignore them
@@ -495,7 +495,7 @@ def evaluate_ff_model(
     Evaluates the trained FF_MLP model using multi-pass inference.
     Ignores criterion and input_adapter if passed.
     """
-    model = model_instance
+    # model = model_instance # No need for this line anymore
     model.eval()
     model.to(device)
     num_classes = model.num_classes
