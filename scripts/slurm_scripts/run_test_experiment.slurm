@@ -1,88 +1,70 @@
 #!/bin/bash
-#SBATCH --job-name=BBP_Experiment # Job name - will be prefixed with config later
+#SBATCH --job-name=BBP_Test # Job name - will be prefixed with config later
 #SBATCH --nodes=1                 # Request 1 node
 #SBATCH --ntasks-per-node=1       # Run 1 task (main Python script)
 #SBATCH --gres=gpu:1              # Request 1 GPU
 #SBATCH --cpus-per-task=16        # Allocate 16 CPUs (proportional for 1 A100)
 #SBATCH --mem=128000M             # Allocate 128GB RAM (proportional for 1 A100)
 #SBATCH --time=00:15:00           # Max walltime (15 minutes for test)
-#SBATCH -A plgoncotherapy-gpu-a100
+#SBATCH -A plgoncotherapy-gpu-a100 # !!! YOUR GRANT ACCOUNT !!!
 #SBATCH -p plgrid-gpu-a100        # PARTITION name for A100 nodes
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file (%x=jobname, %j=jobid)
 #SBATCH --error=slurm_logs/%x-%j.err  # Standard error log file
 
 # --- Configuration via Command Line Argument ---
-# The path to the configuration file should be passed as the first argument to sbatch
-# Example: sbatch scripts/slurm_scripts/run_single_experiment.slurm configs/ff/fashion_mnist_mlp_4x2000.yaml
+# Example: sbatch scripts/slurm_scripts/run_test_experiment.slurm configs/test/test_bp_fmnist_mlp_2x1000.yaml
 CONFIG_FILE="$1"
 
-# Check if CONFIG_FILE argument is provided
-if [ -z "$CONFIG_FILE" ]; then
-  echo "Error: No configuration file path provided as the first argument."
-  echo "Usage: sbatch $0 <path_to_config.yaml>"
-  exit 1
-fi
-
-# Check if CONFIG_FILE exists
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Configuration file not found at: $CONFIG_FILE"
-    exit 1
-fi
+if [ -z "$CONFIG_FILE" ]; then echo "Error: No configuration file path provided." >&2; exit 1; fi
+if [ ! -f "$CONFIG_FILE" ]; then echo "Error: Configuration file not found at: $CONFIG_FILE" >&2; exit 1; fi
 
 # --- Environment Setup ---
 echo "#####################################################################"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Job Name: $SLURM_JOB_NAME"
 echo "Running on host: $(hostname)"
-echo "Executing command in: $(pwd)"
+echo "Executing command in: $(pwd)" # Should be project root
 echo "Using config file: $CONFIG_FILE"
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
-# Set experiment name based on config file for potential use (e.g., logging)
-# Extract filename without extension: e.g., configs/ff/file.yaml -> file
+
 EXP_NAME=$(basename "$CONFIG_FILE" .yaml)
 echo "Derived Experiment Name: $EXP_NAME"
-# Note: To set the SLURM job name dynamically, use the --job-name flag during sbatch submission, e.g.:
-# sbatch --job-name="BBP_${EXP_NAME}" scripts/slurm_scripts/run_single_experiment.slurm "$CONFIG_FILE"
+# Dynamic job name via sbatch:
+# sbatch --job-name="TEST_${EXP_NAME}" scripts/slurm_scripts/run_test_experiment.slurm "$CONFIG_FILE"
 
-# Navigate to the submission directory (where the code is)
 cd $SLURM_SUBMIT_DIR || exit 1
 
-# Load necessary modules
 echo "Loading modules..."
 module purge # Start with a clean environment
-# CORRECTED module load lines:
-module load Python/3.10.4
-module load CUDA/12.4.0   # Use the latest compatible CUDA
+module load Python/3.10.4   # Use the SAME version
+module load CUDA/12.4.0     # Use the SAME version (Corrected)
 
 echo "Modules loaded:"
 module list
 
-# Activate the virtual environment
 echo "Activating virtual environment..."
-source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
+source venv/bin/activate || { echo "Failed to activate venv" >&2; exit 1; }
 
-# Set WANDB API Key if needed (alternative to setting in .bashrc)
-export WANDB_API_KEY="321695dfc1a5a783589b5b811486e75ce772082b"
+# Set WANDB API Key if needed (best practice: use env vars)
+export WANDB_API_KEY="321695dfc1a5a783589b5b811486e75ce772082b" # Your key included here
 
-# Check PyTorch and CUDA availability
 echo "Checking PyTorch CUDA..."
-python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN version: {torch.backends.cudnn.version()}')" || { echo "PyTorch check failed"; exit 1; }
+python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN version: {torch.backends.cudnn.version()}')" || { echo "PyTorch check failed" >&2; exit 1; }
 
 # --- Run the Experiment ---
-echo "Running the experiment script..."
-# Use srun for better resource management within the allocation
+echo "Running the TEST experiment script..."
+# Use srun for Slurm integration
 srun python scripts/run_experiment.py --config "$CONFIG_FILE"
 
-EXIT_CODE=$? # Capture the exit code of the python script
+EXIT_CODE=$?
 
 # --- Cleanup ---
 echo "Deactivating virtual environment..."
 deactivate
 
 echo "#####################################################################"
-echo "Job finished with exit code $EXIT_CODE"
-date
+echo "Test Job finished with exit code $EXIT_CODE at $(date)"
 echo "#####################################################################"
 
 exit $EXIT_CODE

@@ -1,5 +1,6 @@
 # File: configs/test/test_bp_fmnist_mlp_2x1000.yaml
 # Configuration for a QUICK TEST RUN of BP Baseline on Fashion-MNIST with 2x1000 MLP
+# No changes needed to fix the wandb step warning.
 
 # Inherit from base config (handled by config_parser)
 experiment_name: "TEST_bp_fmnist_mlp_2x1000" # Add TEST prefix
@@ -18,7 +19,7 @@ data:
 # Data Loader Configuration
 data_loader:
   batch_size: 128
-  num_workers: 4
+  num_workers: 4 # Can reduce to 0 or 1 for simpler debugging if needed
   pin_memory: true
 
 # Model Architecture Configuration (Identical structure to MF)
@@ -55,7 +56,7 @@ logging:
   # log_file: null # Will be set dynamically
   wandb:
     use_wandb: true
-    project: "BeyondBackpropagation" # Use a separate project for tests (optional)
+    project: "BeyondBackpropagation"
 
 # Monitoring/Profiling (Ensure enabled)
 monitoring:
