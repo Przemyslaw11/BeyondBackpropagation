@@ -2,9 +2,9 @@
 import wandb
 import os
 import logging
-from typing import Dict, Any, Optional, List  # Added List
-import sys  # For stdout handler
-
+from typing import Dict, Any, Optional, List
+import sys
+import time # Import time for fallback run name
 
 # --- Centralized Logging Setup ---
 def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
@@ -60,7 +60,6 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
     else:
         root_logger.info("Root logger already configured.")
 
-
 # Get logger instance *after* potential setup
 logger = logging.getLogger(__name__)
 
@@ -72,39 +71,22 @@ def setup_wandb(
     run_name: Optional[str] = None,
     notes: Optional[str] = None,
     tags: Optional[List[str]] = None,
-    job_type: str = "training",  # Added job_type
-) -> Optional["wandb.sdk.wandb_run.Run"]:  # Use quotes for type hint
+    job_type: str = "training",
+) -> Optional["wandb.sdk.wandb_run.Run"]:
     """
     Initializes a Weights & Biases run.
-
-    Args:
-        config: Dictionary containing the experiment configuration.
-        project_name: Name of the W&B project (fallback).
-        entity: W&B entity (username or team name). Reads from WANDB_ENTITY env var if None.
-        run_name: Optional name for the W&B run. If None, W&B generates one based on experiment_name.
-        notes: Optional notes for the W&B run.
-        tags: Optional list of tags for the W&B run.
-        job_type: Type of job (e.g., 'training', 'evaluation', 'tuning').
-
-    Returns:
-        The initialized W&B run object, or None if W&B is disabled or fails.
     """
-    # Check if W&B is enabled in config
     wandb_config = config.get("logging", {}).get("wandb", {})
     if not wandb_config.get("use_wandb", True):
         logger.info("Weights & Biases logging is disabled in the configuration.")
         return None
 
     try:
-        # Ensure API key is set (usually via environment variable WANDB_API_KEY)
         if not os.getenv("WANDB_API_KEY"):
             logger.warning(
                 "WANDB_API_KEY environment variable not set. W&B logging might fail or prompt."
             )
-            # You might choose to return None here if API key is strictly required
-            # return None
 
-        # Determine entity
         resolved_entity = (
             entity or os.getenv("WANDB_ENTITY") or wandb_config.get("entity")
         )
@@ -113,71 +95,66 @@ def setup_wandb(
                 "W&B entity not specified via args, config, or WANDB_ENTITY env var. Using W&B default."
             )
 
-        # Determine project name
         resolved_project = wandb_config.get("project", project_name)
-
-        # Determine run name (can be constructed from config for better identification)
         resolved_run_name = (
             run_name or wandb_config.get("run_name") or config.get("experiment_name")
-        )  # Use explicit, then config, then experiment name
+        )
         if not resolved_run_name:
-            resolved_run_name = f"run_{int(time.time())}"  # Fallback name
+            resolved_run_name = f"run_{int(time.time())}"
 
         run = wandb.init(
             project=resolved_project,
             entity=resolved_entity,
-            config=config,  # Log the entire configuration
+            config=config,
             name=resolved_run_name,
             notes=notes,
             tags=tags,
-            job_type=job_type,  # Log job type
+            job_type=job_type,
             reinit=True,
-            # Allow calling init multiple times, but manage state carefully
-            # E.g., use separate runs for optuna trials vs final run
-            # Consider setting WANDB_RUN_ID environment variable for resuming
         )
-        logger.info(f"Weights & Biases run initialized: {run.url}")
+        logger.info(f"Weights & Biases run initialized: {run.url if run else 'Failed'}")
         return run
     except ImportError:
-        logger.error(
-            "wandb library not found. Please install it (`pip install wandb`) to use W&B logging."
-        )
+        logger.error("wandb library not found. Install with `pip install wandb`")
         return None
     except Exception as e:
         logger.error(f"Failed to initialize Weights & Biases: {e}", exc_info=True)
         return None
 
 
+# --- MODIFIED log_metrics ---
 def log_metrics(
-    metrics: Dict[str, Any],
-    step: Optional[int] = None,
+    metrics: Dict[str, Any], # Expects metrics dictionary *including* 'global_step'
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
-    commit: bool = True,  # Allow controlling commit behavior
+    commit: bool = True,
 ):
     """
     Logs metrics to W&B (if enabled) and standard logger.
+    Assumes the 'global_step' key is present in the metrics dictionary.
 
     Args:
-        metrics: Dictionary of metric names and values.
-        step: Optional step number (e.g., epoch or batch number).
+        metrics: Dictionary of metric names and values, MUST include 'global_step'.
         wandb_run: The active W&B run object. If None, tries to use the global run.
         commit: If True (default), commits the log to W&B. Set to False to batch logs.
     """
     # Log to standard logger
+    step_val = metrics.get("global_step", "N/A") # Get step from dict
+    # Prepare string excluding the step itself for cleaner console log
     metrics_str = ", ".join(
         [
             f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
-            for k, v in metrics.items()
+            for k, v in metrics.items() if k != "global_step" # Exclude step here
         ]
     )
-    step_str = f"Step {step}: " if step is not None else ""
+    step_str = f"Step {step_val}: "
     logger.info(f"{step_str}{metrics_str}")
 
     # Log to W&B
     active_run = wandb_run or wandb.run
     if active_run:
         try:
-            active_run.log(metrics, step=step, commit=commit)
+            # Pass the full dictionary, W&B uses 'global_step' automatically due to define_metric
+            active_run.log(metrics, commit=commit)
         except Exception as e:
             logger.error(
                 f"Failed to log metrics to Weights & Biases: {e}", exc_info=True

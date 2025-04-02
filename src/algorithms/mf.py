@@ -1,3 +1,4 @@
+# File: src/algorithms/mf.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,17 +7,17 @@ import torch.nn.functional as F
 import logging
 from tqdm import tqdm
 from typing import Dict, Any, Optional, Callable, List, Tuple
-import os  # For checkpointing
-import time # For step timing
+import os
+import time
 
 from src.architectures.mf_mlp import MF_MLP
 from src.utils.metrics import calculate_accuracy
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, format_time  # Import format_time
+from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists # Added create_dir
 
 logger = logging.getLogger(__name__)
 
-
+# --- mf_local_loss_fn (no changes needed) ---
 def mf_local_loss_fn(
     activation_i: torch.Tensor,
     projection_matrix_i: nn.Parameter,
@@ -24,40 +25,42 @@ def mf_local_loss_fn(
     criterion: nn.Module = nn.CrossEntropyLoss(),
 ) -> torch.Tensor:
     """Calculates the Mono-Forward local cross-entropy loss for activation a_i using M_i."""
-    # G_i = a_i @ M_i^T  -> [B, N_i] @ [N_i, C] -> [B, C]
     goodness_scores_i = torch.matmul(activation_i, projection_matrix_i.t())
     loss = criterion(goodness_scores_i, targets)
     return loss
 
 
+# --- train_mf_matrix_only (MODIFIED) ---
 def train_mf_matrix_only(
     model: MF_MLP,
-    matrix_index: int,  # Should be 0 for M0
+    matrix_index: int,
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     train_loader: DataLoader,
     epochs: int,
     device: torch.device,
-    get_matrix_input_fn: Callable[[torch.Tensor], torch.Tensor],  # Function to get a_0
+    get_matrix_input_fn: Callable[[torch.Tensor], torch.Tensor],
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
-    max_step_tracker: Dict[str, int] = {"value": 0}, # Use dict for mutable tracking
-) -> None:
+    step_ref: List[int] = [-1], # MODIFIED: Use step_ref list
+) -> float: # Return avg loss
     """
-    Trains a single projection matrix (specifically M0) using local loss based on its corresponding activation (a0).
+    Trains a single projection matrix using local loss based on its corresponding activation.
+    MODIFIED: Accepts step_ref, logs batch metrics, returns avg loss.
     """
-    if matrix_index != 0:
-        logger.warning(f"train_mf_matrix_only called for index {matrix_index}, expected 0.")
+    if matrix_index < 0 or matrix_index >= len(model.projection_matrices):
+         raise IndexError(f"Matrix index {matrix_index} out of bounds.")
 
-    projection_matrix = model.get_projection_matrix(matrix_index)  # M_0
+    projection_matrix = model.get_projection_matrix(matrix_index)
+    # Ensure only this matrix requires grad for this phase
+    for p in model.parameters(): p.requires_grad_(False)
     projection_matrix.requires_grad_(True)
     model.to(device)
-    model.eval()
+    model.eval() # Keep model blocks in eval mode
 
     logger.info(f"Starting MF training for Projection Matrix M_{matrix_index}")
 
-    total_steps_per_epoch = len(train_loader)
-    global_step_offset = 0 # M0 training happens first
+    final_avg_epoch_loss = float('nan')
 
     for epoch in range(epochs):
         epoch_loss = 0.0
@@ -65,8 +68,12 @@ def train_mf_matrix_only(
             train_loader, desc=f"M{matrix_index} Epoch {epoch+1}/{epochs}", leave=False
         )
         for batch_idx, (images, labels) in enumerate(pbar):
+            step_ref[0] += 1 # MODIFIED: Increment global step
+            current_global_step = step_ref[0]
+
             images, labels = images.to(device), labels.to(device)
-            activation_a_i = get_matrix_input_fn(images).detach() # Get a_0
+            # Use the provided function to get the correct activation (a_i)
+            activation_a_i = get_matrix_input_fn(images).detach()
             loss = mf_local_loss_fn(activation_a_i, projection_matrix, labels, criterion)
 
             if torch.isnan(loss) or torch.isinf(loss):
@@ -78,36 +85,32 @@ def train_mf_matrix_only(
             optimizer.step()
 
             epoch_loss += loss.item()
-            current_global_step = (
-                global_step_offset + epoch * total_steps_per_epoch + batch_idx + 1 # 1-based batch index
-            )
-            max_step_tracker["value"] = max(max_step_tracker["value"], current_global_step) # Update tracker
 
-            if (batch_idx + 1) % log_interval == 0 or batch_idx == total_steps_per_epoch - 1:
+            if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(loss=f"{avg_loss_batch:.6f}")
-                metrics = {f"Layer_M{matrix_index}/Train_Loss_Batch": avg_loss_batch}
-                log_metrics(metrics, step=current_global_step, wandb_run=wandb_run)
+                # MODIFIED: Add global_step to metrics dict
+                metrics_to_log = {
+                    "global_step": current_global_step,
+                    f"Layer_M{matrix_index}/Train_Loss_Batch": avg_loss_batch
+                }
+                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True) # Pass full dict
 
         if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
             logger.error(f"Terminating M{matrix_index} training due to invalid loss.")
-            break
+            break # Exit epoch loop
 
-        avg_epoch_loss = epoch_loss / total_steps_per_epoch if total_steps_per_epoch > 0 else 0.0
-        epoch_end_step = global_step_offset + (epoch + 1) * total_steps_per_epoch
-        max_step_tracker["value"] = max(max_step_tracker["value"], epoch_end_step) # Update tracker
-
-        logger.info(f"Matrix M{matrix_index} Epoch {epoch+1}/{epochs} - Avg Local Loss: {avg_epoch_loss:.6f}")
-        log_metrics(
-            {f"Layer_M{matrix_index}/Train_Loss_Epoch": avg_epoch_loss},
-            step=epoch_end_step, # Log at correct end step
-            wandb_run=wandb_run,
-        )
+        # Calculate average loss for the epoch
+        final_avg_epoch_loss = epoch_loss / len(train_loader) if len(train_loader) > 0 else 0.0
+        logger.info(f"Matrix M{matrix_index} Epoch {epoch+1}/{epochs} - Avg Local Loss: {final_avg_epoch_loss:.6f}")
+        # --- REMOVED epoch summary logging from here ---
 
     logger.info(f"Finished MF training for Matrix M_{matrix_index}")
     projection_matrix.requires_grad_(False)
+    return final_avg_epoch_loss # Return the average loss of the last completed epoch
 
 
+# --- train_mf_layer (MODIFIED) ---
 def train_mf_layer(
     model: MF_MLP,
     layer_index: int,  # Index i=0..L-1. Trains W_{i+1} and M_{i+1}.
@@ -119,11 +122,15 @@ def train_mf_layer(
     get_layer_input_fn: Callable[[torch.Tensor], torch.Tensor],  # Function to get a_i
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
-    max_step_tracker: Dict[str, int] = {"value": 0}, # Use dict for mutable tracking
-) -> None:
+    step_ref: List[int] = [-1], # MODIFIED: Use step_ref list
+) -> float: # Return avg loss
     """
     Trains a single layer 'i+1' (W_{i+1} and M_{i+1}) of an MF_MLP using local loss.
+    MODIFIED: Accepts step_ref, logs batch metrics, returns avg loss.
     """
+    if not (0 <= layer_index < model.num_hidden_layers):
+        raise IndexError(f"Layer index {layer_index} out of bounds.")
+
     linear_layer_idx = layer_index * 2
     act_layer_idx = layer_index * 2 + 1
     proj_matrix_idx = layer_index + 1
@@ -134,17 +141,20 @@ def train_mf_layer(
     act_layer = model.layers[act_layer_idx]  # sigma_{i+1}
     projection_matrix = model.get_projection_matrix(proj_matrix_idx)  # M_{i+1}
 
+    # Ensure only W_{i+1} and M_{i+1} require gradients
+    for p in model.parameters(): p.requires_grad_(False)
+    for p in linear_layer.parameters(): p.requires_grad_(True)
+    projection_matrix.requires_grad_(True)
+
+    model.to(device)
+    # Set layers to train, others to eval
     model.eval()
     linear_layer.train()
-    act_layer.train()
-    projection_matrix.requires_grad_(True)
-    model.to(device)
+    act_layer.train() # Activation doesn't have params but adheres to train/eval state
 
     logger.info(f"Starting MF training for Layer W_{w_layer_log_idx} / Matrix M_{m_matrix_log_idx}")
 
-    total_steps_per_epoch = len(train_loader)
-    # Correct offset: Accounts for M0 training AND previous W/M layers
-    global_step_offset = (layer_index + 1) * epochs * total_steps_per_epoch
+    final_avg_epoch_loss = float('nan')
 
     for epoch in range(epochs):
         epoch_loss = 0.0
@@ -154,6 +164,9 @@ def train_mf_layer(
             leave=False,
         )
         for batch_idx, (images, labels) in enumerate(pbar):
+            step_ref[0] += 1 # MODIFIED: Increment global step
+            current_global_step = step_ref[0]
+
             images, labels = images.to(device), labels.to(device)
             prev_activation_a_i = get_layer_input_fn(images).detach() # Get a_i
             pre_activation_z_next = linear_layer(prev_activation_a_i) # z_{i+1}
@@ -169,38 +182,33 @@ def train_mf_layer(
             optimizer.step() # Updates W_{i+1} and M_{i+1}
 
             epoch_loss += loss.item()
-            current_global_step = (
-                global_step_offset + epoch * total_steps_per_epoch + batch_idx + 1 # 1-based batch index
-            )
-            max_step_tracker["value"] = max(max_step_tracker["value"], current_global_step) # Update tracker
 
-            if (batch_idx + 1) % log_interval == 0 or batch_idx == total_steps_per_epoch - 1:
+            if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(loss=f"{avg_loss_batch:.6f}")
-                metrics = {f"Layer_M{m_matrix_log_idx}/Train_Loss_Batch": avg_loss_batch}
-                log_metrics(metrics, step=current_global_step, wandb_run=wandb_run)
+                # MODIFIED: Add global_step to metrics dict
+                metrics_to_log = {
+                    "global_step": current_global_step,
+                    f"Layer_M{m_matrix_log_idx}/Train_Loss_Batch": avg_loss_batch
+                }
+                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True) # Pass full dict
 
         if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
             logger.error(f"Terminating W{w_layer_log_idx}/M{m_matrix_log_idx} training due to invalid loss.")
-            break
+            break # Exit epoch loop
 
-        avg_epoch_loss = epoch_loss / total_steps_per_epoch if total_steps_per_epoch > 0 else 0.0
-        epoch_end_step = global_step_offset + (epoch + 1) * total_steps_per_epoch
-        max_step_tracker["value"] = max(max_step_tracker["value"], epoch_end_step) # Update tracker
-
-        logger.info(f"Layer (W{w_layer_log_idx}/M{m_matrix_log_idx}) Epoch {epoch+1}/{epochs} - Avg Local Loss: {avg_epoch_loss:.6f}")
-        log_metrics(
-            {f"Layer_M{m_matrix_log_idx}/Train_Loss_Epoch": avg_epoch_loss},
-            step=epoch_end_step, # Log at correct end step
-            wandb_run=wandb_run,
-        )
+        final_avg_epoch_loss = epoch_loss / len(train_loader) if len(train_loader) > 0 else 0.0
+        logger.info(f"Layer (W{w_layer_log_idx}/M{m_matrix_log_idx}) Epoch {epoch+1}/{epochs} - Avg Local Loss: {final_avg_epoch_loss:.6f}")
+        # --- REMOVED epoch summary logging from here ---
 
     logger.info(f"Finished MF training for Layer (W{w_layer_log_idx}/M{m_matrix_log_idx})")
     linear_layer.eval()
     act_layer.eval()
     projection_matrix.requires_grad_(False)
+    return final_avg_epoch_loss # Return the average loss of the last completed epoch
 
 
+# --- train_mf_model (MODIFIED) ---
 def train_mf_model(
     model: MF_MLP,
     train_loader: DataLoader,
@@ -208,10 +216,11 @@ def train_mf_model(
     device: torch.device,
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None,
-    max_step_tracker: Dict[str, int] = {"value": 0}, # Pass down tracker
+    step_ref: List[int] = [-1], # MODIFIED: Accept step_ref
 ):
     """
     Orchestrates the layer-wise training of an MF_MLP model.
+    MODIFIED: Logs layer summary metrics.
     """
     model.to(device)
     num_hidden_layers = model.num_hidden_layers
@@ -219,12 +228,10 @@ def train_mf_model(
 
     algo_config = config.get("algorithm_params", config.get("training", {}))
     optimizer_name = algo_config.get("optimizer_type", "Adam")
-    # Correctly access nested optimizer params
-    optimizer_params_config = algo_config  # Use algo_config directly for LR/WD
+    optimizer_params_config = algo_config
     lr = optimizer_params_config.get("lr", 0.001)
     weight_decay = optimizer_params_config.get("weight_decay", 0.0)
-    # Extract other params from the MAIN algo_config level if needed, not nested optimizer_params
-    optimizer_extra_kwargs = {} # Example: {k: v for k, v in algo_config.items() if k not in ['lr', 'weight_decay', 'optimizer_type', 'epochs_per_layer', etc...]}
+    optimizer_extra_kwargs = {}
 
     epochs_per_layer = algo_config.get("epochs_per_layer", 5)
     log_interval = algo_config.get("log_interval", 100)
@@ -232,26 +239,45 @@ def train_mf_model(
     mf_criterion = nn.CrossEntropyLoss()
 
     def get_a0_input(img_batch):
-        adapted_input = input_adapter(img_batch) if input_adapter else img_batch
+        # Apply adapter if provided (typically flattening)
+        adapted_input = input_adapter(img_batch) if input_adapter else img_batch.view(img_batch.shape[0], -1)
         return adapted_input.to(device)
 
     logger.info("--- Training Projection Matrix M_0 ---")
     projection_matrix_0 = model.get_projection_matrix(0)
-    optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
     params_m0 = [projection_matrix_0]
-    if not any(p.requires_grad for p in params_m0):
+    if not any(p.requires_grad for p in params_m0): # Check if requires_grad is already False
         logger.warning("M_0 does not require gradients. Skipping training.")
+        # Log a placeholder loss or skip logging for this layer
+        current_global_step = step_ref[0] # Step doesn't advance if skipped
+        layer_summary_metrics = {
+            "global_step": current_global_step,
+            f"Layer_M0/Train_Loss_LayerAvg": float('nan'),
+        }
+        log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
+
     else:
+        optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
         optimizer_0 = getattr(optim, optimizer_name)(params_m0, **optimizer_0_kwargs)
-        train_mf_matrix_only(
+        final_avg_loss_m0 = train_mf_matrix_only(
             model=model, matrix_index=0, optimizer=optimizer_0, criterion=mf_criterion,
             train_loader=train_loader, epochs=epochs_per_layer, device=device,
             get_matrix_input_fn=get_a0_input, wandb_run=wandb_run, log_interval=log_interval,
-            max_step_tracker=max_step_tracker, # Pass tracker
+            step_ref=step_ref, # Pass step_ref
         )
+        # MODIFIED: Log layer summary after training completes
+        current_global_step = step_ref[0]
+        layer_summary_metrics = {
+            "global_step": current_global_step,
+            f"Layer_M0/Train_Loss_LayerAvg": final_avg_loss_m0,
+        }
+        log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
+        logger.debug(f"Logged MF Layer M0 summary at global_step {current_global_step}")
+
         if checkpoint_dir:
+            create_directory_if_not_exists(checkpoint_dir) # Ensure dir exists
             save_checkpoint(
-                state={"state_dict": model.state_dict(), "layer_trained_index": -1},
+                state={"state_dict": model.state_dict(), "layer_trained_index": -1}, # Use -1 for M0
                 is_best=False, filename="mf_matrix_M0_complete.pth", checkpoint_dir=checkpoint_dir,
             )
 
@@ -264,10 +290,24 @@ def train_mf_model(
 
         linear_layer = model.layers[i * 2]
         projection_matrix = model.get_projection_matrix(i + 1)
+        # Ensure grads are enabled before creating optimizer
+        for p in linear_layer.parameters(): p.requires_grad_(True)
+        projection_matrix.requires_grad_(True)
+
         params_to_optimize = list(linear_layer.parameters()) + [projection_matrix]
 
+        # Check if there are actually parameters requiring gradients
         if not any(p.requires_grad for p in params_to_optimize):
-            logger.warning(f"Skipping W{w_layer_log_idx}/M{m_matrix_log_idx}: No grads.")
+            logger.warning(f"Skipping W{w_layer_log_idx}/M{m_matrix_log_idx}: No parameters require gradients.")
+            # Log placeholder loss
+            current_global_step = step_ref[0] # Step doesn't advance
+            layer_summary_metrics = {
+                "global_step": current_global_step,
+                f"Layer_M{m_matrix_log_idx}/Train_Loss_LayerAvg": float('nan'),
+            }
+            log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
+
+            # Define the next input function even if skipped
             def create_next_input_fn_skip(trained_layer_idx: int, previous_input_fn: Callable):
                 lin_layer_k, act_layer_k = model.layers[trained_layer_idx*2], model.layers[trained_layer_idx*2+1]
                 lin_layer_k.eval(); act_layer_k.eval()
@@ -277,34 +317,48 @@ def train_mf_model(
                     return a_current.detach()
                 return next_input_fn
             current_layer_input_fn = create_next_input_fn_skip(i, current_layer_input_fn)
-            continue
+            continue # Skip to next layer
 
         optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_extra_kwargs}
         optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_i_kwargs)
 
-        train_mf_layer(
+        final_avg_loss_layer_i = train_mf_layer(
             model=model, layer_index=i, optimizer=optimizer, criterion=mf_criterion,
             train_loader=train_loader, epochs=epochs_per_layer, device=device,
             get_layer_input_fn=current_layer_input_fn, wandb_run=wandb_run, log_interval=log_interval,
-            max_step_tracker=max_step_tracker, # Pass tracker
+            step_ref=step_ref, # Pass step_ref
         )
 
-        for param in params_to_optimize: param.requires_grad = False
+        # MODIFIED: Log layer summary after training completes
+        current_global_step = step_ref[0]
+        layer_summary_metrics = {
+            "global_step": current_global_step,
+            f"Layer_M{m_matrix_log_idx}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
+        }
+        log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
+        logger.debug(f"Logged MF Layer W{w_layer_log_idx}/M{m_matrix_log_idx} summary at global_step {current_global_step}")
+
+
+        # Freeze parameters after training
+        for param in params_to_optimize: param.requires_grad_(False)
         linear_layer.eval(); model.layers[i * 2 + 1].eval()
 
         if checkpoint_dir:
+            create_directory_if_not_exists(checkpoint_dir) # Ensure dir exists
             chkpt_filename = f"mf_hidden_layer_W{w_layer_log_idx}_M{m_matrix_log_idx}_complete.pth"
             save_checkpoint(
                 state={"state_dict": model.state_dict(), "layer_trained_index": i},
                 is_best=False, filename=chkpt_filename, checkpoint_dir=checkpoint_dir,
             )
 
+        # Prepare input function for the *next* layer
         def create_next_input_fn(trained_layer_idx: int, previous_input_fn: Callable):
             lin_layer_k, act_layer_k = model.layers[trained_layer_idx*2], model.layers[trained_layer_idx*2+1]
-            lin_layer_k.eval(); act_layer_k.eval()
+            lin_layer_k.eval(); act_layer_k.eval() # Ensure they are in eval mode
             @torch.no_grad()
             def next_input_fn(img_batch: torch.Tensor) -> torch.Tensor:
-                a_prev = previous_input_fn(img_batch); a_current = act_layer_k(lin_layer_k(a_prev))
+                a_prev = previous_input_fn(img_batch)
+                a_current = act_layer_k(lin_layer_k(a_prev))
                 return a_current.detach()
             return next_input_fn
         current_layer_input_fn = create_next_input_fn(i, current_layer_input_fn)
@@ -313,29 +367,31 @@ def train_mf_model(
     model.eval()
 
 
+# --- evaluate_mf_model (no changes needed) ---
 def evaluate_mf_model(
     model: MF_MLP,
     data_loader: DataLoader,
     device: torch.device,
-    criterion: Optional[nn.Module] = None,
+    criterion: Optional[nn.Module] = None, # Keep signature consistent
     input_adapter: Optional[Callable] = None,
 ) -> Dict[str, float]:
     """
     Evaluates the trained MF_MLP model using the paper's "BP-style" approach.
+    Uses the activation from the last hidden layer (a_L) and the last projection matrix (M_L).
     """
     model.eval()
     model.to(device)
     total_correct, total_samples = 0, 0
     num_hidden_layers = model.num_hidden_layers
-    last_activation_index = num_hidden_layers
-    last_projection_matrix_index = num_hidden_layers
+    last_activation_index = num_hidden_layers # a_L is at index L
+    last_projection_matrix_index = num_hidden_layers # M_L is at index L
 
     logger.info(
-        f"Evaluating MF model using a_{last_activation_index} and M_{last_projection_matrix_index}."
+        f"Evaluating MF model using activation a_{last_activation_index} and matrix M_{last_projection_matrix_index}."
     )
 
     if last_projection_matrix_index >= len(model.projection_matrices):
-        logger.error(f"Index M_{last_projection_matrix_index} out of bounds.")
+        logger.error(f"Index M_{last_projection_matrix_index} out of bounds ({len(model.projection_matrices)} matrices exist).")
         return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
 
     last_projection_matrix = model.get_projection_matrix(last_projection_matrix_index)
@@ -344,14 +400,16 @@ def evaluate_mf_model(
         pbar = tqdm(data_loader, desc="Evaluating MF (BP-style)", leave=False)
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
-            eval_input = input_adapter(images) if input_adapter else images
+            # Apply input adapter (flattening) before getting activations
+            eval_input = input_adapter(images) if input_adapter else images.view(images.shape[0], -1)
+
             all_activations = model.forward_with_intermediate_activations(eval_input)
 
             if len(all_activations) <= last_activation_index:
                 logger.error(f"Activation list len ({len(all_activations)}) too short for a_{last_activation_index}.")
                 continue
 
-            last_hidden_activation = all_activations[last_activation_index]
+            last_hidden_activation = all_activations[last_activation_index] # This is a_L
             goodness_scores = torch.matmul(last_hidden_activation, last_projection_matrix.t())
             predicted_labels = torch.argmax(goodness_scores, dim=1)
 
@@ -360,5 +418,6 @@ def evaluate_mf_model(
 
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
     logger.info(f"MF Evaluation Results (BP-style): Accuracy: {accuracy:.2f}%")
+    # MF evaluation doesn't typically calculate a loss in this manner
     results = {"eval_accuracy": accuracy, "eval_loss": float("nan")}
     return results

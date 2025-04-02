@@ -38,7 +38,7 @@ optimizer:
 
 # Training Configuration (REDUCED FOR TEST)
 training:
-  epochs: 2 # Run only 2 epochs for a quick test
+  epochs: 5 # Run only 2 epochs for a quick test
   criterion: "CrossEntropyLoss"
   log_interval: 10 # Log more frequently during test
 

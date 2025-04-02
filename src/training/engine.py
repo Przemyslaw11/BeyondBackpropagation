@@ -6,7 +6,7 @@ import time
 import os
 import contextlib
 import pynvml
-from typing import Dict, Any, Optional, Tuple, Callable
+from typing import Dict, Any, Optional, Tuple, Callable, List # Added List
 
 from src.utils.config_parser import load_config
 from src.utils.helpers import set_seed, create_directory_if_not_exists, format_time
@@ -26,7 +26,7 @@ from src.algorithms import (
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function remains the same ---
+# --- get_model_and_adapter function (no changes needed here) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[
@@ -128,18 +128,21 @@ def get_model_and_adapter(
     return model, input_adapter
 
 
+# --- run_training (MODIFIED) ---
 def run_training(
     config: Dict[str, Any], wandb_run: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
     Runs the full training and evaluation pipeline for one experiment configuration.
+    MODIFIED: Uses define_metric and passes step_ref.
     """
     results = {}
     nvml_active = False
     gpu_handle = None
     monitor = None
     run_start_time = time.time()
-    max_step_tracker = {"value": -1} # Use dict for mutable tracking
+    # MODIFIED: Use a list to pass step by reference
+    step_ref = [-1] # Start at -1 so first increment makes it 0
 
     try:
         # --- Setup ---
@@ -159,9 +162,21 @@ def run_training(
         if wandb_run is None:
             wandb_run = setup_wandb(config, job_type="training")
 
+        # --- Define W&B Metric AFTER init --- *** MODIFIED ***
+        if wandb_run:
+            try:
+                # Define "global_step" as the primary x-axis.
+                wandb_run.define_metric("global_step", summary="max") # Track the max step reached
+                # Define that all other metrics use "global_step" as their x-axis.
+                wandb_run.define_metric("*", step_metric="global_step")
+                logger.info("Defined 'global_step' as the default x-axis metric for W&B.")
+            except Exception as e_define:
+                logger.error(f"Failed to define W&B metric 'global_step': {e_define}")
+        # --- End W&B Metric Definition ---
+
         # --- Monitoring Initialization ---
         monitoring_config = config.get("monitoring", {})
-        initial_metrics_step_0 = {} # Accumulate step 0 metrics
+        initial_metrics = {} # Accumulate initial metrics
         if device.type == "cuda":
             if init_nvml():
                 nvml_active = True
@@ -170,7 +185,7 @@ def run_training(
                 if gpu_handle:
                     logger.info(f"NVML active for GPU {gpu_index}.")
                     mem_info_start = get_gpu_memory_usage(gpu_handle)
-                    if mem_info_start: initial_metrics_step_0["initial_gpu_mem_used_mib"] = mem_info_start[0]
+                    if mem_info_start: initial_metrics["initial_gpu_mem_used_mib"] = mem_info_start[0]
                     if monitoring_config.get("energy_enabled", True):
                         monitor = GPUEnergyMonitor(
                             device_index=gpu_index,
@@ -203,8 +218,8 @@ def run_training(
         try:
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             num_total_params = sum(p.numel() for p in model.parameters())
-            initial_metrics_step_0["model_parameters_trainable"] = num_params
-            initial_metrics_step_0["model_parameters_total"] = num_total_params
+            initial_metrics["model_parameters_trainable"] = num_params
+            initial_metrics["model_parameters_total"] = num_total_params
             logger.info(f"Model trainable parameters: {num_params:,}")
             logger.info(f"Model total parameters: {num_total_params:,}")
         except Exception as e: logger.warning(f"Could not count model parameters: {e}")
@@ -222,20 +237,19 @@ def run_training(
                 gmacs = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))
                 if gmacs is not None:
                     results["estimated_gmacs"] = gmacs; results["estimated_gflops"] = gmacs * 2.0
-                    initial_metrics_step_0["estimated_gmacs"] = gmacs
-                    initial_metrics_step_0["estimated_gflops"] = results["estimated_gflops"]
+                    initial_metrics["estimated_gmacs"] = gmacs
+                    initial_metrics["estimated_gflops"] = results["estimated_gflops"]
                     logger.info(f"Estimated GFLOPs (2*GMACs): {results['estimated_gflops']:.4f} G")
                 else: logger.warning("FLOPs profiling failed.")
             except StopIteration: logger.warning("Empty DataLoader for FLOPs profiling.")
             except Exception as e: logger.error(f"FLOPs profiling failed: {e}", exc_info=True)
 
-        # --- Log all initial metrics at step 0 ---
-        if initial_metrics_step_0:
-             logger.debug(f"Logging initial metrics at step 0: {initial_metrics_step_0.keys()}")
-             log_metrics(initial_metrics_step_0, step=0, wandb_run=wandb_run, commit=True) # Explicit commit
-             max_step_tracker["value"] = max(max_step_tracker["value"], 0)
-             # Add a small delay IF warnings persist, but avoid if possible
-             # time.sleep(0.1)
+        # --- Log all initial metrics at step 0 --- *** MODIFIED ***
+        if initial_metrics:
+             step_ref[0] = 0 # Explicitly set step 0
+             metrics_to_log = {"global_step": step_ref[0], **initial_metrics}
+             logger.debug(f"Logging initial metrics at global_step {step_ref[0]}: {initial_metrics.keys()}")
+             log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
         # --- Training ---
         logger.info("Starting training phase...")
@@ -246,25 +260,31 @@ def run_training(
         train_loop_start_time = time.time()
         total_energy_joules = None
 
+        # *** MODIFIED: Pass step_ref list ***
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
             training_args = {
                 "model": model, "train_loader": train_loader, "config": config,
                 "device": device, "wandb_run": wandb_run,
-                "max_step_tracker": max_step_tracker # Pass the tracker
+                "step_ref": step_ref # Pass the list reference
             }
+            # Add algorithm specific args
             if algorithm_name == "bp":
                 training_args["val_loader"] = val_loader
                 training_args["input_adapter"] = input_adapter
             elif algorithm_name in ["mf", "ff", "cafo"]:
+                # Add input adapter if needed by these algos
                 training_args["input_adapter"] = input_adapter
+
+            # Call the training function
             training_fn(**training_args)
+
+            # Retrieve the final step count (already updated in step_ref)
 
         # --- Post-Training Monitoring ---
         train_loop_duration = time.time() - train_loop_start_time
         results["training_duration_sec"] = train_loop_duration
-        # Calculate step AFTER training is fully complete
-        final_summary_step = max_step_tracker["value"] + 1
-        logger.debug(f"Training loop complete. Max step recorded: {max_step_tracker['value']}. Final summary step: {final_summary_step}")
+        final_summary_step = step_ref[0] + 1 # Step for final summary *** MODIFIED ***
+        logger.debug(f"Training loop complete. Final global_step: {step_ref[0]}. Final summary step: {final_summary_step}")
 
         if monitor:
             total_energy_joules = monitor.get_total_energy_joules()
@@ -279,28 +299,40 @@ def run_training(
             try:
                 peak_gpu_mem = float('nan')
                 try:
+                    # Try nvmlDeviceGetMaxMemoryUsage first
                     peak_mem_info = pynvml.nvmlDeviceGetMaxMemoryUsage(gpu_handle)
                     peak_gpu_mem_nvml = peak_mem_info / (1024**2)
                     logger.info(f"Peak GPU Memory Usage (NVML Max): {peak_gpu_mem_nvml:.2f} MiB")
                     peak_gpu_mem = peak_gpu_mem_nvml
                 except (pynvml.NVMLError_NotSupported, AttributeError):
+                    # Fallback: Use current memory usage at the end as proxy
                     logger.warning("Direct peak memory query not supported.")
                     mem_info_end = get_gpu_memory_usage(gpu_handle)
-                    if mem_info_end: peak_gpu_mem = mem_info_end[0]; logger.warning(f"Using mem at end proxy: {peak_gpu_mem:.2f} MiB")
-                except pynvml.NVMLError as e_nvml: logger.error(f"NVML Error peak mem: {e_nvml}")
-                except Exception as e_mem_peak: logger.error(f"Unexpected error peak mem: {e_mem_peak}")
+                    if mem_info_end:
+                        peak_gpu_mem = mem_info_end[0]
+                        logger.warning(f"Using mem at end as proxy for peak: {peak_gpu_mem:.2f} MiB")
+                    else:
+                        logger.error("Failed to get end-of-run memory usage as fallback.")
+                        peak_gpu_mem = float('nan')
+                except pynvml.NVMLError as e_nvml:
+                    logger.error(f"NVML Error getting peak memory: {e_nvml}")
+                    peak_gpu_mem = float('nan')
+                except Exception as e_mem_peak:
+                    logger.error(f"Unexpected error getting peak memory: {e_mem_peak}")
+                    peak_gpu_mem = float('nan')
 
-                # Use torch.tensor for isnan check
+                # Use torch.tensor for robust isnan check
                 if not torch.isnan(torch.tensor(peak_gpu_mem)):
                     results["peak_gpu_mem_used_mib"] = peak_gpu_mem
                 else:
-                    results["peak_gpu_mem_used_mib"] = float("nan") # Ensure it's nan if check fails
+                    results["peak_gpu_mem_used_mib"] = float("nan")
                     logger.warning("Peak GPU memory value is NaN, recording NaN.")
 
                 mem_info_end = get_gpu_memory_usage(gpu_handle)
                 if mem_info_end: logger.info(f"GPU Mem (End): {mem_info_end[0]:.2f} MiB Used / {mem_info_end[1]:.2f} MiB Total")
 
             except Exception as e_mem: logger.error(f"Failed to get memory usage: {e_mem}", exc_info=True)
+
 
         # --- Evaluation ---
         logger.info("Starting evaluation phase on test set...")
@@ -341,18 +373,20 @@ def run_training(
         logger.critical(f"\n--- Experiment Failed ---")
         logger.critical(f"Error during run: {e}", exc_info=True)
         results["error"] = str(e)
-        if wandb_run and wandb_run.finish:
+        if wandb_run and hasattr(wandb_run, 'finish'): # Check if finish method exists
             try: wandb_run.finish(exit_code=1); logger.info("W&B run finished with error.")
             except Exception as e_wandb: logger.error(f"Error finishing W&B after exception: {e_wandb}")
+        # Re-raise the exception after attempting to finish W&B run
         raise e
     finally:
-        # --- Final Summary Logging (Single Call) ---
+        # --- Final Summary Logging (Single Call) --- *** MODIFIED ***
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
-        final_summary_step = max_step_tracker["value"] + 1 # Use the final tracked step + 1
+        # Use the final_summary_step calculated after training loop
         logger.debug(f"Final summary logging step: {final_summary_step}")
 
         final_summary_metrics = {
+            "global_step": final_summary_step, # Add step here
             "final/total_run_duration_sec": total_run_time,
             "final/peak_gpu_mem_used_mib": results.get("peak_gpu_mem_used_mib", float("nan")),
             "final/total_gpu_energy_joules": results.get("total_gpu_energy_joules", float("nan")),
@@ -363,17 +397,16 @@ def run_training(
             "final/estimated_gflops": results.get("estimated_gflops", float("nan")),
             "final/estimated_gmacs": results.get("estimated_gmacs", float("nan")),
         }
-        # Add previously logged test metrics here too if needed for the summary table, prefixing them
-        # final_summary_metrics["final/Test_Loss_Dup"] = results.get("test_loss", float("nan")) # Example if needed elsewhere
-        # final_summary_metrics["final/Test_Accuracy_Dup"] = results.get("test_accuracy", float("nan"))
+        # Filter out potential NaN values before logging to W&B if needed
+        # final_summary_metrics_clean = {k: v for k, v in final_summary_metrics.items() if not (isinstance(v, float) and torch.isnan(torch.tensor(v)))}
 
-        # Log all final summary metrics in a single call at the final step
-        log_metrics(final_summary_metrics, step=final_summary_step, wandb_run=wandb_run, commit=True)
+        # Log all final summary metrics in a single call
+        log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
 
         logger.info(f"Total run duration: {format_time(total_run_time)}")
         # NVML shutdown handled by atexit
 
-        if wandb_run and wandb_run.finish and results.get("error") is None and os.environ.get("WANDB_MODE") != "offline":
+        if wandb_run and hasattr(wandb_run, 'finish') and results.get("error") is None and os.environ.get("WANDB_MODE") != "offline":
             try:
                 wandb_run.finish() # Finish should commit automatically
                 logger.info("W&B run finished.")

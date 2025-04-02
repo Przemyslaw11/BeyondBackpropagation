@@ -1,21 +1,22 @@
+# File: src/algorithms/cafo.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import logging
 from tqdm import tqdm
-from typing import Dict, Any, Optional, Callable, List, Type
-import os  # For checkpointing
-import time # For step timing
+from typing import Dict, Any, Optional, Callable, List, Type, Tuple # Added List, Tuple
+import os
+import time
 
 from src.architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
 from src.utils.metrics import calculate_accuracy
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint  # Import checkpoint helper
+from src.utils.helpers import save_checkpoint, create_directory_if_not_exists # Added create_dir
 
 logger = logging.getLogger(__name__)
 
-
+# --- train_cafo_predictor_only (MODIFIED) ---
 def train_cafo_predictor_only(
     block: CaFoBlock,
     predictor: CaFoPredictor,
@@ -27,11 +28,12 @@ def train_cafo_predictor_only(
     get_block_input_fn: Callable[[torch.Tensor], torch.Tensor],
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
-    block_index: int = 0,  # For logging and W&B step offset
-    max_step_tracker: Dict[str, int] = {"value": 0}, # Use dict for mutable tracking
-) -> None:
+    block_index: int = 0,  # For logging
+    step_ref: List[int] = [-1], # MODIFIED: Use step_ref list
+) -> Tuple[float, float]: # Return avg loss, avg accuracy
     """
     Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
+    MODIFIED: Accepts step_ref, logs batch metrics, returns avg loss/acc.
     """
     block.eval()
     predictor.train()
@@ -41,19 +43,22 @@ def train_cafo_predictor_only(
         f"Starting CaFo training for Predictor {block_index + 1} (Block {block_index+1} frozen)"
     )
 
-    total_steps_per_epoch = len(train_loader)
-    # Global step offset calculation remains the same conceptually
-    global_step_offset = block_index * epochs * total_steps_per_epoch
+    final_avg_epoch_loss = float('nan')
+    final_avg_epoch_accuracy = float('nan')
 
     for epoch in range(epochs):
         epoch_loss = 0.0
-        epoch_accuracy = 0.0
+        epoch_correct = 0
+        epoch_samples = 0
         pbar = tqdm(
             train_loader,
             desc=f"Predictor {block_index+1} Epoch {epoch+1}/{epochs}",
             leave=False,
         )
         for batch_idx, (images, labels) in enumerate(pbar):
+            step_ref[0] += 1 # MODIFIED: Increment global step
+            current_global_step = step_ref[0]
+
             images, labels = images.to(device), labels.to(device)
 
             with torch.no_grad():
@@ -67,60 +72,57 @@ def train_cafo_predictor_only(
             loss.backward()
             optimizer.step()
 
-            batch_accuracy = calculate_accuracy(predictions, labels)
-            epoch_loss += loss.item()
-            epoch_accuracy += batch_accuracy
-            # Calculate the *true* global step
-            current_global_step = (
-                global_step_offset + epoch * total_steps_per_epoch + batch_idx + 1 # Use 1-based batch index
-            )
-            max_step_tracker["value"] = max(max_step_tracker["value"], current_global_step) # Update tracker
+            # Calculate accuracy for the batch
+            batch_size = labels.size(0)
+            with torch.no_grad():
+                 pred_labels = torch.argmax(predictions, dim=1)
+                 batch_correct = (pred_labels == labels).sum().item()
+            batch_accuracy = (batch_correct / batch_size) * 100.0 if batch_size > 0 else 0.0
 
+            epoch_loss += loss.item() * batch_size # Weighted by batch size for avg calc
+            epoch_correct += batch_correct
+            epoch_samples += batch_size
 
-            if (batch_idx + 1) % log_interval == 0 or batch_idx == total_steps_per_epoch - 1:
+            if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(
                     loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%"
                 )
-                metrics = {
+                # MODIFIED: Add global_step to metrics dict
+                metrics_to_log = {
+                    "global_step": current_global_step,
                     f"Predictor_{block_index+1}/Train_Loss_Batch": avg_loss_batch,
                     f"Predictor_{block_index+1}/Train_Acc_Batch": batch_accuracy,
                 }
-                log_metrics(metrics, step=current_global_step, wandb_run=wandb_run)
+                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True) # Pass full dict
 
-        avg_epoch_loss = epoch_loss / total_steps_per_epoch if total_steps_per_epoch > 0 else 0.0
-        avg_epoch_accuracy = epoch_accuracy / total_steps_per_epoch if total_steps_per_epoch > 0 else 0.0
-
-        # Log epoch loss AT the step corresponding to the end of the epoch
-        epoch_end_step = global_step_offset + (epoch + 1) * total_steps_per_epoch
-        max_step_tracker["value"] = max(max_step_tracker["value"], epoch_end_step) # Update tracker
+        # Calculate averages for the epoch
+        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else 0.0
+        final_avg_epoch_accuracy = (epoch_correct / epoch_samples) * 100.0 if epoch_samples > 0 else 0.0
 
         logger.info(
-            f"Predictor {block_index+1} Epoch {epoch+1}/{epochs} - Avg Loss: {avg_epoch_loss:.4f}, Avg Acc: {avg_epoch_accuracy:.2f}%"
+            f"Predictor {block_index+1} Epoch {epoch+1}/{epochs} - Avg Loss: {final_avg_epoch_loss:.4f}, Avg Acc: {final_avg_epoch_accuracy:.2f}%"
         )
-        log_metrics(
-            {
-                f"Predictor_{block_index+1}/Train_Loss_Epoch": avg_epoch_loss,
-                f"Predictor_{block_index+1}/Train_Acc_Epoch": avg_epoch_accuracy,
-            },
-            step=epoch_end_step, # Log at correct end step
-            wandb_run=wandb_run,
-        )
+        # --- REMOVED epoch summary logging from here ---
 
     logger.info(f"Finished CaFo training for Predictor {block_index + 1}")
     predictor.eval()
+    return final_avg_epoch_loss, final_avg_epoch_accuracy
 
 
+# --- train_cafo_model (MODIFIED) ---
 def train_cafo_model(
     model: CaFo_CNN,  # Contains only blocks
     train_loader: DataLoader,
     config: Dict[str, Any],
     device: torch.device,
     wandb_run: Optional[Any] = None,
-    max_step_tracker: Dict[str, int] = {"value": 0}, # Pass down tracker
+    input_adapter: Optional[Callable] = None, # Added for signature consistency, not used
+    step_ref: List[int] = [-1], # MODIFIED: Accept step_ref
 ):
     """
     Orchestrates the layer-wise training of CaFo_CNN predictors (CaFo-Rand-CE variant).
+    MODIFIED: Logs predictor summary metrics.
     """
     model.to(device)
     model.eval()  # Blocks are frozen
@@ -131,6 +133,8 @@ def train_cafo_model(
     logger.info(
         f"Starting layer-wise CaFo predictor training for {num_blocks} blocks (CaFo-Rand-CE)."
     )
+    if input_adapter is not None:
+        logger.warning("CaFo Training: 'input_adapter' provided but typically unused for CNNs.")
 
     algo_config = config.get("algorithm_params", config.get("training", {}))
     optimizer_name = algo_config.get("optimizer_type", "Adam")
@@ -162,6 +166,7 @@ def train_cafo_model(
             raise RuntimeError("Predictor creation failed.") from e
 
     # --- Train Predictor by Predictor ---
+    # Initial input is the raw image batch
     current_block_input_fn = lambda img: img.to(device)
 
     for i in range(num_blocks):
@@ -170,48 +175,77 @@ def train_cafo_model(
         predictor = predictors[i]
         params_to_optimize = list(predictor.parameters())
 
-        optimizer_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
-        optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_kwargs)
+        if not any(p.requires_grad for p in params_to_optimize):
+            logger.warning(f"Predictor {i+1} has no parameters requiring gradients. Skipping training.")
+             # Log placeholder loss/acc
+            current_global_step = step_ref[0] # Step doesn't advance
+            predictor_summary_metrics = {
+                "global_step": current_global_step,
+                f"Predictor_{i+1}/Train_Loss_LayerAvg": float('nan'),
+                f"Predictor_{i+1}/Train_Acc_LayerAvg": float('nan'),
+            }
+            log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
+        else:
+            optimizer_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
+            optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_kwargs)
 
-        train_cafo_predictor_only(
-            block=block,
-            predictor=predictor,
-            optimizer=optimizer,
-            criterion=criterion,
-            train_loader=train_loader,
-            epochs=epochs_per_block,
-            device=device,
-            get_block_input_fn=current_block_input_fn,
-            wandb_run=wandb_run,
-            log_interval=log_interval,
-            block_index=i,
-            max_step_tracker=max_step_tracker, # Pass tracker
-        )
-
-        for param in predictor.parameters(): param.requires_grad = False
-        predictor.eval()
-
-        if checkpoint_dir:
-            save_checkpoint(
-                state={"state_dict": predictor.state_dict(), "predictor_index": i},
-                is_best=False, filename=f"cafo_predictor_{i}.pth", checkpoint_dir=checkpoint_dir,
+            # Train the predictor
+            final_avg_loss, final_avg_acc = train_cafo_predictor_only(
+                block=block,
+                predictor=predictor,
+                optimizer=optimizer,
+                criterion=criterion,
+                train_loader=train_loader,
+                epochs=epochs_per_block,
+                device=device,
+                get_block_input_fn=current_block_input_fn,
+                wandb_run=wandb_run,
+                log_interval=log_interval,
+                block_index=i,
+                step_ref=step_ref, # Pass step_ref
             )
 
+            # MODIFIED: Log predictor summary after training completes
+            current_global_step = step_ref[0]
+            predictor_summary_metrics = {
+                "global_step": current_global_step,
+                f"Predictor_{i+1}/Train_Loss_LayerAvg": final_avg_loss,
+                f"Predictor_{i+1}/Train_Acc_LayerAvg": final_avg_acc,
+            }
+            log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
+            logger.debug(f"Logged CaFo Predictor {i+1} summary at global_step {current_global_step}")
+
+            # Freeze predictor after training
+            for param in predictor.parameters(): param.requires_grad = False
+            predictor.eval()
+
+            if checkpoint_dir:
+                create_directory_if_not_exists(checkpoint_dir) # Ensure dir exists
+                save_checkpoint(
+                    state={"state_dict": predictor.state_dict(), "predictor_index": i},
+                    is_best=False, filename=f"cafo_predictor_{i}_complete.pth", checkpoint_dir=checkpoint_dir,
+                )
+
+        # Prepare the input function for the *next* predictor training stage
         def create_next_input_fn(trained_block_idx: int, previous_input_fn: Callable):
             block_k = model.blocks[trained_block_idx]
+            block_k.eval() # Ensure block is in eval mode
             @torch.no_grad()
             def next_input_fn(img_batch: torch.Tensor) -> torch.Tensor:
                 block_input = previous_input_fn(img_batch)
                 block_output = block_k(block_input)
-                return block_output
+                return block_output.detach() # Detach output
             return next_input_fn
 
+        # Update the input function for the next iteration
         current_block_input_fn = create_next_input_fn(i, current_block_input_fn)
 
     logger.info("Finished all layer-wise CaFo predictor training.")
+    # Store trained predictors on the model instance for evaluation
     model.trained_predictors = predictors
 
 
+# --- evaluate_cafo_model (no changes needed) ---
 def evaluate_cafo_model(
     model: CaFo_CNN,
     data_loader: DataLoader,
@@ -219,7 +253,7 @@ def evaluate_cafo_model(
     criterion: Optional[nn.Module] = None,
     predictors: Optional[nn.ModuleList] = None,
     aggregation_method: str = "sum",
-    input_adapter: Optional[Callable] = None, # Added to match signature, but likely unused
+    input_adapter: Optional[Callable] = None, # Keep signature consistent
 ) -> Dict[str, float]:
     """
     Evaluates the CaFo model by aggregating predictor outputs.
@@ -233,9 +267,13 @@ def evaluate_cafo_model(
         ):
             predictors = model.trained_predictors
         else:
-            raise ValueError("Trained predictors not provided or found attached.")
+            logger.warning("Predictors not explicitly provided and not found attached to model. Trying to load from checkpoint logic might be needed.")
+            # Attempt to load predictors based on config checkpoint_dir? Or raise error.
+            # For now, raise error if not found.
+            raise ValueError("Trained predictors are required for CaFo evaluation.")
+
     if not predictors:
-        raise ValueError("Predictor list is empty.")
+        raise ValueError("Predictor list is empty or None.")
 
     predictors.to(device)
     predictors.eval()
@@ -243,7 +281,7 @@ def evaluate_cafo_model(
     num_predictors = len(predictors)
     num_blocks = len(model.blocks)
     if num_predictors != num_blocks:
-        logger.warning(f"Num predictors ({num_predictors}) != num blocks ({num_blocks}).")
+        logger.warning(f"Number of predictors ({num_predictors}) does not match number of blocks ({num_blocks}). Evaluation might be incomplete.")
 
     total_loss, total_correct, total_samples = 0.0, 0, 0
     logger.info(
@@ -256,34 +294,49 @@ def evaluate_cafo_model(
         )
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
-            # NOTE: input_adapter is generally NOT used for CNN inputs unless specifically designed
-            adapted_images = input_adapter(images) if input_adapter else images
+            # input_adapter is ignored for standard CNN evaluation
+            adapted_images = images
 
-            block_outputs = model.forward(adapted_images) # Use adapted_images if adapter exists
+            block_outputs = model.forward(adapted_images)
             predictor_outputs = []
+            # Only use predictors up to the number available
             for i, block_out in enumerate(block_outputs):
                 if i < len(predictors):
-                    pred_out = predictors[i](block_out)
-                    predictor_outputs.append(pred_out)
+                    try:
+                        pred_out = predictors[i](block_out)
+                        predictor_outputs.append(pred_out)
+                    except Exception as e_pred:
+                        logger.error(f"Error during predictor {i} forward pass: {e_pred}", exc_info=True)
+                        # Decide how to handle: skip predictor, return NaN, etc.
+                        # Returning NaN for now if any predictor fails.
+                        return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
 
             if not predictor_outputs:
-                logger.error("No predictor outputs generated.")
+                logger.error("No predictor outputs generated for aggregation.")
                 return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
 
-            if aggregation_method == "sum":
-                final_prediction_logits = torch.stack(predictor_outputs, dim=0).sum(dim=0)
-            elif aggregation_method == "last":
-                final_prediction_logits = predictor_outputs[-1]
-            else:
-                raise ValueError(f"Unsupported aggregation method: {aggregation_method}")
+            try:
+                if aggregation_method == "sum":
+                    final_prediction_logits = torch.stack(predictor_outputs, dim=0).sum(dim=0)
+                elif aggregation_method == "last":
+                    final_prediction_logits = predictor_outputs[-1]
+                # Add other aggregation methods like 'average' if needed
+                # elif aggregation_method == "average":
+                #     final_prediction_logits = torch.stack(predictor_outputs, dim=0).mean(dim=0)
+                else:
+                    raise ValueError(f"Unsupported aggregation method: {aggregation_method}")
 
-            if criterion:
-                loss = criterion(final_prediction_logits, labels)
-                total_loss += loss.item() * adapted_images.size(0)
+                if criterion:
+                    loss = criterion(final_prediction_logits, labels)
+                    total_loss += loss.item() * adapted_images.size(0)
 
-            predicted_labels = torch.argmax(final_prediction_logits, dim=1)
-            total_correct += (predicted_labels == labels).sum().item()
-            total_samples += labels.size(0)
+                predicted_labels = torch.argmax(final_prediction_logits, dim=1)
+                total_correct += (predicted_labels == labels).sum().item()
+                total_samples += labels.size(0)
+            except Exception as e_agg:
+                 logger.error(f"Error during prediction aggregation or loss calculation: {e_agg}", exc_info=True)
+                 return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+
 
     avg_loss = total_loss / total_samples if criterion and total_samples > 0 else float("nan")
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
@@ -295,4 +348,8 @@ def evaluate_cafo_model(
     results = {"eval_accuracy": accuracy}
     if criterion and not torch.isnan(torch.tensor(avg_loss)):
         results["eval_loss"] = avg_loss
+    # Ensure eval_loss is NaN if criterion is None
+    elif not criterion:
+        results["eval_loss"] = float("nan")
+
     return results
