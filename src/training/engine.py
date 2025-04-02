@@ -230,8 +230,15 @@ def run_training(
             try:
                 sample_input_img, _ = next(iter(train_loader))
                 sample_input_device = sample_input_img.to(device)
-                if input_adapter: profile_input_constructor = lambda: input_adapter(sample_input_device); logger.debug("Using adapter for FLOPs.")
-                else: profile_input_constructor = lambda: sample_input_device; logger.debug("No adapter for FLOPs.")
+                # --- MODIFIED: Define input constructor to use batch size 1 ---
+                if input_adapter:
+                    # Apply adapter first, then slice
+                    profile_input_constructor = lambda: input_adapter(sample_input_device[:1]) # Slice after adapter
+                    logger.debug("Using adapter and batch size 1 for FLOPs.")
+                else:
+                    profile_input_constructor = lambda: sample_input_device[:1] # Slice directly
+                    logger.debug("No adapter, using batch size 1 for FLOPs.")
+                # --- END MODIFICATION ---
 
                 logger.info("Profiling FLOPs...")
                 gmacs = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))

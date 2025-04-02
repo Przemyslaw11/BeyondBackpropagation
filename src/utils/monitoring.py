@@ -40,7 +40,7 @@ def init_nvml() -> bool:
                         driver_version = driver_version.decode('utf-8')
                     logger.info(f"NVIDIA Driver Version: {driver_version}")
                 except AttributeError:
-                    logger.warning("pynvml.nvmlSystemGetDriverVersion() not found in this pynvml version.")
+                    logger.warning("pynvml.nvmlSystemGetDriverVersion() attribute not found in this pynvml version.") # Keep this warning
                 except pynvml.NVMLError as e:
                     logger.warning(f"Could not retrieve Driver version info (NVML Error): {e}")
 
@@ -52,7 +52,8 @@ def init_nvml() -> bool:
                         nvml_version = nvml_version.decode('utf-8')
                     logger.info(f"NVML Library Version: {nvml_version}")
                 except AttributeError:
-                    logger.warning("pynvml.nvmlSystemGetNvmlVersion() not found in this pynvml version.")
+                    # Refined Warning: Indicate it's informational, not an error
+                    logger.info("NVML version query (nvmlSystemGetNvmlVersion) not available in this pynvml library version.") # <<< MODIFIED: Changed to INFO level and clarified message
                 except pynvml.NVMLError as e:
                     logger.warning(f"Could not retrieve NVML version info (NVML Error): {e}")
 

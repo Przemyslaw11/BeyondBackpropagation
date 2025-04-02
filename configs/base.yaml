@@ -40,7 +40,7 @@ logging:
   wandb:
     use_wandb: true # Enable W&B by default
     project: "BeyondBackpropagation"
-    # entity: null # Specify in user environment (WANDB_ENTITY) or here
+    entity: "przspyra11" # <<< ADDED: Specify your W&B entity here
     # run_name: null # Set dynamically by run scripts
 
 # Monitoring Defaults
