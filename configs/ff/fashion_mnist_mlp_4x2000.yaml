@@ -38,11 +38,11 @@ model:
 
 # Algorithm Specific Configuration (Forward-Forward)
 algorithm_params:
-  optimizer_type: "Adam" # Paper doesn't specify, Adam is common default
-  lr: 0.03 # From paper Fig 2 caption for jittered MNIST
-  weight_decay: 0.0
-  threshold: 2.0 # Seems reasonable starting point
-  epochs_per_layer: 60 # From paper Sec 3.3 for comparable MNIST performance
+  optimizer_type: "Adam" # Paper doesn't specify, Adam is a common default for modern NNs.
+  lr: 0.03 # From paper Fig 2 caption for jittered MNIST (Sec 3.3) which is a comparable task.
+  weight_decay: 0.0 # Paper doesn't mention weight decay for FF.
+  threshold: 2.0 # Chosen default, as paper doesn't specify the value used. Influences loss scale.
+  epochs_per_layer: 60 # From paper Sec 3.3 for comparable MNIST performance (1.36% error).
   log_interval: 100
 
 # Logging Configuration (Inherits project/entity from base)
