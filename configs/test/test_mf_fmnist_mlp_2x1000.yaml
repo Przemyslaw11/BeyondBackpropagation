@@ -34,7 +34,7 @@ model:
 # Algorithm Specific Configuration (REDUCED FOR TEST)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.0001
+  lr: 0.001
   weight_decay: 0.0
   epochs_per_layer: 2 # << REDUCED for quick test
   log_interval: 10 # Log more frequently

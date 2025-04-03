@@ -4,6 +4,7 @@
 a.txt
 wandb/
 wheels_3_10/
+checkpoints/
 
 __pycache__/
 *.py[cod]
