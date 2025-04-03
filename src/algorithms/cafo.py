@@ -18,7 +18,7 @@ from src.utils.monitoring import get_gpu_memory_usage # Import memory usage func
 
 logger = logging.getLogger(__name__)
 
-# --- train_cafo_predictor_only (MODIFIED) ---
+# --- train_cafo_predictor_only (MODIFIED - Logging prefixes) ---
 def train_cafo_predictor_only(
     block: CaFoBlock,
     predictor: CaFoPredictor,
@@ -38,13 +38,16 @@ def train_cafo_predictor_only(
     """
     Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
     MODIFIED: Accepts handle/active, samples memory, returns avg loss/acc and peak memory.
+    MODIFIED: Updated logging prefixes for consistency.
     """
     block.eval()
     predictor.train()
     block.to(device)
     predictor.to(device)
+    # <<< MODIFIED: Use consistent log prefix >>>
+    log_prefix = f"Predictor_{block_index+1}"
     logger.info(
-        f"Starting CaFo training for Predictor {block_index + 1} (Block {block_index+1} frozen)"
+        f"Starting CaFo training for {log_prefix} (Block {block_index+1} frozen)"
     )
 
     peak_mem_predictor_train = 0.0 # Track peak memory for this predictor's training
@@ -58,7 +61,7 @@ def train_cafo_predictor_only(
         peak_mem_predictor_epoch = 0.0 # Track peak memory for this specific epoch
         pbar = tqdm(
             train_loader,
-            desc=f"Predictor {block_index+1} Epoch {epoch+1}/{epochs}",
+            desc=f"{log_prefix} Epoch {epoch+1}/{epochs}", # Use prefix in tqdm
             leave=False,
         )
         for batch_idx, (images, labels) in enumerate(pbar):
@@ -103,13 +106,14 @@ def train_cafo_predictor_only(
                 pbar.set_postfix(
                     loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%"
                 )
+                # <<< MODIFIED: Use consistent log prefix >>>
                 metrics_to_log = {
                     "global_step": current_global_step,
-                    f"Predictor_{block_index+1}/Train_Loss_Batch": avg_loss_batch,
-                    f"Predictor_{block_index+1}/Train_Acc_Batch": batch_accuracy,
+                    f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
+                    f"{log_prefix}/Train_Acc_Batch": batch_accuracy,
                 }
                 if not torch.isnan(torch.tensor(current_mem_used)):
-                     metrics_to_log[f"Predictor_{block_index+1}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+                     metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
         # Calculate averages for the epoch
@@ -118,11 +122,17 @@ def train_cafo_predictor_only(
         peak_mem_predictor_train = max(peak_mem_predictor_train, peak_mem_predictor_epoch) # Update peak for the predictor
 
         logger.info(
-            f"Predictor {block_index+1} Epoch {epoch+1}/{epochs} - Avg Loss: {final_avg_epoch_loss:.4f}, Avg Acc: {final_avg_epoch_accuracy:.2f}%, Peak Mem Epoch: {peak_mem_predictor_epoch:.1f} MiB"
+            # <<< MODIFIED: Use consistent log prefix >>>
+            f"{log_prefix} Epoch {epoch+1}/{epochs} - Avg Loss: {final_avg_epoch_loss:.4f}, Avg Acc: {final_avg_epoch_accuracy:.2f}%, Peak Mem Epoch: {peak_mem_predictor_epoch:.1f} MiB"
         )
         # Log epoch summary metrics (optional)
-        # epoch_summary_metrics = { ... }
-        # log_metrics(epoch_summary_metrics, ...)
+        epoch_summary_metrics = {
+            "global_step": current_global_step, # Use last step
+            f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss,
+            f"{log_prefix}/Train_Acc_EpochAvg": final_avg_epoch_accuracy,
+            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_predictor_epoch,
+        }
+        log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
 
     # Sample memory one last time
     if nvml_active and gpu_handle:
@@ -130,12 +140,13 @@ def train_cafo_predictor_only(
         if mem_info:
             peak_mem_predictor_train = max(peak_mem_predictor_train, mem_info[0])
 
-    logger.info(f"Finished CaFo training for Predictor {block_index + 1}. Overall Peak Mem Predictor: {peak_mem_predictor_train:.1f} MiB")
+    # <<< MODIFIED: Use consistent log prefix >>>
+    logger.info(f"Finished CaFo training for {log_prefix}. Overall Peak Mem: {peak_mem_predictor_train:.1f} MiB")
     predictor.eval()
     return final_avg_epoch_loss, final_avg_epoch_accuracy, peak_mem_predictor_train
 
 
-# --- train_cafo_model (MODIFIED) ---
+# --- train_cafo_model (MODIFIED - Logging prefixes) ---
 def train_cafo_model(
     model: CaFo_CNN,  # Contains only blocks
     train_loader: DataLoader,
@@ -150,6 +161,7 @@ def train_cafo_model(
     """
     Orchestrates the layer-wise training of CaFo_CNN predictors (CaFo-Rand-CE variant).
     Logs predictor summary metrics including peak memory.
+    MODIFIED: Updated logging prefixes for consistency.
     Returns the overall peak GPU memory observed across all predictor training phases.
     """
     model.to(device)
@@ -200,7 +212,9 @@ def train_cafo_model(
 
     for i in range(num_blocks):
         predictor_log_idx = i + 1
-        logger.info(f"--- Training Predictor {predictor_log_idx}/{num_blocks} ---")
+        # <<< MODIFIED: Use consistent log prefix >>>
+        log_prefix = f"Predictor_{predictor_log_idx}"
+        logger.info(f"--- Training {log_prefix} ---")
         block = model.blocks[i]
         predictor = predictors[i]
         params_to_optimize = list(predictor.parameters())
@@ -209,7 +223,7 @@ def train_cafo_model(
         final_avg_acc = float('nan')
 
         if not any(p.requires_grad for p in params_to_optimize):
-            logger.warning(f"Predictor {predictor_log_idx} has no parameters requiring gradients. Skipping training.")
+            logger.warning(f"{log_prefix} has no parameters requiring gradients. Skipping training.")
         else:
             optimizer_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
             optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_kwargs)
@@ -239,14 +253,15 @@ def train_cafo_model(
 
         # Log predictor summary after training completes
         current_global_step = step_ref[0]
+        # <<< MODIFIED: Use consistent log prefix >>>
         predictor_summary_metrics = {
             "global_step": current_global_step,
-            f"Predictor_{predictor_log_idx}/Train_Loss_LayerAvg": final_avg_loss,
-            f"Predictor_{predictor_log_idx}/Train_Acc_LayerAvg": final_avg_acc,
-            f"Predictor_{predictor_log_idx}/Peak_GPU_Mem_Layer_MiB": predictor_peak_mem, # Log predictor peak
+            f"{log_prefix}/Train_Loss_LayerAvg": final_avg_loss,
+            f"{log_prefix}/Train_Acc_LayerAvg": final_avg_acc,
+            f"{log_prefix}/Peak_GPU_Mem_Layer_MiB": predictor_peak_mem, # Log predictor peak
         }
         log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
-        logger.debug(f"Logged CaFo Predictor {predictor_log_idx} summary at global_step {current_global_step}")
+        logger.debug(f"Logged CaFo {log_prefix} summary at global_step {current_global_step}")
 
         if checkpoint_dir and any(p.requires_grad for p in params_to_optimize): # Only save if trained
             create_directory_if_not_exists(checkpoint_dir)
@@ -275,7 +290,7 @@ def train_cafo_model(
     return peak_mem_train # Return overall peak memory
 
 
-# --- evaluate_cafo_model (no changes needed) ---
+# --- evaluate_cafo_model (MODIFIED - Optimized "last" aggregation, added comment) ---
 def evaluate_cafo_model(
     model: CaFo_CNN,
     data_loader: DataLoader,
@@ -287,6 +302,7 @@ def evaluate_cafo_model(
 ) -> Dict[str, float]:
     """
     Evaluates the CaFo model by aggregating predictor outputs.
+    MODIFIED: Optimize forward pass if aggregation_method is 'last'.
     """
     model.eval()
     model.to(device)
@@ -298,8 +314,6 @@ def evaluate_cafo_model(
             predictors = model.trained_predictors
         else:
             logger.warning("Predictors not explicitly provided and not found attached to model. Trying to load from checkpoint logic might be needed.")
-            # Attempt to load predictors based on config checkpoint_dir? Or raise error.
-            # For now, raise error if not found.
             raise ValueError("Trained predictors are required for CaFo evaluation.")
 
     if not predictors:
@@ -324,47 +338,69 @@ def evaluate_cafo_model(
         )
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
-            # input_adapter is ignored for standard CNN evaluation
-            adapted_images = images
+            adapted_images = images # input_adapter is ignored
 
+            # Get intermediate block outputs from the main model
             block_outputs = model.forward(adapted_images)
             predictor_outputs = []
-            # Only use predictors up to the number available
-            for i, block_out in enumerate(block_outputs):
-                if i < len(predictors):
+
+            # Apply predictors to corresponding block outputs
+            # <<< MODIFIED: Optimization for "last" aggregation >>>
+            if aggregation_method.lower() == "last":
+                if num_blocks > 0 and len(block_outputs) == num_blocks and num_predictors == num_blocks:
+                    last_block_idx = num_blocks - 1
                     try:
-                        pred_out = predictors[i](block_out)
-                        predictor_outputs.append(pred_out)
+                        pred_out = predictors[last_block_idx](block_outputs[last_block_idx])
+                        predictor_outputs.append(pred_out) # List will contain only the last predictor's output
                     except Exception as e_pred:
-                        logger.error(f"Error during predictor {i} forward pass: {e_pred}", exc_info=True)
-                        # Decide how to handle: skip predictor, return NaN, etc.
-                        # Returning NaN for now if any predictor fails.
+                        logger.error(f"Error during LAST predictor ({last_block_idx}) forward pass: {e_pred}", exc_info=True)
+                        # Returning NaN if the single required predictor fails.
                         return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+                else:
+                     logger.error(f"Cannot evaluate with 'last' method: mismatch in block/predictor counts or block outputs.")
+                     return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+            else: # Original logic for "sum" or other methods needing all outputs
+                for i, block_out in enumerate(block_outputs):
+                    if i < len(predictors):
+                        try:
+                            pred_out = predictors[i](block_out)
+                            predictor_outputs.append(pred_out)
+                        except Exception as e_pred:
+                            logger.error(f"Error during predictor {i} forward pass: {e_pred}", exc_info=True)
+                            # Returning NaN if any predictor fails (as before).
+                            # Note: Downstream analysis should handle NaN appropriately.
+                            return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+            # <<< END MODIFICATION >>>
 
             if not predictor_outputs:
                 logger.error("No predictor outputs generated for aggregation.")
                 return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
 
             try:
-                if aggregation_method == "sum":
+                # Aggregate predictions based on the method
+                if aggregation_method.lower() == "sum":
                     final_prediction_logits = torch.stack(predictor_outputs, dim=0).sum(dim=0)
-                elif aggregation_method == "last":
-                    final_prediction_logits = predictor_outputs[-1]
-                # Add other aggregation methods like 'average' if needed
-                # elif aggregation_method == "average":
-                #     final_prediction_logits = torch.stack(predictor_outputs, dim=0).mean(dim=0)
+                elif aggregation_method.lower() == "last":
+                    # predictor_outputs should contain only the last one due to optimization above
+                    final_prediction_logits = predictor_outputs[0]
+                elif aggregation_method.lower() == "average": # Added average as an option
+                     final_prediction_logits = torch.stack(predictor_outputs, dim=0).mean(dim=0)
                 else:
                     raise ValueError(f"Unsupported aggregation method: {aggregation_method}")
 
+                # Calculate loss if criterion is provided
                 if criterion:
                     loss = criterion(final_prediction_logits, labels)
                     total_loss += loss.item() * adapted_images.size(0)
 
+                # Calculate accuracy
                 predicted_labels = torch.argmax(final_prediction_logits, dim=1)
                 total_correct += (predicted_labels == labels).sum().item()
                 total_samples += labels.size(0)
+
             except Exception as e_agg:
                  logger.error(f"Error during prediction aggregation or loss calculation: {e_agg}", exc_info=True)
+                 # Returning NaN if aggregation fails
                  return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
 
 
@@ -376,10 +412,7 @@ def evaluate_cafo_model(
     )
 
     results = {"eval_accuracy": accuracy}
-    if criterion and not torch.isnan(torch.tensor(avg_loss)):
-        results["eval_loss"] = avg_loss
-    # Ensure eval_loss is NaN if criterion is None
-    elif not criterion:
-        results["eval_loss"] = float("nan")
+    # Ensure eval_loss is NaN if criterion is None or if loss calculation failed
+    results["eval_loss"] = avg_loss # Will be NaN if criterion was None or samples=0
 
     return results
