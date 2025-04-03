@@ -17,7 +17,7 @@ from src.utils.monitoring import get_gpu_memory_usage # Import memory usage func
 
 logger = logging.getLogger(__name__)
 
-# --- MODIFIED: Accept handle/active, sample memory, return peak_mem ---
+# --- train_bp_epoch (MODIFIED - No changes from previous reviewed state) ---
 def train_bp_epoch(
     model: nn.Module,
     train_loader: DataLoader,
@@ -103,7 +103,7 @@ def train_bp_epoch(
 
     return avg_epoch_loss, avg_epoch_accuracy, peak_mem_epoch # Return peak mem
 
-# --- evaluate_bp_model (No changes needed here) ---
+# --- evaluate_bp_model (No changes needed) ---
 def evaluate_bp_model(
     model: nn.Module,
     data_loader: DataLoader,
@@ -131,7 +131,7 @@ def evaluate_bp_model(
     avg_accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
     return avg_loss, avg_accuracy
 
-# --- train_bp_model (MODIFIED) ---
+# --- train_bp_model (MODIFIED - Added parameter logging) ---
 def train_bp_model(
     model: nn.Module,
     train_loader: DataLoader,
@@ -146,6 +146,7 @@ def train_bp_model(
 ) -> float: # Returns overall peak memory
     """
     Orchestrates the end-to-end training of a model using Backpropagation.
+    MODIFIED: Added logging of optimized parameters.
     Returns the peak GPU memory observed during training.
     """
     model.to(device)
@@ -177,8 +178,26 @@ def train_bp_model(
     else: raise ValueError(f"Unsupported criterion: {criterion_name}")
 
     optimizer_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
-    optimizer = getattr(optim, optimizer_name)(model.parameters(), **optimizer_kwargs)
+    # Optimize *all* parameters requiring gradients by default for BP
+    params_to_optimize = [p for p in model.parameters() if p.requires_grad]
+    if not params_to_optimize:
+        logger.error("BP Baseline: No parameters found requiring gradients. Cannot train.")
+        return 0.0 # Return 0 peak memory as training won't run
+
+    optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_kwargs)
     logger.info(f"Using optimizer: {optimizer_name} with params: {optimizer_kwargs}")
+
+    # <<< ADDED: Log parameters being optimized >>>
+    optimized_param_names = [name for name, param in model.named_parameters() if param.requires_grad]
+    logger.debug("BP Baseline Optimizer - Parameters being optimized:")
+    for name in optimized_param_names:
+        logger.debug(f"  - {name}")
+    if any("projection_matrices" in name for name in optimized_param_names):
+        logger.warning("BP Baseline Optimizer - WARNING: 'projection_matrices' found in optimized parameters. This should NOT happen for fair comparison.")
+    else:
+        logger.debug("BP Baseline Optimizer - Verified: 'projection_matrices' are NOT being optimized.")
+    # <<< END ADDED Parameter Logging >>>
+
 
     scheduler = None
     if scheduler_name:

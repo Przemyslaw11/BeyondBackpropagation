@@ -25,7 +25,7 @@ from src.algorithms import (
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function (No changes) ---
+# --- get_model_and_adapter function (MODIFIED - Added warning) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[
@@ -34,6 +34,7 @@ def get_model_and_adapter(
     """
     Instantiates the model based on the configuration and returns an optional input adapter.
     Handles specific adaptations needed for BP baselines.
+    MODIFIED: Added warning if BP baseline uses non-corresponding architecture.
     """
     model_config = config.get("model", {})
     arch_name = model_config.get("name", "").lower()
@@ -50,8 +51,17 @@ def get_model_and_adapter(
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
 
     logger.info(
-        f"Creating model architecture: {arch_name} (BP Baseline: {is_bp_baseline})"
+        f"Creating model architecture: {arch_name} (Algorithm: {algorithm_name.upper()})"
     )
+
+    # --- Check for potential mismatch in BP baselines ---
+    valid_baseline_architectures = ["ff_mlp", "cafo_cnn", "mf_mlp"]
+    if is_bp_baseline and arch_name not in valid_baseline_architectures:
+        logger.warning(f"BP baseline experiment uses architecture '{arch_name}', which might not directly correspond "
+                       f"to an alternative algorithm's native structure ({valid_baseline_architectures}). "
+                       f"Ensure this is intended for the comparison.")
+    # --- End Check ---
+
 
     # --- Determine necessary parameters and adapter based on architecture ---
     if arch_name in ["ff_mlp", "mf_mlp"]:
@@ -123,11 +133,11 @@ def get_model_and_adapter(
     if model is None:
         raise RuntimeError(f"Failed to instantiate model for architecture: {arch_name}")
 
-    logger.info(f"Model '{arch_name}' (BP: {is_bp_baseline}) and input adapter (type: {type(input_adapter)}) created.")
+    logger.info(f"Model '{arch_name}' (Algorithm: {algorithm_name.upper()}) and input adapter (type: {type(input_adapter)}) created.")
     return model, input_adapter
 
 
-# --- run_training (MODIFIED) ---
+# --- run_training (MODIFIED - No changes from previous reviewed state) ---
 def run_training(
     config: Dict[str, Any], wandb_run: Optional[Any] = None
 ) -> Dict[str, Any]:

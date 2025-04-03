@@ -32,7 +32,7 @@ def mf_local_loss_fn(
     return loss
 
 
-# --- train_mf_matrix_only (MODIFIED) ---
+# --- train_mf_matrix_only (MODIFIED - No changes from previous reviewed state) ---
 def train_mf_matrix_only(
     model: MF_MLP, # Model reference is fine, but we won't modify other params here
     matrix_index: int,
@@ -56,9 +56,6 @@ def train_mf_matrix_only(
          raise IndexError(f"Matrix index {matrix_index} out of bounds.")
 
     projection_matrix = model.get_projection_matrix(matrix_index)
-
-    # <<< REMOVED: Global requires_grad setting >>>
-    # for p in model.parameters(): p.requires_grad_(False) # <<< REMOVED
 
     # Ensure the target matrix is trainable (should be handled by train_mf_model orchestrator)
     if not projection_matrix.requires_grad:
@@ -144,12 +141,11 @@ def train_mf_matrix_only(
             peak_mem_matrix_train = max(peak_mem_matrix_train, mem_info[0])
 
     logger.info(f"Finished MF training for Matrix M_{matrix_index}. Overall Peak Mem Matrix: {peak_mem_matrix_train:.1f} MiB")
-    # <<< REMOVED: No longer setting grad status here >>>
-    # projection_matrix.requires_grad_(False)
+
     return final_avg_epoch_loss, peak_mem_matrix_train # Return loss and peak mem
 
 
-# --- train_mf_layer (MODIFIED) ---
+# --- train_mf_layer (MODIFIED - Logging prefix updated) ---
 def train_mf_layer(
     model: MF_MLP, # Model reference is fine
     layer_index: int,  # Index i=0..L-1. Trains W_{i+1} and M_{i+1}.
@@ -168,6 +164,7 @@ def train_mf_layer(
     """
     Trains a single layer 'i+1' (W_{i+1} and M_{i+1}) of an MF_MLP using local loss.
     MODIFIED: No longer globally sets requires_grad=False. Assumes optimizer only contains relevant params.
+    MODIFIED: Updated logging prefix for clarity.
     """
     if not (0 <= layer_index < model.num_hidden_layers):
         raise IndexError(f"Layer index {layer_index} out of bounds.")
@@ -181,9 +178,6 @@ def train_mf_layer(
     linear_layer = model.layers[linear_layer_idx]  # W_{i+1}
     act_layer = model.layers[act_layer_idx]  # sigma_{i+1}
     projection_matrix = model.get_projection_matrix(proj_matrix_idx)  # M_{i+1}
-
-    # <<< REMOVED: Global requires_grad setting >>>
-    # for p in model.parameters(): p.requires_grad_(False)
 
     # Ensure the target parameters are trainable (handled by orchestrator)
     params_require_grad = [p.requires_grad for p in linear_layer.parameters()] + [projection_matrix.requires_grad]
@@ -249,12 +243,14 @@ def train_mf_layer(
             if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(loss=f"{avg_loss_batch:.6f}")
+                # <<< MODIFIED Logging Prefix >>>
+                log_prefix = f"Layer_W{w_layer_log_idx}_M{m_matrix_log_idx}"
                 metrics_to_log = {
                     "global_step": current_global_step,
-                    f"Layer_M{m_matrix_log_idx}/Train_Loss_Batch": avg_loss_batch # Log loss under Matrix index for consistency
+                    f"{log_prefix}/Train_Loss_Batch": avg_loss_batch
                 }
                 if not torch.isnan(torch.tensor(current_mem_used)):
-                    metrics_to_log[f"Layer_M{m_matrix_log_idx}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+                    metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
         if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
@@ -273,14 +269,11 @@ def train_mf_layer(
             peak_mem_layer_train = max(peak_mem_layer_train, mem_info[0])
 
     logger.info(f"Finished MF training for Layer (W{w_layer_log_idx}/M{m_matrix_log_idx}). Overall Peak Mem Layer: {peak_mem_layer_train:.1f} MiB")
-    # <<< REMOVED: No longer setting grad status here >>>
-    # linear_layer.eval()
-    # act_layer.eval()
-    # projection_matrix.requires_grad_(False)
+
     return final_avg_epoch_loss, peak_mem_layer_train # Return loss and peak mem
 
 
-# --- train_mf_model (MODIFIED) ---
+# --- train_mf_model (MODIFIED - No changes from previous reviewed state) ---
 def train_mf_model(
     model: MF_MLP,
     train_loader: DataLoader,
@@ -348,10 +341,12 @@ def train_mf_model(
 
     # Log layer summary after training M0
     current_global_step = step_ref[0]
+    # <<< MODIFIED Logging Prefix for consistency >>>
+    log_prefix_m0 = "Layer_M0"
     layer_summary_metrics = {
         "global_step": current_global_step,
-        f"Layer_M0/Train_Loss_LayerAvg": final_avg_loss_m0,
-        f"Layer_M0/Peak_GPU_Mem_Layer_MiB": m0_peak_mem,
+        f"{log_prefix_m0}/Train_Loss_LayerAvg": final_avg_loss_m0,
+        f"{log_prefix_m0}/Peak_GPU_Mem_Layer_MiB": m0_peak_mem,
     }
     log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
     logger.debug(f"Logged MF Layer M0 summary at global_step {current_global_step}")
@@ -359,7 +354,7 @@ def train_mf_model(
     if checkpoint_dir:
         create_directory_if_not_exists(checkpoint_dir)
         save_checkpoint(
-            state={"state_dict": model.state_dict(), "layer_trained_index": -1},
+            state={"state_dict": model.state_dict(), "layer_trained_index": -1}, # Use -1 for M0 stage
             is_best=False, filename="mf_matrix_M0_complete.pth", checkpoint_dir=checkpoint_dir,
         )
 
@@ -369,6 +364,8 @@ def train_mf_model(
     for i in range(num_hidden_layers):
         w_layer_log_idx = i + 1
         m_matrix_log_idx = i + 1
+        # <<< MODIFIED Logging Prefix for consistency >>>
+        log_prefix_layer = f"Layer_W{w_layer_log_idx}_M{m_matrix_log_idx}"
         logger.info(f"--- Training Hidden Layer W_{w_layer_log_idx} / Matrix M_{m_matrix_log_idx} ---")
 
         linear_layer = model.layers[i * 2] # W_{i+1}
@@ -406,15 +403,16 @@ def train_mf_model(
         current_global_step = step_ref[0]
         layer_summary_metrics = {
             "global_step": current_global_step,
-            f"Layer_M{m_matrix_log_idx}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
-            f"Layer_M{m_matrix_log_idx}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem,
+            f"{log_prefix_layer}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
+            f"{log_prefix_layer}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem,
         }
         log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.debug(f"Logged MF Layer W{w_layer_log_idx}/M{m_matrix_log_idx} summary at global_step {current_global_step}")
 
         if checkpoint_dir:
             create_directory_if_not_exists(checkpoint_dir)
-            chkpt_filename = f"mf_hidden_layer_W{w_layer_log_idx}_M{m_matrix_log_idx}_complete.pth"
+            # Use clearer checkpoint name
+            chkpt_filename = f"mf_layer_{w_layer_log_idx}_complete.pth"
             save_checkpoint(
                 state={"state_dict": model.state_dict(), "layer_trained_index": i},
                 is_best=False, filename=chkpt_filename, checkpoint_dir=checkpoint_dir,

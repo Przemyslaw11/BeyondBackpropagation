@@ -6,6 +6,7 @@ import torch.optim as optim
 import logging
 import time
 import copy
+import pprint # For pretty printing dicts
 from typing import Dict, Any, Optional, Tuple, Callable
 
 from src.utils.helpers import set_seed, format_time
@@ -18,12 +19,14 @@ from src.baselines.bp import (
     evaluate_bp_model,
 )  # Keep evaluate_bp_model signature consistent
 
-logger = logging.getLogger(__name__)
+# Use the centrally configured logger
+logger = logging.getLogger(__name__) # Get logger instance
 
 
 def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     """
     Optuna objective function for hyperparameter tuning of BP baselines.
+    MODIFIED: Added logging of trial info to main logger.
     """
     # --- Hyperparameter Suggestion & Config Setup ---
     cfg = copy.deepcopy(base_config)
@@ -58,9 +61,12 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    logger.info(f"--- Starting Optuna Trial {trial.number} ---")
-    logger.info(f"Device: {device}, Seed: {trial_seed}")
-    logger.info(f"Hyperparameters: {trial.params}")  # Log suggested params
+    # <<< ADDED: Log trial start info to main logger >>>
+    logger.info(f"--- Starting Optuna Trial {trial.number} (Study: {trial.study.study_name}) ---")
+    logger.info(f"  Device: {device}, Seed: {trial_seed}")
+    param_str = pprint.pformat(trial.params)
+    logger.info(f"  Hyperparameters:\n{param_str}")
+    # --- END ADDED Logging ---
 
     # Define optimization direction and metric from config
     metric_to_optimize = tuning_cfg.get("metric", "val_accuracy").lower()
@@ -81,7 +87,7 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         # --- Data Loading ---
         data_config = cfg.get("data", {})
         loader_config = cfg.get("data_loader", {})
-        logger.info("Loading data for Optuna trial...")
+        logger.info(f"Trial {trial.number}: Loading data...")
         train_loader, val_loader, _ = get_dataloaders(
             dataset_name=data_config.get("name", "FashionMNIST"),
             batch_size=loader_config.get("batch_size", 64),
@@ -97,14 +103,14 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             raise ValueError(
                 "Validation loader is required for Optuna tuning but was not created."
             )
-        logger.info("Data loaded.")
+        logger.info(f"Trial {trial.number}: Data loaded.")
 
         # --- Model Instantiation & Input Adapter Retrieval ---
-        logger.info("Instantiating BP baseline model and getting adapter...")
+        logger.info(f"Trial {trial.number}: Instantiating BP baseline model and getting adapter...")
         # Ensure we are creating the BP baseline version of the model
         # The logic inside get_model_and_adapter handles this if algorithm is 'BP'
         if cfg.get("algorithm", {}).get("name", "").lower() != "bp":
-            logger.warning("Overriding algorithm to 'BP' for baseline tuning.")
+            logger.warning(f"Trial {trial.number}: Overriding algorithm to 'BP' for baseline tuning.")
             cfg["algorithm"] = {"name": "BP"}
 
         model, input_adapter = get_model_and_adapter(
@@ -113,8 +119,8 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         model.to(device)
         num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(
-            f"Model '{cfg.get('model', {}).get('name')}' baseline ({num_params:,} params) on {device}."
-            f" Input adapter type: {type(input_adapter)}"
+            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' baseline ({num_params:,} params) on {device}. "
+            f"Input adapter type: {type(input_adapter)}"
         )
 
         # --- Optimizer and Criterion ---
@@ -151,7 +157,7 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
                 f"Unsupported criterion specified in config: {criterion_name}"
             )
         logger.info(
-            f"Optimizer ({optimizer_type}) and Criterion ({criterion_name}) setup."
+            f"Trial {trial.number}: Optimizer ({optimizer_type}) and Criterion ({criterion_name}) setup."
         )
 
         # --- Training & Evaluation Loop ---
@@ -160,13 +166,13 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             -float("inf") if optimization_direction == "maximize" else float("inf")
         )
 
-        logger.info(f"Starting trial training loop for {num_epochs} epochs.")
+        logger.info(f"Trial {trial.number}: Starting training loop for {num_epochs} epochs.")
         trial_start_time = time.time()
 
         for epoch in range(num_epochs):
             epoch_start_time = time.time()
             # Pass the retrieved input_adapter to the training epoch function
-            train_loss, train_acc = train_bp_epoch(
+            train_loss, train_acc, _ = train_bp_epoch( # Ignore peak mem return here
                 model=model,
                 train_loader=train_loader,
                 optimizer=optimizer,
@@ -177,6 +183,9 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
                 wandb_run=None,  # No W&B logging for Optuna trials by default
                 log_interval=99999,  # Minimize logging noise during tuning
                 input_adapter=input_adapter,  # Pass the adapter
+                step_ref=[-1], # Step ref not needed here
+                gpu_handle=None, # No monitoring during Optuna
+                nvml_active=False,
             )
             # Pass the retrieved input_adapter to the evaluation function
             val_loss, val_acc = evaluate_bp_model(
@@ -221,10 +230,13 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
 
         # --- Trial Completion ---
         total_trial_time = time.time() - trial_start_time
+        # <<< ADDED: Log trial end info to main logger >>>
         logger.info(
             f"Trial {trial.number} finished. Duration: {format_time(total_trial_time)}. "
-            f"Best Value ({metric_to_optimize}) for this trial: {best_val_metric_for_trial:.4f}"
+            f"Best Value ({metric_to_optimize}): {best_val_metric_for_trial:.4f}"
         )
+        # --- END ADDED Logging ---
+
         # Return the final best metric achieved in this trial
         return best_val_metric_for_trial
 

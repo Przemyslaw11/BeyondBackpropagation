@@ -195,10 +195,11 @@ def get_gpu_memory_usage(
         return None
 
 
-# --- Energy Monitoring Class ---
+# --- Energy Monitoring Class (MODIFIED - Added time_delta check) ---
 class GPUEnergyMonitor:
     """
     Monitors GPU energy consumption using background thread sampling.
+    MODIFIED: Added check for non-positive time delta during energy calculation.
     """
 
     def __init__(self, device_index: int = 0, interval_sec: float = 0.2):
@@ -219,6 +220,7 @@ class GPUEnergyMonitor:
         self._start_time: Optional[float] = None
         self._end_time: Optional[float] = None
         self._power_error_logged = False  # Flag to log power reading error only once
+        self._time_delta_error_logged = False # Flag to log time delta error only once
 
         if init_nvml():
             self._handle = get_gpu_handle(self._device_index)
@@ -233,10 +235,10 @@ class GPUEnergyMonitor:
 
     def _monitor_energy(self):
         logger.debug(f"Energy monitoring thread started for GPU {self._device_index}.")
-        last_sample_time = time.time()
+        last_sample_time = time.monotonic() # Use monotonic clock for intervals
 
         while not self._stop_event.is_set():
-            current_time = time.time()
+            current_time = time.monotonic()
             power_watts = None
             if self._handle:
                 power_watts = get_gpu_power_usage(self._handle)
@@ -246,17 +248,22 @@ class GPUEnergyMonitor:
                     )
                     self._power_error_logged = True  # Log only once per start
 
-            # Store timestamp and power (even if None)
+            # Store timestamp (use monotonic) and power (even if None)
             with self._samples_lock:
                 self._samples.append((current_time, power_watts))
 
-            # Sleep accurately
-            elapsed = time.time() - last_sample_time
-            sleep_duration = self._interval_sec - elapsed
+            # Sleep accurately based on monotonic clock
+            # Calculate the target time for the next wake-up
+            next_sample_time = last_sample_time + self._interval_sec
+            sleep_duration = next_sample_time - time.monotonic()
+
             if sleep_duration > 0:
-                time.sleep(sleep_duration)
-            # Update last_sample_time based on when it *should* have woken up
-            last_sample_time += self._interval_sec
+                # Use the event's wait method for interruptible sleep
+                self._stop_event.wait(timeout=sleep_duration)
+                if self._stop_event.is_set(): # Check if woken up by stop event
+                    break
+            # Update last_sample_time for the next iteration
+            last_sample_time = next_sample_time
 
         logger.debug(f"Energy monitoring thread stopped for GPU {self._device_index}.")
 
@@ -270,7 +277,7 @@ class GPUEnergyMonitor:
                 return None
 
             total_energy = 0.0
-            # Ensure samples are sorted (should be by design)
+            # Ensure samples are sorted by timestamp (should be by design with monotonic clock)
             # sorted_samples = sorted(self._samples, key=lambda x: x[0]) # Usually not needed
 
             for i in range(len(self._samples) - 1):
@@ -278,9 +285,14 @@ class GPUEnergyMonitor:
                 t2, p2 = self._samples[i + 1]
 
                 time_delta = t2 - t1
+                # <<< ADDED: Check for non-positive time delta >>>
                 if time_delta <= 0:
-                    # This might happen with timer precision issues, skip segment
-                    continue
+                    if not self._time_delta_error_logged:
+                        logger.warning(
+                            f"EnergyMonitor GPU {self._device_index}: Detected non-positive time delta ({time_delta:.4f}s) between samples {i} and {i+1}. Skipping segment. This may indicate timer issues."
+                        )
+                        self._time_delta_error_logged = True # Log only once
+                    continue # Skip this segment
 
                 # Handle None power values: assume power is constant from the last valid reading
                 # or average of neighbors if both are valid. Use 0 if no valid reading available.
@@ -327,9 +339,10 @@ class GPUEnergyMonitor:
             self._samples = []
         self._stop_event.clear()
         self._total_energy_joules = None
-        self._start_time = time.time()
+        self._start_time = time.monotonic() # Use monotonic clock
         self._end_time = None
         self._power_error_logged = False  # Reset error log flag
+        self._time_delta_error_logged = False # Reset error log flag
 
         self._monitoring_thread = threading.Thread(
             target=self._monitor_energy,
@@ -348,7 +361,7 @@ class GPUEnergyMonitor:
             return self._total_energy_joules
 
         self._stop_event.set()
-        self._end_time = time.time()
+        self._end_time = time.monotonic() # Use monotonic clock
         if self._monitoring_thread:
             self._monitoring_thread.join(timeout=self._interval_sec * 2 + 1)
             if self._monitoring_thread.is_alive():
@@ -374,7 +387,7 @@ class GPUEnergyMonitor:
         """Returns the duration the monitor was active in seconds."""
         if self._start_time is None:
             return None
-        end_time = self._end_time if self._end_time is not None else time.time()
+        end_time = self._end_time if self._end_time is not None else time.monotonic()
         return end_time - self._start_time
 
     def __enter__(self):
