@@ -110,15 +110,29 @@ def get_model_and_adapter(
         cafo_base = CaFo_CNN(**arch_params)
         if is_bp_baseline:
             logger.info("Creating BP baseline model from CaFo_CNN blocks + final Linear layer.")
-            cafo_base.to(device) # Move temporarily for shape calc
+            # Temporarily move to device for shape calculation if needed
+            cafo_base.to(device) # Make sure it's on the right device
             with torch.no_grad():
                 # Create dummy input directly on device
+                # Ensure dummy input matches expected channels/size
+                input_channels = arch_params.get('input_channels', config.get('data', {}).get('input_channels', 3)) # Get correct channels
+                image_size = arch_params.get('image_size', config.get('data', {}).get('image_size', 32)) # Get correct size
                 dummy_input = torch.randn(1, input_channels, image_size, image_size).to(device)
                 last_block_output = cafo_base.forward_blocks_only(dummy_input)
                 num_output_features = last_block_output.numel() # Flattened size
-            cafo_base.cpu() # Move back if needed elsewhere
+            cafo_base.cpu() # Optional: Move back to CPU if not needed on GPU anymore
+
             logger.debug(f"Flattened output dimension from CaFo blocks: {num_output_features}")
-            model = nn.Sequential(cafo_base.blocks, nn.Flatten(), nn.Linear(num_output_features, num_classes))
+
+            # --- FIX IS HERE ---
+            # Instead of passing the ModuleList directly, unpack its contents
+            model = nn.Sequential(
+                *cafo_base.blocks,  # Use the * operator to unpack the blocks
+                nn.Flatten(),
+                nn.Linear(num_output_features, num_classes)
+            )
+            # --- END FIX ---
+
             logger.debug("Created BP baseline Sequential model from CaFo_CNN spec.")
         else:
             model = cafo_base

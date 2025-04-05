@@ -132,7 +132,7 @@ def main():
             direction=study_direction,
             sampler=sampler,
             pruner=pruner,
-            load_if_exists=True,
+            load_if_exists=False,
         )
 
         # --- Run Optimization ---
