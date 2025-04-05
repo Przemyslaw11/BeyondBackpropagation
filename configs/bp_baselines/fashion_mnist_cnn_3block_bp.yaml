@@ -1,81 +1,58 @@
-# File: configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml
-# Configuration for BP Baseline on Fashion-MNIST with 3-Block CNN
-# Corresponds to cafo_fashion_mnist_cnn_3block experiment
-
-# Inherit from base config
-experiment_name: "bp_baseline_fashion_mnist_cnn_3block"
+experiment_name: bp_baseline_fashion_mnist_cnn_3block
 algorithm:
-  name: "BP"
-
-# Dataset Configuration (Match CaFo experiment)
+  name: BP
 data:
-  name: "FashionMNIST"
-  root: "./data"
-  val_split: 0.1 # Needed for Optuna
+  name: FashionMNIST
+  root: ./data
+  val_split: 0.1
   num_classes: 10
   input_channels: 1
   image_size: 28
-
-# Data Loader Configuration
 data_loader:
   batch_size: 128
   num_workers: 4
   pin_memory: true
-
-# Model Architecture Configuration (Identical block structure)
 model:
-  name: "CaFo_CNN" # Engine adapts this for BP baseline
+  name: CaFo_CNN
   params:
-    # input_channels: 1 # Calculated
-    block_channels: [32, 128, 512]
-    activation: "ReLU"
+    block_channels:
+    - 32
+    - 128
+    - 512
+    activation: ReLU
     use_batchnorm: true
-    kernel_size: 3 # Match CaFo config
-    pool_kernel_size: 2 # Match CaFo config
-    pool_stride: 2 # Match CaFo config
-    # image_size: 28 # Calculated
-    # num_classes: 10 # Calculated
-
-# Optimizer Configuration
-# !!! IMPORTANT !!! Update after running Optuna search
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
 optimizer:
-  type: "AdamW"
-  lr: 0.001 # Placeholder - UPDATE THIS
-  weight_decay: 0.0001 # Placeholder - UPDATE THIS
-
-# Training Configuration (For final run)
+  type: AdamW
+  lr: 0.000564093098959669
+  weight_decay: 8.597071465954117e-06
 training:
   epochs: 100
-  criterion: "CrossEntropyLoss"
+  criterion: CrossEntropyLoss
   log_interval: 100
-  # scheduler: "CosineAnnealingLR" # Optional
-  # scheduler_params: {}
-
-# Hyperparameter Tuning Configuration (For Optuna)
 tuning:
   enabled: true
   n_trials: 50
-  num_epochs: 25 # Epochs per trial
-  direction: "maximize"
-  metric: "val_accuracy"
-  sampler: "TPE"
-  pruner: "Median"
-  lr_range: [1.0e-5, 1.0e-2]
-  wd_range: [1.0e-6, 1.0e-3]
-
-# Checkpointing (Save best BP model)
+  num_epochs: 25
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: Median
+  lr_range:
+  - 1.0e-05
+  - 0.01
+  wd_range:
+  - 1.0e-06
+  - 0.001
 checkpointing:
-  checkpoint_dir: "checkpoints/bp_baseline_fashion_mnist_cnn_3block"
-  save_best_metric: "bp_val_accuracy" # Or bp_val_loss
-
-# Logging Configuration
+  checkpoint_dir: checkpoints/bp_baseline_fashion_mnist_cnn_3block
+  save_best_metric: bp_val_accuracy
 logging:
-  level: "INFO"
-  # log_file: null
+  level: INFO
   wandb:
     use_wandb: true
-
-# Monitoring/Profiling
 monitoring:
   enabled: true
   energy_enabled: true
