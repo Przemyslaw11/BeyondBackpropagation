@@ -1,3 +1,4 @@
+# File: src/training/engine.py
 import torch
 import torch.nn as nn
 import logging
@@ -25,7 +26,7 @@ from src.algorithms import (
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function (MODIFIED - Added warning) ---
+# --- get_model_and_adapter function (Remains the same as previous version) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[
@@ -34,7 +35,6 @@ def get_model_and_adapter(
     """
     Instantiates the model based on the configuration and returns an optional input adapter.
     Handles specific adaptations needed for BP baselines.
-    MODIFIED: Added warning if BP baseline uses non-corresponding architecture.
     """
     model_config = config.get("model", {})
     arch_name = model_config.get("name", "").lower()
@@ -136,21 +136,21 @@ def get_model_and_adapter(
     logger.info(f"Model '{arch_name}' (Algorithm: {algorithm_name.upper()}) and input adapter (type: {type(input_adapter)}) created.")
     return model, input_adapter
 
-
-# --- run_training (MODIFIED - No changes from previous reviewed state) ---
+# --- run_training (MODIFIED - FLOPs logging corrected) ---
 def run_training(
     config: Dict[str, Any], wandb_run: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
     Runs the full training and evaluation pipeline for one experiment configuration.
     Uses active sampling for peak GPU memory if direct query fails.
+    MODIFIED: Corrected FLOPs logging/reporting.
     """
     results = {}
     nvml_active = False
     gpu_handle = None
     monitor = None
     run_start_time = time.time()
-    step_ref = [-1]
+    step_ref = [-1] # Use list for mutable reference across function calls
     peak_gpu_mem_during_training = float('nan') # Initialize peak mem tracking
 
     try:
@@ -244,13 +244,20 @@ def run_training(
                     logger.debug("No adapter, using batch size 1 for FLOPs.")
 
                 logger.info("Profiling FLOPs...")
-                gmacs = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))
-                if gmacs is not None:
-                    results["estimated_gmacs"] = gmacs; results["estimated_gflops"] = gmacs * 2.0
-                    initial_metrics["estimated_gmacs"] = gmacs
-                    initial_metrics["estimated_gflops"] = results["estimated_gflops"]
-                    logger.info(f"Estimated GFLOPs (2*GMACs): {results['estimated_gflops']:.4f} G")
-                else: logger.warning("FLOPs profiling failed.")
+                # <<< MODIFIED: Directly get GFLOPs >>>
+                gflops = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))
+                if gflops is not None:
+                    # Store GFLOPs directly, remove GMACs and doubling
+                    results["estimated_gflops"] = gflops
+                    initial_metrics["estimated_gflops"] = gflops
+                    logger.info(f"Estimated Forward Pass GFLOPs: {gflops:.4f} G")
+                    # Removed GMACs logging/storage
+                else:
+                    logger.warning("FLOPs profiling failed.")
+                    # Store NaN if profiling fails
+                    results["estimated_gflops"] = float('nan')
+                    initial_metrics["estimated_gflops"] = float('nan')
+
             except StopIteration: logger.warning("Empty DataLoader for FLOPs profiling.")
             except Exception as e: logger.error(f"FLOPs profiling failed: {e}", exc_info=True)
 
@@ -282,12 +289,9 @@ def run_training(
             if algorithm_name == "bp":
                 training_args["val_loader"] = val_loader
                 training_args["input_adapter"] = input_adapter
-                # Handle/active already added above
             elif algorithm_name in ["mf", "ff", "cafo"]:
-                # Add input adapter if needed by these algos' orchestrator
-                # Note: Specific usage depends on the orchestrator implementation
+                 # Add input adapter if needed by these algos' orchestrator
                 training_args["input_adapter"] = input_adapter
-                # Handle/active already added above
 
             # Call the training function and get peak memory back
             train_output = training_fn(**training_args)
@@ -304,7 +308,7 @@ def run_training(
         # --- Post-Training Monitoring ---
         train_loop_duration = time.time() - train_loop_start_time
         results["training_duration_sec"] = train_loop_duration
-        final_summary_step = step_ref[0] + 1
+        final_summary_step = step_ref[0] + 1 if step_ref[0] >= 0 else 0 # Handle case where step_ref might still be -1
         logger.debug(f"Training loop complete. Final global_step: {step_ref[0]}. Final summary step: {final_summary_step}")
 
         if monitor:
@@ -366,27 +370,28 @@ def run_training(
         if wandb_run and hasattr(wandb_run, 'finish'):
             try: wandb_run.finish(exit_code=1); logger.info("W&B run finished with error.")
             except Exception as e_wandb: logger.error(f"Error finishing W&B after exception: {e_wandb}")
+        # Re-raise after logging and attempting cleanup
         raise e
     finally:
         # --- Final Summary Logging (Single Call) ---
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
         # Use the final_summary_step calculated after training loop (or 0 if training failed early)
-        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0
+        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0 # Correct handling for step -1
         logger.debug(f"Final summary logging step: {final_summary_step}")
 
+        # <<< MODIFIED: Use gflops directly, remove gmacs >>>
         final_summary_metrics = {
             "global_step": final_summary_step,
             "final/total_run_duration_sec": total_run_time,
-            # Use the sampled peak memory value from results
             "final/peak_gpu_mem_used_mib": results.get("peak_gpu_mem_used_mib", float("nan")),
             "final/total_gpu_energy_joules": results.get("total_gpu_energy_joules", float("nan")),
             "final/total_gpu_energy_wh": results.get("total_gpu_energy_wh", float("nan")),
             "final/training_duration_sec": results.get("training_duration_sec", float("nan")),
             "final/Test_Accuracy": results.get("test_accuracy", float("nan")),
             "final/Test_Loss": results.get("test_loss", float("nan")),
-            "final/estimated_gflops": results.get("estimated_gflops", float("nan")),
-            "final/estimated_gmacs": results.get("estimated_gmacs", float("nan")),
+            "final/estimated_gflops": results.get("estimated_gflops", float("nan")), # Keep GFLOPs
+            # "final/estimated_gmacs" removed
         }
 
         log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
