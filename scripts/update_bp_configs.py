@@ -7,7 +7,7 @@ import yaml
 import sys
 import shutil  # For file backup
 from datetime import datetime
-
+from typing import Optional 
 # --- Basic Logging Setup (before potentially loading project config) ---
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
