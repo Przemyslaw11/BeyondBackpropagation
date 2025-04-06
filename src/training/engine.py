@@ -110,29 +110,15 @@ def get_model_and_adapter(
         cafo_base = CaFo_CNN(**arch_params)
         if is_bp_baseline:
             logger.info("Creating BP baseline model from CaFo_CNN blocks + final Linear layer.")
-            # Temporarily move to device for shape calculation if needed
-            cafo_base.to(device) # Make sure it's on the right device
+            cafo_base.to(device) # Move temporarily for shape calc
             with torch.no_grad():
                 # Create dummy input directly on device
-                # Ensure dummy input matches expected channels/size
-                input_channels = arch_params.get('input_channels', config.get('data', {}).get('input_channels', 3)) # Get correct channels
-                image_size = arch_params.get('image_size', config.get('data', {}).get('image_size', 32)) # Get correct size
                 dummy_input = torch.randn(1, input_channels, image_size, image_size).to(device)
                 last_block_output = cafo_base.forward_blocks_only(dummy_input)
                 num_output_features = last_block_output.numel() # Flattened size
-            cafo_base.cpu() # Optional: Move back to CPU if not needed on GPU anymore
-
+            cafo_base.cpu() # Move back if needed elsewhere
             logger.debug(f"Flattened output dimension from CaFo blocks: {num_output_features}")
-
-            # --- FIX IS HERE ---
-            # Instead of passing the ModuleList directly, unpack its contents
-            model = nn.Sequential(
-                *cafo_base.blocks,  # Use the * operator to unpack the blocks
-                nn.Flatten(),
-                nn.Linear(num_output_features, num_classes)
-            )
-            # --- END FIX ---
-
+            model = nn.Sequential(cafo_base.blocks, nn.Flatten(), nn.Linear(num_output_features, num_classes))
             logger.debug("Created BP baseline Sequential model from CaFo_CNN spec.")
         else:
             model = cafo_base
@@ -150,14 +136,14 @@ def get_model_and_adapter(
     logger.info(f"Model '{arch_name}' (Algorithm: {algorithm_name.upper()}) and input adapter (type: {type(input_adapter)}) created.")
     return model, input_adapter
 
-# --- run_training (MODIFIED - FLOPs logging corrected) ---
+# --- run_training (MODIFIED - Added BP Update FLOPs Calculation/Logging) ---
 def run_training(
     config: Dict[str, Any], wandb_run: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
     Runs the full training and evaluation pipeline for one experiment configuration.
     Uses active sampling for peak GPU memory if direct query fails.
-    MODIFIED: Corrected FLOPs logging/reporting.
+    MODIFIED: Added calculation and logging for estimated BP update GFLOPs.
     """
     results = {}
     nvml_active = False
@@ -166,6 +152,7 @@ def run_training(
     run_start_time = time.time()
     step_ref = [-1] # Use list for mutable reference across function calls
     peak_gpu_mem_during_training = float('nan') # Initialize peak mem tracking
+    algorithm_name = config.get("algorithm", {}).get("name", "").lower() # Get algo name early
 
     try:
         # --- Setup ---
@@ -246,6 +233,9 @@ def run_training(
 
         # --- FLOPs Profiling ---
         profiling_config = config.get("profiling", {})
+        estimated_fwd_gflops = float('nan')  # Initialize forward GFLOPs
+        estimated_bp_update_gflops = float('nan') # Initialize BP update GFLOPs
+
         if profiling_config.get("enabled", True):
             try:
                 sample_input_img, _ = next(iter(train_loader))
@@ -258,19 +248,35 @@ def run_training(
                     logger.debug("No adapter, using batch size 1 for FLOPs.")
 
                 logger.info("Profiling FLOPs...")
-                # <<< MODIFIED: Directly get GFLOPs >>>
-                gflops = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))
-                if gflops is not None:
-                    # Store GFLOPs directly, remove GMACs and doubling
-                    results["estimated_gflops"] = gflops
-                    initial_metrics["estimated_gflops"] = gflops
-                    logger.info(f"Estimated Forward Pass GFLOPs: {gflops:.4f} G")
-                    # Removed GMACs logging/storage
+                fwd_gflops = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))
+
+                if fwd_gflops is not None:
+                    estimated_fwd_gflops = fwd_gflops
+                    results["estimated_fwd_gflops"] = estimated_fwd_gflops
+                    initial_metrics["estimated_fwd_gflops"] = estimated_fwd_gflops
+                    logger.info(f"Estimated Forward Pass GFLOPs: {estimated_fwd_gflops:.4f} G")
+
+                    # <<< Calculate Estimated BP Update GFLOPs >>>
+                    if algorithm_name == "bp":
+                        estimated_bp_update_gflops = estimated_fwd_gflops * 3.0 # Fwd + 2*Fwd (approx for Bwd)
+                        results["estimated_bp_update_gflops"] = estimated_bp_update_gflops
+                        initial_metrics["estimated_bp_update_gflops"] = estimated_bp_update_gflops
+                        logger.info(f"Estimated BP Update Cycle GFLOPs (Fwd+Bwd ~3x Fwd): {estimated_bp_update_gflops:.4f} G")
+                    else:
+                        # For non-BP methods, the relevant "update cycle" FLOPs are complex to define
+                        # and the forward pass FLOPs is the most consistent comparison point for core computation.
+                        # Set BP specific metric to NaN.
+                        results["estimated_bp_update_gflops"] = float('nan')
+                        initial_metrics["estimated_bp_update_gflops"] = float('nan')
+                        logger.info(f"Algorithm '{algorithm_name}' is BP-free, Est. BP Update GFLOPs is N/A.")
+                    # <<< End BP Update GFLOPs Calculation >>>
+
                 else:
                     logger.warning("FLOPs profiling failed.")
-                    # Store NaN if profiling fails
-                    results["estimated_gflops"] = float('nan')
-                    initial_metrics["estimated_gflops"] = float('nan')
+                    results["estimated_fwd_gflops"] = float('nan')
+                    initial_metrics["estimated_fwd_gflops"] = float('nan')
+                    results["estimated_bp_update_gflops"] = float('nan')
+                    initial_metrics["estimated_bp_update_gflops"] = float('nan')
 
             except StopIteration: logger.warning("Empty DataLoader for FLOPs profiling.")
             except Exception as e: logger.error(f"FLOPs profiling failed: {e}", exc_info=True)
@@ -284,7 +290,6 @@ def run_training(
 
         # --- Training ---
         logger.info("Starting training phase...")
-        algorithm_name = config.get("algorithm", {}).get("name", "").lower()
         training_fn = get_training_function(algorithm_name)
 
         train_loop_start_time = time.time()
@@ -394,7 +399,7 @@ def run_training(
         final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0 # Correct handling for step -1
         logger.debug(f"Final summary logging step: {final_summary_step}")
 
-        # <<< MODIFIED: Use gflops directly, remove gmacs >>>
+        # <<< MODIFIED: Add estimated_bp_update_gflops to final summary >>>
         final_summary_metrics = {
             "global_step": final_summary_step,
             "final/total_run_duration_sec": total_run_time,
@@ -404,9 +409,10 @@ def run_training(
             "final/training_duration_sec": results.get("training_duration_sec", float("nan")),
             "final/Test_Accuracy": results.get("test_accuracy", float("nan")),
             "final/Test_Loss": results.get("test_loss", float("nan")),
-            "final/estimated_gflops": results.get("estimated_gflops", float("nan")), # Keep GFLOPs
-            # "final/estimated_gmacs" removed
+            "final/estimated_fwd_gflops": results.get("estimated_fwd_gflops", float("nan")),
+            "final/estimated_bp_update_gflops": results.get("estimated_bp_update_gflops", float('nan')), # Add the new metric
         }
+        # <<< END MODIFICATION >>>
 
         log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
 
