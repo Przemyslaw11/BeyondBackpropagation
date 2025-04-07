@@ -50,7 +50,7 @@ def get_dataloaders(
     Creates training, validation, and test DataLoaders for a specified dataset.
 
     Args:
-        dataset_name: Name of the dataset ('FashionMNIST', 'CIFAR10', 'CIFAR100').
+        dataset_name: Name of the dataset ('FashionMNIST', 'CIFAR10', 'CIFAR100', 'MNIST'). # <<< ADDED MNIST to docstring
         batch_size: Number of samples per batch.
         data_root: Root directory where the dataset will be stored/downloaded.
         val_split: Fraction of the training data to use for validation (e.g., 0.1 for 10%).
@@ -88,6 +88,8 @@ def get_dataloaders(
     dataset_class = None
     if dataset_name == "fashionmnist":
         dataset_class = torchvision.datasets.FashionMNIST
+    elif dataset_name == "mnist": # <<<--- ADDED THIS ELIF CASE
+        dataset_class = torchvision.datasets.MNIST
     elif dataset_name == "cifar10":
         dataset_class = torchvision.datasets.CIFAR10
     elif dataset_name == "cifar100":

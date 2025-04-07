@@ -15,6 +15,11 @@ DATASET_STATS = {
         "mean": (0.2860,),
         "std": (0.3530,),
     },
+    "mnist": { # <<< ADDED MNIST STATS >>>
+        # Standard values for MNIST
+        "mean": (0.1307,),
+        "std": (0.3081,),
+    },
     "cifar10": {
         "mean": (0.4914, 0.4822, 0.4465),  # Standard values
         "std": (0.2023, 0.1994, 0.2010),  # Standard values (alt: 0.247, 0.243, 0.261)
@@ -65,7 +70,7 @@ def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
                     # Add more augmentations if needed (e.g., T.RandAugment(), T.AutoAugment())
                 ]
             )
-        # No standard augmentation for FashionMNIST in this setup
+        # No standard augmentation for MNIST/FashionMNIST in this setup
 
     # --- Common transforms (applied after training-specific ones) ---
     transform_list.append(
