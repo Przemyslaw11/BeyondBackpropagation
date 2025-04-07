@@ -41,7 +41,7 @@ algorithm_params:
   lr: 0.001
   weight_decay: 0.0
   loss_type: "CrossEntropyLoss"
-  num_epochs_per_block: 5000 # Epochs for predictor training on CIFAR-10
+  num_epochs_per_block: 100 # Epochs for predictor training on CIFAR-10
   log_interval: 200
 
 # Logging Configuration
