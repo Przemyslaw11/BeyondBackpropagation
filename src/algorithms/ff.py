@@ -13,17 +13,14 @@ import functools
 import os
 import time
 
-# <<< MODIFIED: Added FF_Layer to the import >>>
 from src.architectures.ff_mlp import FF_MLP, FF_Layer
-# <<< END MODIFICATION >>>
-
 from src.utils.logging_utils import log_metrics
 from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists
 from src.utils.monitoring import get_gpu_memory_usage # Import memory usage function
 
 logger = logging.getLogger(__name__)
 
-# --- ff_loss_fn ---
+# --- ff_loss_fn (Unchanged) ---
 def ff_loss_fn(
     pos_goodness: torch.Tensor, neg_goodness: torch.Tensor, threshold: float
 ) -> torch.Tensor:
@@ -47,7 +44,7 @@ def ff_loss_fn(
     loss = torch.mean(loss_pos + loss_neg)
     return loss
 
-# --- create_ff_pixel_label_input ---
+# --- create_ff_pixel_label_input (Unchanged) ---
 def create_ff_pixel_label_input(
     original_images: torch.Tensor,
     labels: torch.Tensor,
@@ -79,7 +76,7 @@ def create_ff_pixel_label_input(
     flattened_modified_images = modified_images.view(batch_size, -1)
     return flattened_modified_images
 
-# --- generate_ff_pos_neg_pixel_data ---
+# --- generate_ff_pos_neg_pixel_data (Unchanged) ---
 def generate_ff_pos_neg_pixel_data(
     base_images: torch.Tensor,
     base_labels: torch.Tensor,
@@ -120,7 +117,7 @@ def generate_ff_pos_neg_pixel_data(
     return pos_flattened_images, neg_flattened_images
 
 
-# --- train_ff_layer ---
+# --- train_ff_layer (MODIFIED: Added gradient clipping) ---
 def train_ff_layer(
     model: FF_MLP,
     layer_module: nn.Module,
@@ -139,31 +136,35 @@ def train_ff_layer(
     step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
+    gradient_clip_value: Optional[float] = 1.0, # <<< ADDED: Grad clipping value
 ) -> Tuple[float, float]:
     """
     Trains a single effective layer (input adapter or subsequent FF_Layer) of the FF_MLP.
     Updates weights locally based on the FF loss calculated from positive/negative goodness.
+    MODIFIED: Added gradient clipping before optimizer step.
     Returns the average loss of the last epoch and the peak memory observed during its training.
     """
     layer_module.train()
     layer_module.to(device)
-    log_prefix = f"FF/Layer {layer_index + 1} ({'Input Adapter' if is_input_adapter_layer else 'Hidden'})" # <<< ADDED Log Prefix
+    log_prefix = f"FF/Layer {layer_index + 1} ({'Input Adapter' if is_input_adapter_layer else 'Hidden'})"
     logger.info(f"Starting FF training for {log_prefix}")
     peak_mem_layer_train = 0.0
     last_epoch_avg_loss = float('nan')
-    last_epoch_grad_norm_w_mean = float('nan') # <<< ADDED for logging
-    last_epoch_grad_norm_b_mean = float('nan') # <<< ADDED for logging
+    last_epoch_grad_norm_w_mean = float('nan')
+    last_epoch_grad_norm_b_mean = float('nan')
+    last_epoch_grad_norm_total_mean = float('nan') # For clipped norm
 
     for epoch in range(epochs):
         epoch_loss = 0.0
         epoch_samples = 0
-        epoch_pos_goodness_acc = 0.0 # <<< ADDED for logging
-        epoch_neg_goodness_acc = 0.0 # <<< ADDED for logging
-        epoch_loss_pos_acc = 0.0     # <<< ADDED for logging
-        epoch_loss_neg_acc = 0.0     # <<< ADDED for logging
-        epoch_grad_norm_w_acc = 0.0  # <<< ADDED for logging
-        epoch_grad_norm_b_acc = 0.0  # <<< ADDED for logging
-        num_grad_batches = 0        # <<< ADDED for logging
+        epoch_pos_goodness_acc = 0.0
+        epoch_neg_goodness_acc = 0.0
+        epoch_loss_pos_acc = 0.0
+        epoch_loss_neg_acc = 0.0
+        epoch_grad_norm_w_acc = 0.0
+        epoch_grad_norm_b_acc = 0.0
+        epoch_grad_norm_total_acc = 0.0 # Accumulator for total norm
+        num_grad_batches = 0
 
         peak_mem_layer_epoch = 0.0
         pbar = tqdm(
@@ -193,8 +194,8 @@ def train_ff_layer(
 
             pos_goodness: torch.Tensor
             neg_goodness: torch.Tensor
-            loss_pos: torch.Tensor # <<< ADDED Type hint
-            loss_neg: torch.Tensor # <<< ADDED Type hint
+            loss_pos: torch.Tensor
+            loss_neg: torch.Tensor
 
             try:
                 if is_input_adapter_layer:
@@ -204,7 +205,6 @@ def train_ff_layer(
                     neg_act = model.first_layer_activation(neg_lin)
                     pos_goodness = torch.sum(pos_act.pow(2), dim=1)
                     neg_goodness = torch.sum(neg_act.pow(2), dim=1)
-                # <<< MODIFIED: Removed isinstance check here, handled by flag >>>
                 else:
                     # layer_module must be FF_Layer if not input_adapter
                     _, pos_goodness = layer_module.forward_with_goodness( # type: ignore
@@ -213,7 +213,6 @@ def train_ff_layer(
                     _, neg_goodness = layer_module.forward_with_goodness( # type: ignore
                         neg_activation_input
                     )
-                # <<< END MODIFICATION >>>
 
                 # Calculate individual loss components
                 loss_pos = F.softplus(-(pos_goodness - threshold))
@@ -231,18 +230,17 @@ def train_ff_layer(
                 logger.error(
                     f"NaN or Inf loss detected at {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}. Stopping layer training."
                 )
-                # Reset accumulators to avoid logging bad averages
                 epoch_loss = float('nan'); epoch_samples = 1
                 epoch_pos_goodness_acc=float('nan'); epoch_neg_goodness_acc=float('nan')
                 epoch_loss_pos_acc=float('nan'); epoch_loss_neg_acc=float('nan')
                 epoch_grad_norm_w_acc=float('nan'); epoch_grad_norm_b_acc=float('nan')
-                num_grad_batches=1
+                epoch_grad_norm_total_acc=float('nan'); num_grad_batches=1
                 break
 
             optimizer.zero_grad()
             loss.backward()
 
-            # <<< ADDED: Gradient norm calculation (optional, for debugging) >>>
+            # --- Gradient norm calculation (for logging) ---
             grad_norm_w = 0.0
             grad_norm_b = 0.0
             has_bias = False
@@ -256,20 +254,34 @@ def train_ff_layer(
                  epoch_grad_norm_w_acc += grad_norm_w
                  epoch_grad_norm_b_acc += grad_norm_b
                  num_grad_batches += 1
-            # <<< END Gradient norm calculation >>>
+            # --- End Gradient norm calculation ---
 
-            optimizer.step()
+            # <<< GRADIENT CLIPPING >>>
+            total_norm_pre_clip = float('nan')
+            if gradient_clip_value is not None and gradient_clip_value > 0:
+                params_to_clip = optimizer.param_groups[0]['params']
+                if params_to_clip: # Check if list is not empty
+                    try:
+                        total_norm_pre_clip = torch.nn.utils.clip_grad_norm_(params_to_clip, gradient_clip_value)
+                        if torch.isnan(total_norm_pre_clip) or torch.isinf(total_norm_pre_clip):
+                            logger.warning(f"NaN/Inf gradient norm ({total_norm_pre_clip:.2f}) detected BEFORE clipping at {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}. Check LR/clip value.")
+                        epoch_grad_norm_total_acc += total_norm_pre_clip.item() # Accumulate pre-clip norm
+                    except Exception as e_clip:
+                        logger.error(f"Error during gradient clipping: {e_clip}", exc_info=True)
+                        # Decide how to handle clipping error - maybe skip step?
+                        # continue # Skip optimizer step if clipping fails? Risky.
+            # <<< END GRADIENT CLIPPING >>>
+
+
+            optimizer.step() # Step the optimizer after optional clipping
 
             batch_size = images.size(0)
             epoch_loss += loss.item() * batch_size
             epoch_samples += batch_size
-            # <<< ADDED Accumulators >>>
             epoch_pos_goodness_acc += pos_goodness.mean().item() * batch_size
             epoch_neg_goodness_acc += neg_goodness.mean().item() * batch_size
             epoch_loss_pos_acc += loss_pos.mean().item() * batch_size
             epoch_loss_neg_acc += loss_neg.mean().item() * batch_size
-            # <<< END Accumulators >>>
-
 
             current_mem_used = float('nan')
             if nvml_active and gpu_handle and ((batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1):
@@ -284,12 +296,13 @@ def train_ff_layer(
                 metrics_to_log = {
                     "global_step": current_global_step,
                     f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
-                    f"{log_prefix}/Pos_Goodness_Mean": pos_goodness.mean().item(), # Log means
+                    f"{log_prefix}/Pos_Goodness_Mean": pos_goodness.mean().item(),
                     f"{log_prefix}/Neg_Goodness_Mean": neg_goodness.mean().item(),
-                    f"{log_prefix}/Loss_Pos_Mean": loss_pos.mean().item(), # <<< ADDED Loss Components
-                    f"{log_prefix}/Loss_Neg_Mean": loss_neg.mean().item(), # <<< ADDED Loss Components
-                    f"{log_prefix}/Grad_Norm_W_Mean": grad_norm_w, # <<< ADDED Grad Norms
-                    f"{log_prefix}/Grad_Norm_B_Mean": grad_norm_b if has_bias else float('nan'), # <<< ADDED Grad Norms
+                    f"{log_prefix}/Loss_Pos_Mean": loss_pos.mean().item(),
+                    f"{log_prefix}/Loss_Neg_Mean": loss_neg.mean().item(),
+                    f"{log_prefix}/Grad_Norm_W_Mean": grad_norm_w,
+                    f"{log_prefix}/Grad_Norm_B_Mean": grad_norm_b if has_bias else float('nan'),
+                    f"{log_prefix}/Grad_Norm_Total_PreClip": total_norm_pre_clip, # Log pre-clip norm
                 }
                 if not torch.isnan(torch.tensor(current_mem_used)):
                     metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
@@ -309,12 +322,13 @@ def train_ff_layer(
         avg_loss_neg = epoch_loss_neg_acc / epoch_samples if epoch_samples > 0 else float('nan')
         last_epoch_grad_norm_w_mean = epoch_grad_norm_w_acc / num_grad_batches if num_grad_batches > 0 else float('nan')
         last_epoch_grad_norm_b_mean = epoch_grad_norm_b_acc / num_grad_batches if num_grad_batches > 0 and has_bias else float('nan')
+        last_epoch_grad_norm_total_mean = epoch_grad_norm_total_acc / num_grad_batches if num_grad_batches > 0 else float('nan')
         peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch)
 
         logger.info(
             f"{log_prefix} Epoch {epoch+1}/{epochs} - Avg Loss: {last_epoch_avg_loss:.4f}, Peak Mem Epoch: {peak_mem_layer_epoch:.1f} MiB"
         )
-        # Log epoch summary metrics (optional but useful)
+        # Log epoch summary metrics
         epoch_summary_metrics = {
             "global_step": current_global_step,
             f"{log_prefix}/Train_Loss_EpochAvg": last_epoch_avg_loss,
@@ -324,6 +338,7 @@ def train_ff_layer(
             f"{log_prefix}/Loss_Neg_EpochAvg": avg_loss_neg,
             f"{log_prefix}/Grad_Norm_W_EpochAvg": last_epoch_grad_norm_w_mean,
             f"{log_prefix}/Grad_Norm_B_EpochAvg": last_epoch_grad_norm_b_mean,
+            f"{log_prefix}/Grad_Norm_Total_PreClip_EpochAvg": last_epoch_grad_norm_total_mean, # Log avg pre-clip norm
             f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_layer_epoch,
         }
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
@@ -336,11 +351,12 @@ def train_ff_layer(
 
     logger.info(f"Finished FF training for {log_prefix}. Overall Peak Mem for Layer: {peak_mem_layer_train:.1f} MiB")
     layer_module.eval()
-    # <<< Return more info for logging >>>
-    return last_epoch_avg_loss, peak_mem_layer_train, last_epoch_grad_norm_w_mean, last_epoch_grad_norm_b_mean
+    # Return more info for logging - Removed extra grad norms for now, just return loss/mem
+    # return last_epoch_avg_loss, peak_mem_layer_train, last_epoch_grad_norm_w_mean, last_epoch_grad_norm_b_mean
+    return last_epoch_avg_loss, peak_mem_layer_train
 
 
-# --- train_ff_model ---
+# --- train_ff_model (MODIFIED: Pass gradient_clip_value) ---
 def train_ff_model(
     model: FF_MLP,
     train_loader: DataLoader,
@@ -355,6 +371,7 @@ def train_ff_model(
     """
     Orchestrates the layer-wise training of an FF_MLP model using pixel label embedding.
     Logs layer summary metrics including peak memory.
+    MODIFIED: Added gradient_clip_value parameter to pass down.
     Returns the overall peak GPU memory observed across all layer training phases.
     """
     model.to(device)
@@ -374,9 +391,17 @@ def train_ff_model(
     log_interval = algo_config.get("log_interval", 100)
     optimizer_params_extra = algo_config.get("optimizer_params", {})
     checkpoint_dir = config.get("checkpointing", {}).get("checkpoint_dir", None)
+    # <<< ADDED: Get clip value from config, default to 1.0 >>>
+    gradient_clip_value = algo_config.get("gradient_clip_value", 1.0)
+    if gradient_clip_value is not None and gradient_clip_value <= 0:
+         logger.info(f"Gradient clipping disabled (clip_value={gradient_clip_value}).")
+         gradient_clip_value = None # Set to None to disable
+    elif gradient_clip_value is not None:
+         logger.info(f"Using gradient clipping with value: {gradient_clip_value}")
+    # <<< END ADDED >>>
 
     logger.info(
-        f"FF Parameters: Optimizer={optimizer_type}, LR={lr}, WD={weight_decay}, Threshold={threshold}, Epochs/Layer={epochs_per_layer}"
+        f"FF Parameters: Optimizer={optimizer_type}, LR={lr}, WD={weight_decay}, Threshold={threshold}, Epochs/Layer={epochs_per_layer}, GradClip={gradient_clip_value}"
     )
 
     @torch.no_grad()
@@ -408,22 +433,21 @@ def train_ff_model(
 
     # 1. Train Input Adapter Layer (Effective Hidden Layer 0)
     layer_log_idx_0 = 1 # For logging 1-based
-    log_prefix_0 = f"FF/Layer {layer_log_idx_0} (Input Adapter)" # <<< Use Consistent Prefix
+    log_prefix_0 = f"FF/Layer {layer_log_idx_0} (Input Adapter)"
     logger.info(f"--- Training {log_prefix_0} ---")
     layer_module_0 = model.input_adapter_layer
     params_0 = list(layer_module_0.parameters())
     layer_0_peak_mem = 0.0
     final_avg_loss_layer_0 = float('nan')
-    final_grad_w_0 = float('nan') # <<< ADDED for logging
-    final_grad_b_0 = float('nan') # <<< ADDED for logging
-
+    # final_grad_w_0 = float('nan') # Removed - logging handled inside train_ff_layer
+    # final_grad_b_0 = float('nan') # Removed
 
     if params_0:
         optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
         optimizer_0 = getattr(optim, optimizer_type)(params_0, **optimizer_0_kwargs)
 
-        # <<< MODIFIED: Get more return values >>>
-        final_avg_loss_layer_0, layer_0_peak_mem, final_grad_w_0, final_grad_b_0 = train_ff_layer(
+        # <<< Pass gradient_clip_value >>>
+        final_avg_loss_layer_0, layer_0_peak_mem = train_ff_layer(
             model=model,
             layer_module=layer_module_0,
             is_input_adapter_layer=True,
@@ -438,7 +462,8 @@ def train_ff_model(
             log_interval=log_interval,
             step_ref=step_ref,
             gpu_handle=gpu_handle,
-            nvml_active=nvml_active
+            nvml_active=nvml_active,
+            gradient_clip_value=gradient_clip_value # <<< PASS CLIP VALUE >>>
         )
         peak_mem_train = max(peak_mem_train, layer_0_peak_mem)
 
@@ -452,8 +477,7 @@ def train_ff_model(
         "global_step": current_global_step,
         f"{log_prefix_0}/Train_Loss_LayerAvg": final_avg_loss_layer_0,
         f"{log_prefix_0}/Peak_GPU_Mem_Layer_MiB": layer_0_peak_mem,
-        f"{log_prefix_0}/Final_GradNormW_LayerAvg": final_grad_w_0, # <<< ADDED Log
-        f"{log_prefix_0}/Final_GradNormB_LayerAvg": final_grad_b_0, # <<< ADDED Log
+        # Grad norms logged inside train_ff_layer
     }
     log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
     logger.debug(f"Logged {log_prefix_0} summary at global_step {current_global_step}")
@@ -471,15 +495,15 @@ def train_ff_model(
     for i in range(len(model.layers)):
         effective_layer_index = i + 1
         layer_log_idx = effective_layer_index + 1 # 1-based
-        log_prefix_i = f"FF/Layer {layer_log_idx} (Hidden)" # <<< Use Consistent Prefix
+        log_prefix_i = f"FF/Layer {layer_log_idx} (Hidden)"
         logger.info(f"--- Training {log_prefix_i} ---")
 
         ff_layer_module = model.layers[i]
         params_i = list(ff_layer_module.parameters())
         layer_i_peak_mem = 0.0
         final_avg_loss_layer_i = float('nan')
-        final_grad_w_i = float('nan') # <<< ADDED for logging
-        final_grad_b_i = float('nan') # <<< ADDED for logging
+        # final_grad_w_i = float('nan') # Removed
+        # final_grad_b_i = float('nan') # Removed
 
         if not params_i:
             logger.warning(f"{log_prefix_i} has no parameters.")
@@ -487,8 +511,8 @@ def train_ff_model(
             optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
             optimizer_i = getattr(optim, optimizer_type)(params_i, **optimizer_i_kwargs)
 
-            # <<< MODIFIED: Get more return values >>>
-            final_avg_loss_layer_i, layer_i_peak_mem, final_grad_w_i, final_grad_b_i = train_ff_layer(
+            # <<< Pass gradient_clip_value >>>
+            final_avg_loss_layer_i, layer_i_peak_mem = train_ff_layer(
                 model=model,
                 layer_module=ff_layer_module,
                 is_input_adapter_layer=False,
@@ -503,7 +527,8 @@ def train_ff_model(
                 log_interval=log_interval,
                 step_ref=step_ref,
                 gpu_handle=gpu_handle,
-                nvml_active=nvml_active
+                nvml_active=nvml_active,
+                gradient_clip_value=gradient_clip_value # <<< PASS CLIP VALUE >>>
             )
             peak_mem_train = max(peak_mem_train, layer_i_peak_mem)
 
@@ -515,8 +540,7 @@ def train_ff_model(
             "global_step": current_global_step,
             f"{log_prefix_i}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
             f"{log_prefix_i}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem,
-            f"{log_prefix_i}/Final_GradNormW_LayerAvg": final_grad_w_i, # <<< ADDED Log
-            f"{log_prefix_i}/Final_GradNormB_LayerAvg": final_grad_b_i, # <<< ADDED Log
+            # Grad norms logged inside train_ff_layer
         }
         log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.debug(f"Logged {log_prefix_i} summary at global_step {current_global_step}")
@@ -535,7 +559,7 @@ def train_ff_model(
     return peak_mem_train
 
 
-# --- evaluate_ff_model ---
+# --- evaluate_ff_model (Unchanged) ---
 def evaluate_ff_model(
     model: FF_MLP,
     data_loader: DataLoader,
@@ -584,6 +608,12 @@ def evaluate_ff_model(
                     total_goodness_candidate = torch.zeros((batch_size,), device=device)
                 else:
                     try:
+                        # Sum goodness across layers (excluding layer 0 input layer)
+                        # Hinton's paper (Sec 3.3) implies summing goodness of *hidden* layers.
+                        # The goodness list corresponds to layers 1 through L.
+                        if len(layer_goodness_list) != model.num_hidden_layers:
+                             logger.warning(f"Goodness list len ({len(layer_goodness_list)}) != num hidden layers ({model.num_hidden_layers})")
+                        # Summing all returned goodness scores (layers 1 to L)
                         total_goodness_candidate = torch.stack(layer_goodness_list, dim=0).sum(dim=0)
                         if total_goodness_candidate.shape != (batch_size,):
                             raise ValueError(f"Unexpected shape after summing goodness: {total_goodness_candidate.shape}")

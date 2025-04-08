@@ -24,7 +24,7 @@ class FF_Layer(nn.Module):
         norm_eps (float): Epsilon added to the denominator for numerical stability
                           during normalization (especially length normalization).
                           Defaults to 1e-5 for better stability.
-        bias_init (float): Value to initialize bias terms. Defaults to 0.1 for ReLU. # <<< ADDED ARGUMENT
+        bias_init (float): Value to initialize bias terms. Defaults to 0.1 for ReLU.
     """
 
     def __init__(
@@ -36,7 +36,7 @@ class FF_Layer(nn.Module):
         norm_type: str = "length",
         bias: bool = True,
         norm_eps: float = 1e-5,
-        bias_init: float = 0.1, # <<< ADDED ARGUMENT with default 0.1
+        bias_init: float = 0.1,
     ):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias=bias)
@@ -53,13 +53,9 @@ class FF_Layer(nn.Module):
         else:
             nn.init.kaiming_uniform_(self.linear.weight, a=math.sqrt(5))
 
-        # <<< MODIFIED BIAS INITIALIZATION >>>
         if bias and self.linear.bias is not None:
-            # Initialize bias to a small positive value (e.g., 0.1) instead of 0
-            # This helps prevent "dying ReLUs" early in training
             nn.init.constant_(self.linear.bias, bias_init)
-            logger.debug(f"FF_Layer: Initialized bias to {bias_init}")
-        # <<< END MODIFICATION >>>
+            # logger.debug(f"FF_Layer: Initialized bias to {bias_init}") # Keep bias init logging less verbose
 
         self.norm_type = norm_type.lower()
         self.normalize = normalize
@@ -79,11 +75,11 @@ class FF_Layer(nn.Module):
         else:
             self.norm_layer = nn.Identity()
 
-        logger.debug(
-            f"FF_Layer: In={in_features}, Out={out_features}, Normalize={normalize} "
-            f"(Type: {self.norm_type if self.normalize else 'None'}, eps={self.norm_eps}), "
-            f"Bias={bias}, Activation={activation_cls.__name__}"
-        )
+        # logger.debug( # Keep constructor logging less verbose
+        #     f"FF_Layer: In={in_features}, Out={out_features}, Normalize={normalize} "
+        #     f"(Type: {self.norm_type if self.normalize else 'None'}, eps={self.norm_eps}), "
+        #     f"Bias={bias}, Activation={activation_cls.__name__}"
+        # )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_lin = self.linear(x)
@@ -91,12 +87,40 @@ class FF_Layer(nn.Module):
         x_norm = self.norm_layer(x_act)
         return x_norm
 
+    # --- MODIFIED: Added optional debug logging ---
     def forward_with_goodness(
         self, x: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         x_lin = self.linear(x)
         x_act = self.activation(x_lin)
         goodness = torch.sum(x_act.pow(2), dim=1)
+
+        # <<< ADDED Debug Logging (sampled) >>>
+        # Log ~1% of the time to avoid excessive output
+        # Ensure self.training check isn't strictly necessary unless logging desired only during training
+        if torch.randint(0, 100, (1,)).item() == 0:
+             try:
+                 with torch.no_grad():
+                     # Calculate norms safely
+                     x_act_norm_val = torch.linalg.norm(x_act, dim=1)
+                     # Handle potential division by zero if batch size is 0 (shouldn't happen with DataLoader usually)
+                     if x_act_norm_val.numel() > 0:
+                        x_act_norm_mean = x_act_norm_val.mean().item()
+                     else:
+                        x_act_norm_mean = float('nan')
+
+                     if goodness.numel() > 0:
+                         goodness_mean = goodness.mean().item()
+                     else:
+                         goodness_mean = float('nan')
+
+                     logger.debug(f"FF_Layer Debug: x_act L2 Norm (mean): {x_act_norm_mean:.4f}, Goodness (mean): {goodness_mean:.4f}")
+             except Exception as e_debug:
+                 # Catch errors during debug logging itself to prevent crashes
+                 logger.warning(f"Error during FF_Layer debug logging: {e_debug}")
+        # <<< END Debug Logging >>>
+
+
         x_norm = self.norm_layer(x_act)
         return x_norm, goodness
 
@@ -114,7 +138,7 @@ class FF_MLP(nn.Module):
         norm_type (str): Type of normalization ('length' or 'layernorm'). Defaults to 'length'.
         bias (bool): Whether linear layers use bias terms. Defaults to True.
         norm_eps (float): Epsilon for normalization stability. Defaults to 1e-5.
-        bias_init (float): Value to initialize bias terms. Defaults to 0.1 for ReLU. # <<< ADDED ARGUMENT
+        bias_init (float): Value to initialize bias terms. Defaults to 0.1 for ReLU.
     """
 
     def __init__(
@@ -127,16 +151,17 @@ class FF_MLP(nn.Module):
         norm_type: str = "length",
         bias: bool = True,
         norm_eps: float = 1e-5,
-        bias_init: float = 0.1, # <<< ADDED ARGUMENT with default
+        bias_init: float = 0.1,
     ):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.num_classes = num_classes
+        self.num_hidden_layers = len(hidden_dims) # Store number of hidden layers for evaluation logic
         self.normalize_layers = normalize_layers
         self.norm_type = norm_type
         self.norm_eps = norm_eps
-        self.bias_init = bias_init # <<< STORE bias_init
+        self.bias_init = bias_init
 
         if not hidden_dims:
             raise ValueError("hidden_dims list cannot be empty for FF_MLP.")
@@ -145,8 +170,7 @@ class FF_MLP(nn.Module):
             act_cls = nn.ReLU
         elif activation.lower() == "tanh":
             act_cls = nn.Tanh
-            # If using Tanh, might want to default bias_init back to 0
-            if bias_init == 0.1: # Check if default ReLU bias_init was used
+            if bias_init == 0.1:
                 logger.info("Using Tanh activation, setting bias_init to 0.0.")
                 self.bias_init = 0.0
         else:
@@ -164,11 +188,9 @@ class FF_MLP(nn.Module):
         else:
             nn.init.kaiming_uniform_(self.input_adapter_layer.weight, a=math.sqrt(5))
 
-        # <<< MODIFIED BIAS INITIALIZATION for input adapter >>>
         if bias and self.input_adapter_layer.bias is not None:
             nn.init.constant_(self.input_adapter_layer.bias, self.bias_init)
-            logger.debug(f"FF_MLP Input Adapter: Initialized bias to {self.bias_init}")
-        # <<< END MODIFICATION >>>
+            # logger.debug(f"FF_MLP Input Adapter: Initialized bias to {self.bias_init}")
 
         # Apply normalization to the output of the first effective hidden layer
         if normalize_layers:
@@ -187,7 +209,7 @@ class FF_MLP(nn.Module):
         current_dim = hidden_dims[0]
         for h_dim in hidden_dims[1:]:
             self.layers.append(
-                FF_Layer( # <<< Pass bias_init >>>
+                FF_Layer(
                     current_dim,
                     h_dim,
                     activation_cls=act_cls,
@@ -195,7 +217,7 @@ class FF_MLP(nn.Module):
                     norm_type=norm_type,
                     bias=bias,
                     norm_eps=self.norm_eps,
-                    bias_init=self.bias_init, # <<< Pass bias_init >>>
+                    bias_init=self.bias_init,
                 )
             )
             current_dim = h_dim
@@ -208,28 +230,29 @@ class FF_MLP(nn.Module):
         logger.info(f"Layer dimensions: {all_layer_dims_str}")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Basic forward pass for compatibility."""
+        """Basic forward pass for compatibility (e.g., FLOPs profiling)."""
         current_activation = self.input_adapter_layer(x)
         current_activation = self.first_layer_activation(current_activation)
         current_activation = self.first_layer_norm(current_activation)
         for layer in self.layers:
             current_activation = layer(current_activation)
-        return current_activation
+        return current_activation # Returns final hidden layer output (normalized)
 
     def forward_upto(
         self, x_flattened_modified: torch.Tensor, layer_idx: int
     ) -> torch.Tensor:
         """Forward pass up to layer_idx, returning normalized output."""
         if not (0 <= layer_idx < len(self.hidden_dims)):
-            raise ValueError(f"layer_idx {layer_idx} out of range.")
+            raise ValueError(f"layer_idx {layer_idx} out of range (0 to {len(self.hidden_dims)-1}).")
         current_activation = self.input_adapter_layer(x_flattened_modified)
         current_activation = self.first_layer_activation(current_activation)
         current_activation = self.first_layer_norm(current_activation)
-        if layer_idx == 0:
+        if layer_idx == 0: # layer_idx 0 corresponds to output of first hidden layer (after norm)
             return current_activation
+        # Loop runs layer_idx times to get output of layer layer_idx+1 (e.g., layer_idx=1 runs self.layers[0])
         for i in range(layer_idx):
             if i >= len(self.layers):
-                raise IndexError(f"Trying to access self.layers[{i}].")
+                 raise IndexError(f"Internal index {i} exceeds number of subsequent layers ({len(self.layers)}) for requested layer_idx {layer_idx}.")
             current_activation = self.layers[i](current_activation)
         return current_activation
 
@@ -238,16 +261,22 @@ class FF_MLP(nn.Module):
     ) -> List[torch.Tensor]:
         """Forward pass calculating goodness per layer."""
         if x_flattened_modified.shape[1] != self.input_dim:
-            raise ValueError(f"Input dim mismatch.")
+            raise ValueError(f"Input dim mismatch. Got {x_flattened_modified.shape[1]}, expected {self.input_dim}")
         layer_goodness = []
+        # --- Layer 1 (Input Adapter Layer) ---
         x_adapt_lin = self.input_adapter_layer(x_flattened_modified)
         x_adapt_act = self.first_layer_activation(x_adapt_lin)
         goodness_0 = torch.sum(x_adapt_act.pow(2), dim=1)
         layer_goodness.append(goodness_0)
-        current_activation = self.first_layer_norm(x_adapt_act)
+        current_activation = self.first_layer_norm(x_adapt_act) # Normalize for next layer's input
+
+        # --- Subsequent Hidden Layers ---
         for layer in self.layers:
+            # forward_with_goodness calculates goodness on pre-normalized activation
             current_activation, goodness = layer.forward_with_goodness(current_activation)
             layer_goodness.append(goodness)
+            # Note: current_activation is now the normalized output, ready for the *next* layer
+
         if len(layer_goodness) != len(self.hidden_dims):
-            logger.warning(f"Goodness scores length mismatch.")
+            logger.warning(f"Goodness scores length mismatch. Expected {len(self.hidden_dims)}, got {len(layer_goodness)}")
         return layer_goodness
