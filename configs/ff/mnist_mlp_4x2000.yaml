@@ -1,10 +1,10 @@
 # File: configs/ff/mnist_mlp_4x2000.yaml
 # Configuration for Forward-Forward (FF) on MNIST with 4x2000 MLP
 # Based on paper/reference code settings.
+# <<< MODIFIED: Back to lr=0.0003, INCREASED epochs_per_layer, kept eval fix >>>
 
 # Experiment Identification
-# <<< MODIFIED: Added suffix for LR change >>>
-experiment_name: "ff_mnist_mlp_4x2000_lr0003"
+experiment_name: "ff_mnist_mlp_4x2000_lr0003_e200_evalfix" # Updated name
 algorithm:
   name: "FF"
 
@@ -33,17 +33,17 @@ model:
     normalize_layers: true
     norm_type: 'length'
     bias: true
-    norm_eps: 1.0e-5     # Keep corrected epsilon
-    bias_init: 0.1       # Keep positive bias initialization
+    norm_eps: 1.0e-5
+    bias_init: 0.1
     # num_classes: 10 # Calculated
 
 # Algorithm Specific Configuration (Forward-Forward)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.0003     # <<< MODIFIED: Drastically reduced learning rate
+  lr: 0.0003     # <<< MODIFIED: Back to low learning rate >>>
   weight_decay: 0.0
   threshold: 2.0
-  epochs_per_layer: 100
+  epochs_per_layer: 200 # <<< MODIFIED: Significantly increased epochs >>>
   log_interval: 100
 
 # Logging Configuration
@@ -53,9 +53,8 @@ logging:
     use_wandb: true
 
 # Checkpointing
-# <<< MODIFIED: Updated directory >>>
 checkpointing:
-  checkpoint_dir: "checkpoints/ff_mnist_mlp_4x2000_lr0003"
+  checkpoint_dir: "checkpoints/ff_mnist_mlp_4x2000_lr0003_e200_evalfix" # Updated dir
 
 # Monitoring/Profiling
 monitoring:
