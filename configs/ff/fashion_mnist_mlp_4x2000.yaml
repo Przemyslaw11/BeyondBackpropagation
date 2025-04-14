@@ -1,11 +1,8 @@
 # File: configs/ff/fashion_mnist_mlp_4x2000.yaml
-# Configuration for Forward-Forward (FF) on Fashion-MNIST with 4x2000 MLP
-
-# Inherit from base config (handled by config_parser)
-# Values here override base.yaml
+# Configuration for Forward-Forward (Hinton style) on Fashion-MNIST with 4x2000 MLP
 
 # Experiment Identification
-experiment_name: "ff_fashion_mnist_mlp_4x2000"
+experiment_name: "ff_hinton_fashion_mnist_mlp_4x2000" # Updated name
 algorithm:
   name: "FF"
 
@@ -13,48 +10,55 @@ algorithm:
 data:
   name: "FashionMNIST"
   root: "./data"
-  val_split: 0.1
+  val_split: 0.1 # Use 10% (~6k) for validation
   num_classes: 10
   input_channels: 1
   image_size: 28
 
 # Data Loader Configuration
 data_loader:
-  batch_size: 128
+  batch_size: 100 # Keep consistent with MNIST example from reference
   num_workers: 4
   pin_memory: true
 
 # Model Architecture Configuration
 model:
-  name: "FF_MLP"
+  name: "FF_Hinton_MLP" # Use the new model name
   params:
-    # input_dim: 784 # Calculated
+    input_dim: 784 # Explicitly define
     hidden_dims: [2000, 2000, 2000, 2000]
     activation: "ReLU"
-    normalize_layers: true
-    norm_type: 'length' # Use length normalization as per paper footnote 5
     bias: true
-    # num_classes: 10 # Calculated
+    norm_eps: 1.0e-8
+    bias_init: 0.0
 
-# Algorithm Specific Configuration (Forward-Forward)
+# Algorithm Specific Configuration (Forward-Forward Hinton style)
+# Using same hyperparams as MNIST ref code, might need tuning for FMNIST
 algorithm_params:
-  optimizer_type: "Adam" # Paper doesn't specify, Adam is a common default for modern NNs.
-  lr: 0.03 # From paper Fig 2 caption for jittered MNIST (Sec 3.3) which is a comparable task.
-  weight_decay: 0.0 # Paper doesn't mention weight decay for FF.
-  threshold: 2.0 # Chosen default, as paper doesn't specify the value used. Influences loss scale.
-  epochs_per_layer: 60 # From paper Sec 3.3 for comparable MNIST performance (1.36% error).
+  optimizer_type: "AdamW"
+  ff_learning_rate: 1e-3
+  ff_weight_decay: 3e-4
+  downstream_learning_rate: 1e-2
+  downstream_weight_decay: 3e-3
+  threshold: 2.0
+  peer_normalization_factor: 0.03
+  peer_momentum: 0.9
+
+# Training Configuration
+training:
+  epochs: 100 # Start with same as MNIST, adjust if needed
   log_interval: 100
 
-# Logging Configuration (Inherits project/entity from base)
+# Logging Configuration
 logging:
   level: "INFO"
-  # log_file: null # Set dynamically
   wandb:
     use_wandb: true
 
-# Checkpointing (For FF, save after each layer)
+# Checkpointing
 checkpointing:
-  checkpoint_dir: "checkpoints/ff_fashion_mnist_mlp_4x2000" # Specific directory
+  checkpoint_dir: "checkpoints/ff_hinton_fashion_mnist_mlp_4x2000"
+  # save_best_metric: "ff_val_accuracy"
 
 # Monitoring/Profiling
 monitoring:
