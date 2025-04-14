@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class CaFoBlock(nn.Module):
     """
     A single block for the CaFo CNN, typically: Conv -> BN -> Activation -> Pool.
+    MODIFIED: Added explicit Kaiming uniform initialization for Conv layer.
     """
 
     def __init__(
@@ -34,6 +35,16 @@ class CaFoBlock(nn.Module):
             padding=padding,
             bias=not use_batchnorm,  # Disable bias if using BatchNorm
         )
+
+        # <<< START MODIFICATION: Explicit Initialization >>>
+        # Explicitly initialize weights using Kaiming uniform for ReLU non-linearity
+        nn.init.kaiming_uniform_(self.conv.weight, mode='fan_in', nonlinearity='relu')
+        # Initialize bias to zero if it exists (should be None if use_batchnorm=True)
+        if self.conv.bias is not None:
+            nn.init.constant_(self.conv.bias, 0)
+        logger.debug(f"CaFoBlock Conv ({in_channels}->{out_channels}): Explicitly applied Kaiming Uniform init.")
+        # <<< END MODIFICATION >>>
+
         self.bn = nn.BatchNorm2d(out_channels) if use_batchnorm else nn.Identity()
         self.activation = activation_cls()
         # Ensure pooling doesn't reduce dimension to zero if input is small
