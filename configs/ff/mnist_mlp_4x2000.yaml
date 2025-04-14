@@ -1,76 +1,59 @@
-# File: configs/ff/mnist_mlp_4x2000.yaml
-# Configuration for Forward-Forward (Hinton style) on MNIST with 4x2000 MLP
-
-# Experiment Identification
-experiment_name: "ff_hinton_mnist_mlp_4x2000" # Updated name
+# File: configs/ff/mnist_mlp_4x2000.yaml (Ensure values are numbers)
+experiment_name: "ff_hinton_mnist_mlp_4x2000_revised" # New name maybe
 algorithm:
-  name: "FF" # Keep algo name
+  name: "FF"
 
-# Dataset Configuration
 data:
   name: "MNIST"
   root: "./data"
-  val_split: 0.1 # Use 10k MNIST samples for validation (50k train)
+  val_split: 0.1
   num_classes: 10
   input_channels: 1
   image_size: 28
 
-# Data Loader Configuration (Reference code used 100)
 data_loader:
-  batch_size: 100 # Match reference code batch size
+  batch_size: 100 # Match reference
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration
 model:
-  name: "FF_Hinton_MLP" # Use the new model name
+  name: "FF_MLP" # Use your modified model name
   params:
-    input_dim: 784 # Explicitly define for clarity/BP baseline
-    hidden_dims: [2000, 2000, 2000, 2000] # Match 4x2000
-    activation: "ReLU" # Reference code used ReLU
+    input_dim: 784
+    hidden_dims: [2000, 2000, 2000, 2000]
+    activation: "ReLU"
     bias: true
-    norm_eps: 1.0e-8 # Epsilon used in reference code's norm
-    bias_init: 0.0   # Reference code used zero bias init
+    norm_eps: 1.0e-8 # From reference code
+    bias_init: 0.0   # From reference code
 
-# Algorithm Specific Configuration (Forward-Forward Hinton style)
+# Algorithm Specific Configuration (Hinton style)
 algorithm_params:
-  optimizer_type: "AdamW" # Common default, paper/code don't specify Adam/SGD explicitly for FF part
-  # Learning rates based on reference code's separate groups:
-  # <<< MODIFIED: Ensure these are numbers, not strings >>>
+  optimizer_type: "AdamW"
+  # Ensure these are numbers, NOT strings
   ff_learning_rate: 1e-3
   ff_weight_decay: 3e-4
   downstream_learning_rate: 1e-2
   downstream_weight_decay: 3e-3
-  # <<< END MODIFICATION >>>
-  threshold: 2.0 # Threshold for goodness calc (paper mentions subtracting dim, ref code uses threshold param)
-  # Peer normalization settings (optional, based on reference code config)
-  peer_normalization_factor: 0.03 # Example value from ref code
-  peer_momentum: 0.9            # Example value from ref code
+  # Momentum (only used if optimizer_type is SGD)
+  # ff_momentum: 0.9
+  # downstream_momentum: 0.9
+  threshold: 2.0
+  peer_normalization_factor: 0.03
+  peer_momentum: 0.9
 
 # Training Configuration
 training:
-  epochs: 100 # Total epochs for simultaneous training (adjust based on ref code findings)
+  epochs: 100 # Total epochs
   log_interval: 100
 
-# Logging Configuration
 logging:
   level: "INFO"
   wandb:
     use_wandb: true
-    # entity: "przspyra11" # Defined in base.yaml
 
-# Checkpointing (Optional: Save best based on validation accuracy)
 checkpointing:
-  checkpoint_dir: "checkpoints/ff_hinton_mnist_mlp_4x2000"
-  # save_best_metric: "ff_val_accuracy" # Default in base.yaml seems to be bp_val_accuracy, need to align if saving best FF
+  checkpoint_dir: "checkpoints/ff_hinton_mnist_mlp_4x2000_revised"
+  # save_best_metric: "ff_val_accuracy" # Or let engine default
 
-# Monitoring/Profiling
-monitoring:
-  enabled: true
-  energy_enabled: true
-  energy_interval_sec: 0.2
-profiling:
-  enabled: true
-  verbose: false
-
-# Ensure base.yaml is also used (handled by config_parser)
+monitoring: {enabled: true, energy_enabled: true, energy_interval_sec: 0.2}
+profiling: {enabled: true, verbose: false}
