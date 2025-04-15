@@ -1,11 +1,13 @@
-# File: src/algorithms/__init__.py (Verify content - should be correct)
+# File: ./src/algorithms/__init__.py # <<< MODIFIED >>>
+# --------------------------------------------------------------------------------
+# File: ./src/algorithms/__init__.py (Verify content - should be correct)
 # Import the main training/evaluation functions for each algorithm
 
 # --- FF ---
 from .ff import (
     train_ff_model,
     evaluate_ff_model,
-    # No ff_loss_fn needed externally anymore
+    # <<< CORRECTION: Add generate_ff_hinton_inputs if needed elsewhere, but not needed here >>>
 )
 
 # --- CaFo ---
@@ -47,5 +49,7 @@ __all__ = [
     "train_ff_model", "evaluate_ff_model", # FF main functions
     "train_cafo_model", "evaluate_cafo_model", # CaFo
     "mf_local_loss_fn", "train_mf_model", "evaluate_mf_model", # MF
+    "train_bp_model", "evaluate_bp_baseline", # Expose BP functions
     "get_training_function", "get_evaluation_function", # Factories
 ]
+# --------------------------------------------------------------------------------

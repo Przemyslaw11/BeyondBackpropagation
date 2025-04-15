@@ -1,4 +1,6 @@
-# File: ./src/architectures/ff_mlp.py (FINAL CORRECTED - Replaces previous content)
+# File: ./src/architectures/ff_mlp.py # <<< MODIFIED >>>
+# --------------------------------------------------------------------------------
+# File: ./src/architectures/ff_mlp.py (FINAL CORRECTED - Matches Reference Behavior)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,7 +74,8 @@ class FF_MLP(torch.nn.Module):
         self.norm_eps = norm_eps if norm_eps is not None else self.model_params.get("norm_eps", 1.0e-8) # Default 1e-8
 
         # --- Get Algorithm Params from Config ---
-        # threshold is removed, calculated dynamically
+        # <<< CORRECTION: Threshold removed from algo_params, calculated dynamically >>>
+        # self.threshold = float(self.algo_params.get("threshold", 2.0)) # <<< REMOVED >>>
         self.peer_normalization_factor = float(self.algo_params.get("peer_normalization_factor", 0.0))
         self.use_peer_normalization = self.peer_normalization_factor > 0.0
         self.peer_momentum = float(self.algo_params.get("peer_momentum", 0.9))
@@ -90,6 +93,7 @@ class FF_MLP(torch.nn.Module):
              logger.warning("Tanh activation specified, reference uses ReLU. Behavior might differ.")
              self.act_fn_train = nn.Tanh()
              self.act_fn_eval = nn.Tanh()
+             # <<< CORRECTION: Ensure bias is 0.0 for Tanh too, as reference did for ReLU >>>
              if self.bias_init != 0.0:
                  logger.info(f"{self.__class__.__name__}: Using Tanh activation, forcing bias_init to 0.0 (was {self.bias_init}).")
                  self.bias_init = 0.0
@@ -125,8 +129,10 @@ class FF_MLP(torch.nn.Module):
 
         # --- Downstream Classification Head ---
         # <<< CORRECTION: Reference uses activations from layers 1..N-1 >>>
+        # Layer indices: 0=L1, 1=L2, ..., N-1=LN. Collect from idx=1 onwards.
         if self.num_layers <= 1:
-             logger.warning(f"{self.__class__.__name__}: Only <=1 hidden layer. Downstream classifier input uses layer 0 activation.")
+             logger.warning(f"{self.__class__.__name__}: Only <=1 hidden layer. Downstream classifier input uses layer 0 activation (size {self.hidden_dims[0] if self.num_layers > 0 else 0}).")
+             # <<< CORRECTION: If only 1 layer (N=1), collect from layer 0 (idx=0) instead of 1..0 >>>
              channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0
         else:
              # Sum dims from layer 1 (idx=1) up to layer N-1 (idx=N-1)
@@ -134,7 +140,7 @@ class FF_MLP(torch.nn.Module):
 
         if channels_for_classification_loss <= 0 and self.num_layers > 0:
              logger.error(f"{self.__class__.__name__}: Downstream classifier input dimension calculated as 0 or less ({channels_for_classification_loss}). Check hidden_dims config.")
-             channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0
+             channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0 # Fallback to first layer?
              if channels_for_classification_loss <= 0: raise ValueError("Cannot determine downstream classifier input dimension.")
 
         self.linear_classifier = nn.Sequential(
@@ -168,7 +174,7 @@ class FF_MLP(torch.nn.Module):
             if isinstance(m, nn.Linear): nn.init.zeros_(m.weight)
 
     def _layer_norm(self, z: torch.Tensor) -> torch.Tensor:
-        """Applies RMS length normalization matching reference."""
+        """Applies RMS length normalization matching reference code."""
         # <<< CORRECTION: Use RMS normalization like reference code >>>
         rms_norm = torch.sqrt(torch.mean(z ** 2, dim=-1, keepdim=True))
         return z / (rms_norm + self.norm_eps)
@@ -189,7 +195,7 @@ class FF_MLP(torch.nn.Module):
         """Calculates FF loss and accuracy using DYNAMIC threshold matching reference."""
         sum_of_squares = torch.sum(z_pre_norm ** 2, dim=-1)
         # <<< CORRECTION: Use dynamic threshold based on layer's output dimension >>>
-        dynamic_threshold = z_pre_norm.shape[1] # Threshold = number of neurons in the layer
+        dynamic_threshold = float(z_pre_norm.shape[1]) # Threshold = number of neurons in the layer
         logits = sum_of_squares - dynamic_threshold
         ff_loss = self.ff_loss_criterion(logits, labels.float())
         with torch.no_grad():
@@ -215,7 +221,7 @@ class FF_MLP(torch.nn.Module):
     def forward_ff_train(self, z_stacked: torch.Tensor, posneg_labels: torch.Tensor, current_batch_size: int) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Performs the forward pass for FF training, calculating local losses."""
         scalar_outputs = {
-            "Loss": torch.zeros(1, device=self.device),
+            "Loss": torch.zeros(1, device=self.device), # Combined loss to be returned
             "Peer_Normalization_Loss_Total": torch.zeros(1, device=self.device),
             "FF_Loss_Total": torch.zeros(1, device=self.device)
         }
@@ -237,6 +243,7 @@ class FF_MLP(torch.nn.Module):
                 peer_loss = self._calc_peer_normalization_loss(idx, z_pos)
                 scalar_outputs["Peer_Normalization_Loss_Total"] += peer_loss
                 scalar_outputs[f"Layer_{idx+1}/Peer_Norm_Loss"] = peer_loss.item() # Log per-layer loss
+                # Add weighted peer loss to combined loss
                 scalar_outputs["Loss"] += self.peer_normalization_factor * peer_loss
 
             # --- Forward-Forward Loss ---
@@ -245,16 +252,20 @@ class FF_MLP(torch.nn.Module):
             scalar_outputs[f"Layer_{idx+1}/FF_Loss"] = ff_loss.item()
             scalar_outputs[f"Layer_{idx+1}/FF_Accuracy"] = ff_accuracy
             scalar_outputs["FF_Loss_Total"] += ff_loss # Accumulate total FF loss
-            scalar_outputs["Loss"] += ff_loss # Add FF loss to combined loss
+            # Add FF loss to combined loss
+            scalar_outputs["Loss"] += ff_loss
 
             # --- Prepare Input for Next Layer ---
             # <<< CORRECTION: Detach *before* normalization for next layer >>>
             z_detached = z_act.detach()
             z_norm = self._layer_norm(z_detached) # Use corrected norm
 
-            # <<< CORRECTION: Collect activations from layer 1..N-1 for downstream >>>
-            # Indices: 0=L1, 1=L2, ..., N-1=LN. Collect from idx=1 onwards.
-            if idx >= 1:
+            # <<< CORRECTION: Collect activations from layers 1..N-1 (or L0 if N=1) for downstream >>>
+            # Layer indices: 0=L1, 1=L2, ..., N-1=LN.
+            # If N=1, collect from idx=0.
+            # If N > 1, collect from idx=1 onwards.
+            should_collect_for_downstream = (idx == 0 and self.num_layers == 1) or (idx >= 1)
+            if should_collect_for_downstream:
                 # We need the normalized, detached activations of the *positive* samples only
                 normalized_activations_for_downstream.append(z_norm[:current_batch_size].detach())
 
@@ -267,50 +278,64 @@ class FF_MLP(torch.nn.Module):
                 input_classification_model = torch.cat(normalized_activations_for_downstream, dim=-1)
             except Exception as e_cat:
                 logger.error(f"FF train cat error: {e_cat}")
+                # Fallback: create empty tensor with correct batch size
                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
         else:
-            # Handle case with only 1 hidden layer
-            if self.num_layers == 1:
-                 logger.warning("FF_MLP has only 1 hidden layer. Downstream input will be empty based on L1..N-1 rule.")
-                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
-            else:
-                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+             # This case should only happen if num_layers is 0, which isn't supported
+             logger.error("FF_MLP: No activations collected for downstream classifier, unexpected state.")
+             input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+
 
         # Store for separate downstream forward pass
         self._current_downstream_input = input_classification_model
+        # <<< CORRECTION: Ensure requires_grad is set if classifier is trainable >>>
         if any(p.requires_grad for p in self.linear_classifier.parameters()):
-             # Ensure requires_grad if classifier is trainable
-             self._current_downstream_input.requires_grad_(True)
+             # Ensure grad flows if needed (important for SGD group setup)
+             self._current_downstream_input = self._current_downstream_input.clone().requires_grad_(True)
+        else:
+             # Detach if classifier isn't being trained
+             self._current_downstream_input = self._current_downstream_input.detach()
 
+
+        # Return the combined FF + Peer Norm loss and the full metrics dict
         return scalar_outputs["Loss"], scalar_outputs
 
-    # --- Downstream Classifier Forward (Added Robustness) ---
+    # --- Downstream Classifier Forward (Apply Corrections) ---
     def forward_downstream_only(self, class_labels: torch.Tensor) -> Tuple[torch.Tensor, float]:
         """Performs the forward pass for the downstream classification model ONLY."""
         if not hasattr(self, "_current_downstream_input"):
             logger.error("Downstream forward called before main FF forward pass. Input is missing.")
-            return torch.zeros(1, device=self.device, requires_grad=True), 0.0
-
-        input_cls = self._current_downstream_input
-        expected_dim = 0
-        try:
-            expected_dim = self.linear_classifier[0].in_features
-        except (IndexError, AttributeError):
-            logger.error("Could not get downstream classifier input dimension.")
-            return torch.zeros(1, device=self.device, requires_grad=True), 0.0
-
-        # Handle case where expected dim is 0 (e.g., 1 hidden layer only)
-        if expected_dim == 0:
-            logger.debug("Downstream classifier expects 0 features. Returning zero loss/acc.")
+            # Return dummy loss/acc. Ensure loss requires grad if classifier does.
             dummy_loss = torch.zeros(1, device=self.device)
             if any(p.requires_grad for p in self.linear_classifier.parameters()):
                  dummy_loss.requires_grad_(True)
             return dummy_loss, 0.0
 
-        # <<< CORRECTION: Check for dim mismatch AFTER checking expected_dim > 0 >>>
+        input_cls = self._current_downstream_input
+        expected_dim = 0
+        try:
+            # <<< CORRECTION: Access Linear layer inside Sequential >>>
+            expected_dim = self.linear_classifier[0].in_features
+        except (IndexError, AttributeError):
+            logger.error("Could not get downstream classifier input dimension.")
+            dummy_loss = torch.zeros(1, device=self.device)
+            if any(p.requires_grad for p in self.linear_classifier.parameters()):
+                 dummy_loss.requires_grad_(True)
+            return dummy_loss, 0.0
+
+        # Handle case where expected dim is 0 (e.g., if collection failed)
+        if expected_dim == 0:
+            # This might happen if num_layers=1 and collection logic was strictly L1..N-1
+            # Now handled by collecting L0 if N=1. If it still happens, log warning.
+            logger.warning("Downstream classifier expects 0 features. Returning zero loss/acc.")
+            dummy_loss = torch.zeros(1, device=self.device)
+            if any(p.requires_grad for p in self.linear_classifier.parameters()):
+                 dummy_loss.requires_grad_(True)
+            return dummy_loss, 0.0
+
+        # Check for dim mismatch AFTER checking expected_dim > 0
         if input_cls.shape[1] != expected_dim:
              logger.error(f"Downstream dimension mismatch: Input has {input_cls.shape[1]}, classifier expects {expected_dim}.")
-             # Create dummy loss compatible with requires_grad status
              dummy_loss = torch.zeros(1, device=self.device)
              if any(p.requires_grad for p in self.linear_classifier.parameters()):
                  dummy_loss.requires_grad_(True)
@@ -322,9 +347,9 @@ class FF_MLP(torch.nn.Module):
         with torch.no_grad():
             classification_accuracy = calculate_accuracy(output.data, class_labels)
 
-        # Clean up stored input
-        if hasattr(self, "_current_downstream_input"):
-            del self._current_downstream_input
+        # Clean up stored input (optional, helps memory slightly)
+        # if hasattr(self, "_current_downstream_input"):
+        #     del self._current_downstream_input
 
         return classification_loss, classification_accuracy
 
