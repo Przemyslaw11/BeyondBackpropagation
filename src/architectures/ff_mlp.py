@@ -1,4 +1,4 @@
-# File: src/architectures/ff_mlp.py (FINAL CORRECTED - Replaces previous content)
+# File: ./src/architectures/ff_mlp.py (FINAL CORRECTED - Replaces previous content)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -154,7 +154,8 @@ class FF_MLP(torch.nn.Module):
     def _init_layer_weights(self, layer: nn.Linear):
         """Initializes weights for a single FF linear layer according to reference."""
         # <<< CORRECTION: Match reference normal initialization std=1/sqrt(fan_out) >>>
-        std_dev = 1.0 / math.sqrt(layer.weight.shape[0]) # shape[0] is fan_out for nn.Linear
+        # NOTE: Reference used shape[0] which is fan_out for nn.Linear
+        std_dev = 1.0 / math.sqrt(layer.weight.shape[0])
         nn.init.normal_(layer.weight, mean=0, std=std_dev)
         # <<< CORRECTION: Match reference bias initialization (0.0 for ReLU) >>>
         if self.use_bias and layer.bias is not None:
@@ -192,6 +193,7 @@ class FF_MLP(torch.nn.Module):
         logits = sum_of_squares - dynamic_threshold
         ff_loss = self.ff_loss_criterion(logits, labels.float())
         with torch.no_grad():
+            # Accuracy calculation requires sigmoid output compared to 0.5
             ff_accuracy = (torch.sum((torch.sigmoid(logits) > 0.5) == labels) / z_pre_norm.shape[0]).item() * 100.0
         return ff_loss, ff_accuracy
 
@@ -206,82 +208,146 @@ class FF_MLP(torch.nn.Module):
             z_pre_act = layer(z)
             z_act = self.act_fn_eval(z_pre_act) # Use standard activation
             z = self._layer_norm(z_act) # Normalize for next layer
-        return z # Return activation of last hidden layer
+        # Return activation of last hidden layer (consistent behavior for profiling)
+        return z
 
     # --- FF Training Forward (Apply Corrections) ---
     def forward_ff_train(self, z_stacked: torch.Tensor, posneg_labels: torch.Tensor, current_batch_size: int) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Performs the forward pass for FF training, calculating local losses."""
-        scalar_outputs = { "Loss": torch.zeros(1, device=self.device), "Peer_Normalization_Loss_Total": torch.zeros(1, device=self.device), "FF_Loss_Total": torch.zeros(1, device=self.device) }
-        z = z_stacked.reshape(z_stacked.shape[0], -1); z = self._layer_norm(z) # Normalize input
+        scalar_outputs = {
+            "Loss": torch.zeros(1, device=self.device),
+            "Peer_Normalization_Loss_Total": torch.zeros(1, device=self.device),
+            "FF_Loss_Total": torch.zeros(1, device=self.device)
+        }
+        # Flatten and Normalize Input
+        z = z_stacked.reshape(z_stacked.shape[0], -1)
+        z = self._layer_norm(z)
+
         normalized_activations_for_downstream = []
+
         for idx, layer in enumerate(self.layers):
             z_pre_act = layer(z)
-            # <<< CORRECTION: Use custom ReLU_full_grad for FF training >>>
+            # <<< CORRECTION: Use custom ReLU_full_grad for FF training gradient >>>
             z_act = self.act_fn_train.apply(z_pre_act)
+
+            # --- Peer Normalization ---
             if self.use_peer_normalization:
                 z_pos = z_act[:current_batch_size]
                 # <<< CORRECTION: Use corrected peer loss calc >>>
                 peer_loss = self._calc_peer_normalization_loss(idx, z_pos)
                 scalar_outputs["Peer_Normalization_Loss_Total"] += peer_loss
-                scalar_outputs[f"Layer_{idx+1}/Peer_Norm_Loss"] = peer_loss.item()
+                scalar_outputs[f"Layer_{idx+1}/Peer_Norm_Loss"] = peer_loss.item() # Log per-layer loss
                 scalar_outputs["Loss"] += self.peer_normalization_factor * peer_loss
+
+            # --- Forward-Forward Loss ---
             # <<< CORRECTION: Use corrected FF loss calc (dynamic threshold) >>>
             ff_loss, ff_accuracy = self._calc_ff_loss(z_act, posneg_labels)
             scalar_outputs[f"Layer_{idx+1}/FF_Loss"] = ff_loss.item()
             scalar_outputs[f"Layer_{idx+1}/FF_Accuracy"] = ff_accuracy
-            scalar_outputs["FF_Loss_Total"] += ff_loss; scalar_outputs["Loss"] += ff_loss
+            scalar_outputs["FF_Loss_Total"] += ff_loss # Accumulate total FF loss
+            scalar_outputs["Loss"] += ff_loss # Add FF loss to combined loss
+
+            # --- Prepare Input for Next Layer ---
             # <<< CORRECTION: Detach *before* normalization for next layer >>>
             z_detached = z_act.detach()
             z_norm = self._layer_norm(z_detached) # Use corrected norm
+
             # <<< CORRECTION: Collect activations from layer 1..N-1 for downstream >>>
+            # Indices: 0=L1, 1=L2, ..., N-1=LN. Collect from idx=1 onwards.
             if idx >= 1:
+                # We need the normalized, detached activations of the *positive* samples only
                 normalized_activations_for_downstream.append(z_norm[:current_batch_size].detach())
-            z = z_norm # Use normalized, detached output as input for next layer
+
+            # <<< CORRECTION: Input for next layer is normalized & detached activation >>>
+            z = z_norm
+
+        # --- Assemble Downstream Classifier Input ---
         if normalized_activations_for_downstream:
-            try: input_classification_model = torch.cat(normalized_activations_for_downstream, dim=-1)
-            except Exception as e_cat: logger.error(f"FF train cat error: {e_cat}"); input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
-        else: input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+            try:
+                input_classification_model = torch.cat(normalized_activations_for_downstream, dim=-1)
+            except Exception as e_cat:
+                logger.error(f"FF train cat error: {e_cat}")
+                input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+        else:
+            # Handle case with only 1 hidden layer
+            if self.num_layers == 1:
+                 logger.warning("FF_MLP has only 1 hidden layer. Downstream input will be empty based on L1..N-1 rule.")
+                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+            else:
+                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+
         # Store for separate downstream forward pass
         self._current_downstream_input = input_classification_model
-        if any(p.requires_grad for p in self.linear_classifier.parameters()): self._current_downstream_input.requires_grad_(True)
+        if any(p.requires_grad for p in self.linear_classifier.parameters()):
+             # Ensure requires_grad if classifier is trainable
+             self._current_downstream_input.requires_grad_(True)
+
         return scalar_outputs["Loss"], scalar_outputs
 
-    # --- Downstream Classifier Forward (No changes needed structurally) ---
+    # --- Downstream Classifier Forward (Added Robustness) ---
     def forward_downstream_only(self, class_labels: torch.Tensor) -> Tuple[torch.Tensor, float]:
         """Performs the forward pass for the downstream classification model ONLY."""
-        if not hasattr(self, "_current_downstream_input"): logger.error("Downstream missing input."); return torch.zeros(1, device=self.device, requires_grad=True), 0.0
+        if not hasattr(self, "_current_downstream_input"):
+            logger.error("Downstream forward called before main FF forward pass. Input is missing.")
+            return torch.zeros(1, device=self.device, requires_grad=True), 0.0
+
         input_cls = self._current_downstream_input
         expected_dim = 0
-        try: expected_dim = self.linear_classifier[0].in_features
-        except (IndexError, AttributeError): logger.error("Could not get classifier input dim."); return torch.zeros(1, device=self.device, requires_grad=True), 0.0
-        if expected_dim == 0: logger.debug("Downstream classifier expects 0 features."); dummy_loss = torch.zeros(1, device=self.device); return dummy_loss, 0.0
+        try:
+            expected_dim = self.linear_classifier[0].in_features
+        except (IndexError, AttributeError):
+            logger.error("Could not get downstream classifier input dimension.")
+            return torch.zeros(1, device=self.device, requires_grad=True), 0.0
+
+        # Handle case where expected dim is 0 (e.g., 1 hidden layer only)
+        if expected_dim == 0:
+            logger.debug("Downstream classifier expects 0 features. Returning zero loss/acc.")
+            dummy_loss = torch.zeros(1, device=self.device)
+            if any(p.requires_grad for p in self.linear_classifier.parameters()):
+                 dummy_loss.requires_grad_(True)
+            return dummy_loss, 0.0
+
         # <<< CORRECTION: Check for dim mismatch AFTER checking expected_dim > 0 >>>
         if input_cls.shape[1] != expected_dim:
-             logger.error(f"Downstream dim mismatch: Input {input_cls.shape[1]}, Expected {expected_dim}.")
+             logger.error(f"Downstream dimension mismatch: Input has {input_cls.shape[1]}, classifier expects {expected_dim}.")
              # Create dummy loss compatible with requires_grad status
              dummy_loss = torch.zeros(1, device=self.device)
              if any(p.requires_grad for p in self.linear_classifier.parameters()):
                  dummy_loss.requires_grad_(True)
              return dummy_loss, 0.0
 
+        # Proceed if dimensions match
         output = self.linear_classifier(input_cls)
         classification_loss = self.classification_loss_criterion(output, class_labels)
-        with torch.no_grad(): classification_accuracy = calculate_accuracy(output.data, class_labels)
-        if hasattr(self, "_current_downstream_input"): del self._current_downstream_input # Clean up
+        with torch.no_grad():
+            classification_accuracy = calculate_accuracy(output.data, class_labels)
+
+        # Clean up stored input
+        if hasattr(self, "_current_downstream_input"):
+            del self._current_downstream_input
+
         return classification_loss, classification_accuracy
 
-    # --- Evaluation Forward (Goodness - Ensure standard ReLU & Detach/Norm Order) ---
+    # --- Evaluation Forward (Goodness - Apply Corrections) ---
     def forward_goodness_per_layer(self, x_flattened_modified: torch.Tensor) -> List[torch.Tensor]:
         """Forward pass calculating goodness per layer for evaluation."""
-        if x_flattened_modified.shape[1] != self.input_dim: raise ValueError(f"Eval input dim mismatch: {x_flattened_modified.shape[1]} vs {self.input_dim}")
-        layer_goodness = []; z = x_flattened_modified.reshape(x_flattened_modified.shape[0], -1); z = self._layer_norm(z)
+        if x_flattened_modified.shape[1] != self.input_dim:
+            raise ValueError(f"Eval input dim mismatch: {x_flattened_modified.shape[1]} vs {self.input_dim}")
+
+        layer_goodness = []
+        z = x_flattened_modified.reshape(x_flattened_modified.shape[0], -1)
+        z = self._layer_norm(z) # Normalize input
+
         for idx, layer in enumerate(self.layers):
             z_pre_act = layer(z)
-            # <<< CORRECTION: Use standard activation for eval goodness >>>
+            # <<< CORRECTION: Use standard activation (act_fn_eval) for eval goodness >>>
             z_act = self.act_fn_eval(z_pre_act)
-            goodness = torch.sum(z_act.pow(2), dim=1); layer_goodness.append(goodness)
-            # <<< CORRECTION: Detach before normalization for next layer input >>>
+            goodness = torch.sum(z_act.pow(2), dim=1)
+            layer_goodness.append(goodness)
+            # <<< CORRECTION: Detach before normalization for next layer input, matching train logic >>>
             z_detached = z_act.detach()
             z = self._layer_norm(z_detached) # Use corrected norm
-        if len(layer_goodness) != len(self.hidden_dims): logger.warning(f"Eval goodness length mismatch: {len(layer_goodness)} vs {len(self.hidden_dims)}.")
+
+        if len(layer_goodness) != len(self.hidden_dims):
+            logger.warning(f"Eval goodness length mismatch: {len(layer_goodness)} vs {len(self.hidden_dims)}.")
         return layer_goodness

@@ -1,4 +1,4 @@
-# File: ./configs/ff/mnist_mlp_3x1000_SGD_ref.yaml
+# File: configs/ff/mnist_mlp_3x1000_SGD_ref.yaml
 # Configuration replicating the reference Forward-Forward setup for MNIST 3x1000 MLP
 
 # Experiment Identification
@@ -23,7 +23,7 @@ data_loader:
 
 # Model Architecture Configuration
 model:
-  name: "FF_MLP" # <<< NOTE: Use the corrected FF_MLP class name >>>
+  name: "FF_MLP" # Use the corrected FF_MLP class
   params:
     # input_dim: 784 # Calculated automatically by engine
     hidden_dims: [1000, 1000, 1000] # Target Architecture
@@ -35,14 +35,14 @@ model:
 
 # Algorithm Specific Configuration (Matching Reference Code)
 algorithm_params:
-  optimizer_type: "SGD" # <<< NOTE: Confirmed Use SGD >>>
+  optimizer_type: "SGD" # <<< CORRECTION: Use SGD >>>
   # --- Learning Rates & Weight Decay (from reference utils.py setup) ---
   ff_learning_rate: 0.001 # Original: 1e-3
   ff_weight_decay: 0.0003 # Original: 3e-4
-  ff_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
+  ff_momentum: 0.9 # <<< CORRECTION: Added SGD momentum >>>
   downstream_learning_rate: 0.01 # Original: 1e-2
   downstream_weight_decay: 0.003 # Original: 3e-3
-  downstream_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
+  downstream_momentum: 0.9 # <<< CORRECTION: Added SGD momentum >>>
   # --- FF Specific (Threshold removed, Peer Norm parameters from ref) ---
   # threshold: 2.0 # <<< CORRECTION: Removed - Now calculated dynamically in model >>>
   peer_normalization_factor: 0.03 # From reference config
