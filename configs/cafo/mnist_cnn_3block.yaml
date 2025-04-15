@@ -1,19 +1,19 @@
-# File: configs/cafo/cifar10_cnn_3block.yaml
-# Configuration for Cascaded Forward (CaFo) on CIFAR-10 with 3-Block CNN
+# File: configs/cafo/mnist_cnn_3block.yaml
+# Configuration for Cascaded Forward (CaFo) on MNIST with 3-Block CNN
 
 # Inherit from base config
-experiment_name: "cafo_cifar10_cnn_3block"
+experiment_name: "cafo_mnist_cnn_3block" # Changed name
 algorithm:
   name: "CaFo"
 
 # Dataset Configuration
 data:
-  name: "CIFAR10"
+  name: "MNIST" # Changed dataset name
   root: "./data"
   val_split: 0.1
   num_classes: 10
-  input_channels: 3
-  image_size: 32
+  input_channels: 1
+  image_size: 28
 
 # Data Loader Configuration
 data_loader:
@@ -21,39 +21,38 @@ data_loader:
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration (Base blocks)
+# Model Architecture Configuration (Base blocks - Same as FMNIST)
 model:
   name: "CaFo_CNN"
   params:
-    # input_channels: 3 # Calculated
+    # input_channels: 1 # Calculated
     block_channels: [32, 128, 512]
     activation: "ReLU"
     use_batchnorm: true
     kernel_size: 3
     pool_kernel_size: 2
     pool_stride: 2
-    # image_size: 32 # Calculated
+    # image_size: 28 # Calculated
     # num_classes: 10 # Calculated
 
-# Algorithm Specific Configuration (CaFo-Rand-CE)
+# Algorithm Specific Configuration (CaFo-Rand-CE - Same as FMNIST)
 algorithm_params:
   optimizer_type: "Adam"
   lr: 0.001
   weight_decay: 0.0
   loss_type: "CrossEntropyLoss"
-  num_epochs_per_block: 500 # Epochs for predictor training on CIFAR-10
+  epochs_per_block: 500 # Re-using FMNIST value, adjust if needed for MNIST convergence
   log_interval: 200
 
 # Logging Configuration
 logging:
   level: "INFO"
-  # log_file: null
   wandb:
     use_wandb: true
 
-# Checkpointing
+# Checkpointing (Save predictors after training)
 checkpointing:
-  checkpoint_dir: "checkpoints/cafo_cifar10_cnn_3block"
+  checkpoint_dir: "checkpoints/cafo_mnist_cnn_3block" # Changed dir name
 
 # Monitoring/Profiling
 monitoring:

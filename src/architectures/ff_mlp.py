@@ -1,282 +1,353 @@
-# File: src/architectures/ff_mlp.py
+# File: ./src/architectures/ff_mlp.py (FINAL CORRECTED - Replaces previous content)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List, Tuple, Optional, Type
-import math  # Import math for initialization
+from typing import List, Tuple, Optional, Dict, Any
+import math
 import logging
+
+from src.utils.metrics import calculate_accuracy # Import from your utils
 
 logger = logging.getLogger(__name__)
 
+# --- Custom ReLU with Gradient Passthrough ( Matches Reference ) ---
+class ReLU_full_grad(torch.autograd.Function):
+    """ReLU activation function that passes through the gradient irrespective of its input value."""
+    @staticmethod
+    def forward(ctx: Any, input_val: torch.Tensor) -> torch.Tensor:
+        return input_val.clamp(min=0)
+    @staticmethod
+    def backward(ctx: Any, grad_output: torch.Tensor) -> torch.Tensor:
+        # <<< CORRECTION: Pass gradient through unchanged. >>>
+        return grad_output.clone()
 
-class FF_Layer(nn.Module):
+# --- Modified FF_MLP to match Hinton's reference logic ---
+class FF_MLP(torch.nn.Module):
     """
-    A single layer for the Forward-Forward algorithm, encapsulating the sequence:
-    Linear -> Activation -> Normalization.
-
-    Args:
-        in_features (int): Number of input features.
-        out_features (int): Number of output features.
-        activation_cls (Type[nn.Module]): The activation function class (e.g., nn.ReLU).
-        normalize (bool): Whether to apply normalization after activation. Defaults to True.
-        norm_type (str): Type of normalization ('length' or 'layernorm'). Defaults to 'length'.
-        bias (bool): Whether the linear layer uses a bias term. Defaults to True.
-        norm_eps (float): Epsilon added to the denominator for numerical stability
-                          during normalization (especially length normalization).
-                          Defaults to 1e-5 for better stability.
-        bias_init (float): Value to initialize bias terms. Defaults to 0.1 for ReLU.
+    CORRECTED MLP model implementing Hinton's reference Forward-Forward (FF) algorithm logic.
+    Uses simultaneous local gradient updates via detach. Includes downstream classifier.
+    Structure adapted to work with the modified training loop in src/algorithms/ff.py.
     """
-
     def __init__(
         self,
-        in_features: int,
-        out_features: int,
-        activation_cls: Type[nn.Module] = nn.ReLU,
-        normalize: bool = True,
-        norm_type: str = "length",
-        bias: bool = True,
-        norm_eps: float = 1e-5,
-        bias_init: float = 0.1,
+        # <<< MODIFICATION: Accept full config and device directly >>>
+        config: Dict[str, Any],
+        device: torch.device,
+        # Keep individual params for potential direct instantiation / BP baseline adaptation
+        input_dim: Optional[int] = None, # Now optional, inferred from config if needed
+        hidden_dims: Optional[List[int]] = None,
+        num_classes: Optional[int] = None,
+        activation: Optional[str] = "relu",
+        bias: Optional[bool] = True,
+        norm_eps: Optional[float] = 1.0e-8,
+        bias_init: Optional[float] = 0.0, # Note: Will be forced to 0.0 if activation is ReLU
     ):
         super().__init__()
-        self.linear = nn.Linear(in_features, out_features, bias=bias)
-        self.activation = activation_cls()
-        self.norm_eps = norm_eps
 
-        # --- Explicit Initialization ---
-        if isinstance(self.activation, nn.ReLU):
-            nn.init.kaiming_uniform_(
-                self.linear.weight, a=math.sqrt(5), nonlinearity="relu"
-            )
-        elif isinstance(self.activation, nn.Tanh):
-            nn.init.xavier_uniform_(self.linear.weight)
+        # Store config sections and device
+        self.config = config
+        self.model_config = config.get("model", {})
+        self.model_params = self.model_config.get("params", {})
+        self.algo_params = config.get("algorithm_params", {})
+        self.data_config = config.get("data", {})
+        self.loader_config = config.get("data_loader", {})
+        self.device = device
+
+        # --- Determine Architecture Params (Use config first, then args) ---
+        if input_dim is None: # Infer input_dim if not provided
+             input_channels = self.data_config.get("input_channels", 1)
+             image_size = self.data_config.get("image_size", 28)
+             self.input_dim = input_channels * image_size * image_size
+        else: self.input_dim = input_dim
+
+        self.hidden_dims = hidden_dims if hidden_dims is not None else self.model_params.get("hidden_dims", [1000, 1000, 1000])
+        self.num_classes = num_classes if num_classes is not None else self.data_config.get("num_classes", 10)
+        self.num_layers = len(self.hidden_dims)
+        # <<< CORRECTION: Read activation from model_params >>>
+        self.activation_name = (activation if activation is not None else self.model_params.get("activation", "ReLU")).lower()
+        self.use_bias = bias if bias is not None else self.model_params.get("bias", True)
+        # <<< CORRECTION: Read bias_init from model_params, but default to 0.0 if ReLU >>>
+        self.bias_init = bias_init if bias_init is not None else self.model_params.get("bias_init", 0.0)
+        # <<< CORRECTION: Read norm_eps from model_params >>>
+        self.norm_eps = norm_eps if norm_eps is not None else self.model_params.get("norm_eps", 1.0e-8) # Default 1e-8
+
+        # --- Get Algorithm Params from Config ---
+        # threshold is removed, calculated dynamically
+        self.peer_normalization_factor = float(self.algo_params.get("peer_normalization_factor", 0.0))
+        self.use_peer_normalization = self.peer_normalization_factor > 0.0
+        self.peer_momentum = float(self.algo_params.get("peer_momentum", 0.9))
+
+        # --- Activation Function Selection ---
+        # <<< CORRECTION: Ensure correct train/eval activations & bias init for ReLU >>>
+        if self.activation_name == 'relu':
+            self.act_fn_train = ReLU_full_grad() # Use special ReLU for FF training grads
+            self.act_fn_eval = nn.ReLU()         # Use standard ReLU for goodness eval
+            # <<< CORRECTION: Reference uses 0.0 bias init >>>
+            if self.bias_init != 0.0:
+                 logger.info(f"{self.__class__.__name__}: Using ReLU activation, forcing bias_init to 0.0 (was {self.bias_init}).")
+                 self.bias_init = 0.0
+        elif self.activation_name == 'tanh':
+             logger.warning("Tanh activation specified, reference uses ReLU. Behavior might differ.")
+             self.act_fn_train = nn.Tanh()
+             self.act_fn_eval = nn.Tanh()
+             if self.bias_init != 0.0:
+                 logger.info(f"{self.__class__.__name__}: Using Tanh activation, forcing bias_init to 0.0 (was {self.bias_init}).")
+                 self.bias_init = 0.0
         else:
-            nn.init.kaiming_uniform_(self.linear.weight, a=math.sqrt(5))
+            logger.error(f"{self.__class__.__name__}: Unsupported activation '{self.activation_name}'. Defaulting to ReLU.")
+            self.act_fn_train = ReLU_full_grad()
+            self.act_fn_eval = nn.ReLU()
+            self.bias_init = 0.0 # Ensure default 0.0 bias init
 
-        if bias and self.linear.bias is not None:
-            nn.init.constant_(self.linear.bias, bias_init)
-            # logger.debug(f"FF_Layer: Initialized bias to {bias_init}") # Keep bias init logging less verbose
-
-        self.norm_type = norm_type.lower()
-        self.normalize = normalize
-        if self.normalize:
-            if self.norm_type == "layernorm":
-                self.norm_layer = nn.LayerNorm(
-                    out_features, elementwise_affine=True, eps=norm_eps
-                )
-                logger.debug(f"FF_Layer: Using nn.LayerNorm (eps={norm_eps}).")
-            elif self.norm_type == "length":
-                self.norm_layer = lambda x: x / (
-                    torch.linalg.norm(x, dim=1, keepdim=True) + self.norm_eps
-                )
-                logger.debug(f"FF_Layer: Using Length Norm (eps={norm_eps}).")
-            else:
-                raise ValueError(f"Unsupported norm_type: {norm_type}.")
-        else:
-            self.norm_layer = nn.Identity()
-
-        # logger.debug( # Keep constructor logging less verbose
-        #     f"FF_Layer: In={in_features}, Out={out_features}, Normalize={normalize} "
-        #     f"(Type: {self.norm_type if self.normalize else 'None'}, eps={self.norm_eps}), "
-        #     f"Bias={bias}, Activation={activation_cls.__name__}"
-        # )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_lin = self.linear(x)
-        x_act = self.activation(x_lin)
-        x_norm = self.norm_layer(x_act)
-        return x_norm
-
-    # --- MODIFIED: Added optional debug logging ---
-    def forward_with_goodness(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_lin = self.linear(x)
-        x_act = self.activation(x_lin)
-        goodness = torch.sum(x_act.pow(2), dim=1)
-
-        # <<< ADDED Debug Logging (sampled) >>>
-        # Log ~1% of the time to avoid excessive output
-        # Ensure self.training check isn't strictly necessary unless logging desired only during training
-        if torch.randint(0, 100, (1,)).item() == 0:
-             try:
-                 with torch.no_grad():
-                     # Calculate norms safely
-                     x_act_norm_val = torch.linalg.norm(x_act, dim=1)
-                     # Handle potential division by zero if batch size is 0 (shouldn't happen with DataLoader usually)
-                     if x_act_norm_val.numel() > 0:
-                        x_act_norm_mean = x_act_norm_val.mean().item()
-                     else:
-                        x_act_norm_mean = float('nan')
-
-                     if goodness.numel() > 0:
-                         goodness_mean = goodness.mean().item()
-                     else:
-                         goodness_mean = float('nan')
-
-                     logger.debug(f"FF_Layer Debug: x_act L2 Norm (mean): {x_act_norm_mean:.4f}, Goodness (mean): {goodness_mean:.4f}")
-             except Exception as e_debug:
-                 # Catch errors during debug logging itself to prevent crashes
-                 logger.warning(f"Error during FF_Layer debug logging: {e_debug}")
-        # <<< END Debug Logging >>>
-
-
-        x_norm = self.norm_layer(x_act)
-        return x_norm, goodness
-
-
-class FF_MLP(nn.Module):
-    """
-    Multi-Layer Perceptron specifically designed for the Forward-Forward algorithm.
-
-    Args:
-        input_dim (int): Dimensionality of the flattened input.
-        hidden_dims (List[int]): List containing the number of neurons for each hidden layer.
-        num_classes (int): Number of output classes.
-        activation (str): Name of the activation function. Defaults to 'relu'.
-        normalize_layers (bool): Whether to apply normalization. Defaults to True.
-        norm_type (str): Type of normalization ('length' or 'layernorm'). Defaults to 'length'.
-        bias (bool): Whether linear layers use bias terms. Defaults to True.
-        norm_eps (float): Epsilon for normalization stability. Defaults to 1e-5.
-        bias_init (float): Value to initialize bias terms. Defaults to 0.1 for ReLU.
-    """
-
-    def __init__(
-        self,
-        input_dim: int,
-        hidden_dims: List[int],
-        num_classes: int,
-        activation: str = "relu",
-        normalize_layers: bool = True,
-        norm_type: str = "length",
-        bias: bool = True,
-        norm_eps: float = 1e-5,
-        bias_init: float = 0.1,
-    ):
-        super().__init__()
-        self.input_dim = input_dim
-        self.hidden_dims = hidden_dims
-        self.num_classes = num_classes
-        self.num_hidden_layers = len(hidden_dims) # Store number of hidden layers for evaluation logic
-        self.normalize_layers = normalize_layers
-        self.norm_type = norm_type
-        self.norm_eps = norm_eps
-        self.bias_init = bias_init
-
-        if not hidden_dims:
-            raise ValueError("hidden_dims list cannot be empty for FF_MLP.")
-
-        if activation.lower() == "relu":
-            act_cls = nn.ReLU
-        elif activation.lower() == "tanh":
-            act_cls = nn.Tanh
-            if bias_init == 0.1:
-                logger.info("Using Tanh activation, setting bias_init to 0.0.")
-                self.bias_init = 0.0
-        else:
-            raise ValueError(f"Unsupported activation function: {activation}")
-
-        # --- Input Adapter Layer (Effective Hidden Layer 0) ---
-        self.input_adapter_layer = nn.Linear(input_dim, hidden_dims[0], bias=bias)
-        self.first_layer_activation = act_cls()
-
-        # --- Explicit Initialization for input_adapter_layer ---
-        if isinstance(self.first_layer_activation, nn.ReLU):
-            nn.init.kaiming_uniform_(self.input_adapter_layer.weight, a=math.sqrt(5), nonlinearity="relu")
-        elif isinstance(self.first_layer_activation, nn.Tanh):
-            nn.init.xavier_uniform_(self.input_adapter_layer.weight)
-        else:
-            nn.init.kaiming_uniform_(self.input_adapter_layer.weight, a=math.sqrt(5))
-
-        if bias and self.input_adapter_layer.bias is not None:
-            nn.init.constant_(self.input_adapter_layer.bias, self.bias_init)
-            # logger.debug(f"FF_MLP Input Adapter: Initialized bias to {self.bias_init}")
-
-        # Apply normalization to the output of the first effective hidden layer
-        if normalize_layers:
-            if norm_type.lower() == "layernorm":
-                self.first_layer_norm = nn.LayerNorm(hidden_dims[0], eps=self.norm_eps)
-            elif norm_type.lower() == "length":
-                self.first_layer_norm = lambda x: x / (torch.linalg.norm(x, dim=1, keepdim=True) + self.norm_eps)
-            else:
-                logger.warning(f"Invalid norm_type '{norm_type}', disabling norm for first layer.")
-                self.first_layer_norm = nn.Identity()
-        else:
-            self.first_layer_norm = nn.Identity()
-
-        # --- Subsequent Hidden Layers (FF_Layer instances) ---
+        # --- FF Layers (nn.Linear) ---
         self.layers = nn.ModuleList()
-        current_dim = hidden_dims[0]
-        for h_dim in hidden_dims[1:]:
-            self.layers.append(
-                FF_Layer(
-                    current_dim,
-                    h_dim,
-                    activation_cls=act_cls,
-                    normalize=normalize_layers,
-                    norm_type=norm_type,
-                    bias=bias,
-                    norm_eps=self.norm_eps,
-                    bias_init=self.bias_init,
-                )
-            )
+        current_dim = self.input_dim
+        for i, h_dim in enumerate(self.hidden_dims):
+            linear_layer = nn.Linear(current_dim, h_dim, bias=self.use_bias)
+            # <<< CORRECTION: Call corrected initialization >>>
+            self._init_layer_weights(linear_layer)
+            self.layers.append(linear_layer)
             current_dim = h_dim
 
-        logger.info(
-            f"Initialized FF_MLP with {len(hidden_dims)} hidden layers. "
-            f"Norm: {self.norm_type if self.normalize_layers else 'None'}, eps: {self.norm_eps}, Bias init: {self.bias_init}"
+        # --- Losses ---
+        self.ff_loss_criterion = nn.BCEWithLogitsLoss()
+        self.classification_loss_criterion = nn.CrossEntropyLoss()
+
+        # --- Peer Normalization ---
+        if self.use_peer_normalization:
+            self.running_means = [
+                torch.zeros(h_dim, device=self.device) + 0.5 # Initialize at 0.5 like ref
+                for h_dim in self.hidden_dims
+            ]
+            logger.info(f"{self.__class__.__name__}: Using Peer Normalization (Factor: {self.peer_normalization_factor}, Momentum: {self.peer_momentum}).")
+        else:
+             logger.info(f"{self.__class__.__name__}: Peer Normalization disabled.")
+
+        # --- Downstream Classification Head ---
+        # <<< CORRECTION: Reference uses activations from layers 1..N-1 >>>
+        if self.num_layers <= 1:
+             logger.warning(f"{self.__class__.__name__}: Only <=1 hidden layer. Downstream classifier input uses layer 0 activation.")
+             channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0
+        else:
+             # Sum dims from layer 1 (idx=1) up to layer N-1 (idx=N-1)
+             channels_for_classification_loss = sum(self.hidden_dims[1:]) # Sum dims from layer 1 onwards
+
+        if channels_for_classification_loss <= 0 and self.num_layers > 0:
+             logger.error(f"{self.__class__.__name__}: Downstream classifier input dimension calculated as 0 or less ({channels_for_classification_loss}). Check hidden_dims config.")
+             channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0
+             if channels_for_classification_loss <= 0: raise ValueError("Cannot determine downstream classifier input dimension.")
+
+        self.linear_classifier = nn.Sequential(
+            nn.Linear(channels_for_classification_loss, self.num_classes, bias=False) # No bias in ref classifier
         )
-        all_layer_dims_str = " -> ".join(map(str, [input_dim] + hidden_dims))
-        logger.info(f"Layer dimensions: {all_layer_dims_str}")
+        # <<< CORRECTION: Call corrected initialization >>>
+        self._init_classifier_weights()
 
+        logger.info(
+            f"Initialized Modified FF_MLP with {self.num_layers} hidden layers. "
+            f"Input: {self.input_dim}, Hidden: {self.hidden_dims}, Classes: {self.num_classes}. "
+            f"Activation: {self.activation_name}, Bias Init: {self.bias_init}. "
+            f"Peer Norm: {self.use_peer_normalization}. Norm Eps: {self.norm_eps}. "
+            f"Downstream classifier input dim: {channels_for_classification_loss}."
+        )
+
+    def _init_layer_weights(self, layer: nn.Linear):
+        """Initializes weights for a single FF linear layer according to reference."""
+        # <<< CORRECTION: Match reference normal initialization std=1/sqrt(fan_out) >>>
+        # NOTE: Reference used shape[0] which is fan_out for nn.Linear
+        std_dev = 1.0 / math.sqrt(layer.weight.shape[0])
+        nn.init.normal_(layer.weight, mean=0, std=std_dev)
+        # <<< CORRECTION: Match reference bias initialization (0.0 for ReLU) >>>
+        if self.use_bias and layer.bias is not None:
+            nn.init.constant_(layer.bias, self.bias_init) # self.bias_init is now 0.0 if ReLU
+
+    def _init_classifier_weights(self):
+        """Initializes weights for the downstream linear classifier."""
+        # <<< CORRECTION: Match reference zero initialization >>>
+        for m in self.linear_classifier.modules():
+            if isinstance(m, nn.Linear): nn.init.zeros_(m.weight)
+
+    def _layer_norm(self, z: torch.Tensor) -> torch.Tensor:
+        """Applies RMS length normalization matching reference."""
+        # <<< CORRECTION: Use RMS normalization like reference code >>>
+        rms_norm = torch.sqrt(torch.mean(z ** 2, dim=-1, keepdim=True))
+        return z / (rms_norm + self.norm_eps)
+
+    def _calc_peer_normalization_loss(self, layer_idx: int, z_pos: torch.Tensor) -> torch.Tensor:
+        """Calculates peer normalization loss matching reference."""
+        if not self.use_peer_normalization or layer_idx >= len(self.running_means):
+            return torch.zeros(1, device=self.device)
+        mean_activity = torch.mean(z_pos, dim=0)
+        running_mean = self.running_means[layer_idx]
+        new_running_mean = running_mean.detach() * self.peer_momentum + mean_activity * (1 - self.peer_momentum)
+        self.running_means[layer_idx] = new_running_mean
+        # <<< CORRECTION: Reference peer loss formula from comment >>>
+        peer_loss = (torch.mean(new_running_mean) - new_running_mean) ** 2
+        return torch.mean(peer_loss)
+
+    def _calc_ff_loss(self, z_pre_norm: torch.Tensor, labels: torch.Tensor) -> Tuple[torch.Tensor, float]:
+        """Calculates FF loss and accuracy using DYNAMIC threshold matching reference."""
+        sum_of_squares = torch.sum(z_pre_norm ** 2, dim=-1)
+        # <<< CORRECTION: Use dynamic threshold based on layer's output dimension >>>
+        dynamic_threshold = z_pre_norm.shape[1] # Threshold = number of neurons in the layer
+        logits = sum_of_squares - dynamic_threshold
+        ff_loss = self.ff_loss_criterion(logits, labels.float())
+        with torch.no_grad():
+            # Accuracy calculation requires sigmoid output compared to 0.5
+            ff_accuracy = (torch.sum((torch.sigmoid(logits) > 0.5) == labels) / z_pre_norm.shape[0]).item() * 100.0
+        return ff_loss, ff_accuracy
+
+    # --- Standard Forward (for FLOPs/Compatibility) ---
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Basic forward pass for compatibility (e.g., FLOPs profiling)."""
-        current_activation = self.input_adapter_layer(x)
-        current_activation = self.first_layer_activation(current_activation)
-        current_activation = self.first_layer_norm(current_activation)
-        for layer in self.layers:
-            current_activation = layer(current_activation)
-        return current_activation # Returns final hidden layer output (normalized)
+        """Standard forward pass using standard activation and normalization."""
+        if x.shape[1] != self.input_dim:
+            try: x = x.view(x.shape[0], self.input_dim)
+            except RuntimeError: raise ValueError(f"Cannot reshape input {x.shape} to ({x.shape[0]}, {self.input_dim})")
+        z = self._layer_norm(x) # Normalize input
+        for idx, layer in enumerate(self.layers):
+            z_pre_act = layer(z)
+            z_act = self.act_fn_eval(z_pre_act) # Use standard activation
+            z = self._layer_norm(z_act) # Normalize for next layer
+        # Return activation of last hidden layer (consistent behavior for profiling)
+        return z
 
-    def forward_upto(
-        self, x_flattened_modified: torch.Tensor, layer_idx: int
-    ) -> torch.Tensor:
-        """Forward pass up to layer_idx, returning normalized output."""
-        if not (0 <= layer_idx < len(self.hidden_dims)):
-            raise ValueError(f"layer_idx {layer_idx} out of range (0 to {len(self.hidden_dims)-1}).")
-        current_activation = self.input_adapter_layer(x_flattened_modified)
-        current_activation = self.first_layer_activation(current_activation)
-        current_activation = self.first_layer_norm(current_activation)
-        if layer_idx == 0: # layer_idx 0 corresponds to output of first hidden layer (after norm)
-            return current_activation
-        # Loop runs layer_idx times to get output of layer layer_idx+1 (e.g., layer_idx=1 runs self.layers[0])
-        for i in range(layer_idx):
-            if i >= len(self.layers):
-                 raise IndexError(f"Internal index {i} exceeds number of subsequent layers ({len(self.layers)}) for requested layer_idx {layer_idx}.")
-            current_activation = self.layers[i](current_activation)
-        return current_activation
+    # --- FF Training Forward (Apply Corrections) ---
+    def forward_ff_train(self, z_stacked: torch.Tensor, posneg_labels: torch.Tensor, current_batch_size: int) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Performs the forward pass for FF training, calculating local losses."""
+        scalar_outputs = {
+            "Loss": torch.zeros(1, device=self.device),
+            "Peer_Normalization_Loss_Total": torch.zeros(1, device=self.device),
+            "FF_Loss_Total": torch.zeros(1, device=self.device)
+        }
+        # Flatten and Normalize Input
+        z = z_stacked.reshape(z_stacked.shape[0], -1)
+        z = self._layer_norm(z)
 
-    def forward_goodness_per_layer(
-        self, x_flattened_modified: torch.Tensor
-    ) -> List[torch.Tensor]:
-        """Forward pass calculating goodness per layer."""
+        normalized_activations_for_downstream = []
+
+        for idx, layer in enumerate(self.layers):
+            z_pre_act = layer(z)
+            # <<< CORRECTION: Use custom ReLU_full_grad for FF training gradient >>>
+            z_act = self.act_fn_train.apply(z_pre_act)
+
+            # --- Peer Normalization ---
+            if self.use_peer_normalization:
+                z_pos = z_act[:current_batch_size]
+                # <<< CORRECTION: Use corrected peer loss calc >>>
+                peer_loss = self._calc_peer_normalization_loss(idx, z_pos)
+                scalar_outputs["Peer_Normalization_Loss_Total"] += peer_loss
+                scalar_outputs[f"Layer_{idx+1}/Peer_Norm_Loss"] = peer_loss.item() # Log per-layer loss
+                scalar_outputs["Loss"] += self.peer_normalization_factor * peer_loss
+
+            # --- Forward-Forward Loss ---
+            # <<< CORRECTION: Use corrected FF loss calc (dynamic threshold) >>>
+            ff_loss, ff_accuracy = self._calc_ff_loss(z_act, posneg_labels)
+            scalar_outputs[f"Layer_{idx+1}/FF_Loss"] = ff_loss.item()
+            scalar_outputs[f"Layer_{idx+1}/FF_Accuracy"] = ff_accuracy
+            scalar_outputs["FF_Loss_Total"] += ff_loss # Accumulate total FF loss
+            scalar_outputs["Loss"] += ff_loss # Add FF loss to combined loss
+
+            # --- Prepare Input for Next Layer ---
+            # <<< CORRECTION: Detach *before* normalization for next layer >>>
+            z_detached = z_act.detach()
+            z_norm = self._layer_norm(z_detached) # Use corrected norm
+
+            # <<< CORRECTION: Collect activations from layer 1..N-1 for downstream >>>
+            # Indices: 0=L1, 1=L2, ..., N-1=LN. Collect from idx=1 onwards.
+            if idx >= 1:
+                # We need the normalized, detached activations of the *positive* samples only
+                normalized_activations_for_downstream.append(z_norm[:current_batch_size].detach())
+
+            # <<< CORRECTION: Input for next layer is normalized & detached activation >>>
+            z = z_norm
+
+        # --- Assemble Downstream Classifier Input ---
+        if normalized_activations_for_downstream:
+            try:
+                input_classification_model = torch.cat(normalized_activations_for_downstream, dim=-1)
+            except Exception as e_cat:
+                logger.error(f"FF train cat error: {e_cat}")
+                input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+        else:
+            # Handle case with only 1 hidden layer
+            if self.num_layers == 1:
+                 logger.warning("FF_MLP has only 1 hidden layer. Downstream input will be empty based on L1..N-1 rule.")
+                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+            else:
+                 input_classification_model = torch.zeros((current_batch_size, 0), device=self.device)
+
+        # Store for separate downstream forward pass
+        self._current_downstream_input = input_classification_model
+        if any(p.requires_grad for p in self.linear_classifier.parameters()):
+             # Ensure requires_grad if classifier is trainable
+             self._current_downstream_input.requires_grad_(True)
+
+        return scalar_outputs["Loss"], scalar_outputs
+
+    # --- Downstream Classifier Forward (Added Robustness) ---
+    def forward_downstream_only(self, class_labels: torch.Tensor) -> Tuple[torch.Tensor, float]:
+        """Performs the forward pass for the downstream classification model ONLY."""
+        if not hasattr(self, "_current_downstream_input"):
+            logger.error("Downstream forward called before main FF forward pass. Input is missing.")
+            return torch.zeros(1, device=self.device, requires_grad=True), 0.0
+
+        input_cls = self._current_downstream_input
+        expected_dim = 0
+        try:
+            expected_dim = self.linear_classifier[0].in_features
+        except (IndexError, AttributeError):
+            logger.error("Could not get downstream classifier input dimension.")
+            return torch.zeros(1, device=self.device, requires_grad=True), 0.0
+
+        # Handle case where expected dim is 0 (e.g., 1 hidden layer only)
+        if expected_dim == 0:
+            logger.debug("Downstream classifier expects 0 features. Returning zero loss/acc.")
+            dummy_loss = torch.zeros(1, device=self.device)
+            if any(p.requires_grad for p in self.linear_classifier.parameters()):
+                 dummy_loss.requires_grad_(True)
+            return dummy_loss, 0.0
+
+        # <<< CORRECTION: Check for dim mismatch AFTER checking expected_dim > 0 >>>
+        if input_cls.shape[1] != expected_dim:
+             logger.error(f"Downstream dimension mismatch: Input has {input_cls.shape[1]}, classifier expects {expected_dim}.")
+             # Create dummy loss compatible with requires_grad status
+             dummy_loss = torch.zeros(1, device=self.device)
+             if any(p.requires_grad for p in self.linear_classifier.parameters()):
+                 dummy_loss.requires_grad_(True)
+             return dummy_loss, 0.0
+
+        # Proceed if dimensions match
+        output = self.linear_classifier(input_cls)
+        classification_loss = self.classification_loss_criterion(output, class_labels)
+        with torch.no_grad():
+            classification_accuracy = calculate_accuracy(output.data, class_labels)
+
+        # Clean up stored input
+        if hasattr(self, "_current_downstream_input"):
+            del self._current_downstream_input
+
+        return classification_loss, classification_accuracy
+
+    # --- Evaluation Forward (Goodness - Apply Corrections) ---
+    def forward_goodness_per_layer(self, x_flattened_modified: torch.Tensor) -> List[torch.Tensor]:
+        """Forward pass calculating goodness per layer for evaluation."""
         if x_flattened_modified.shape[1] != self.input_dim:
-            raise ValueError(f"Input dim mismatch. Got {x_flattened_modified.shape[1]}, expected {self.input_dim}")
-        layer_goodness = []
-        # --- Layer 1 (Input Adapter Layer) ---
-        x_adapt_lin = self.input_adapter_layer(x_flattened_modified)
-        x_adapt_act = self.first_layer_activation(x_adapt_lin)
-        goodness_0 = torch.sum(x_adapt_act.pow(2), dim=1)
-        layer_goodness.append(goodness_0)
-        current_activation = self.first_layer_norm(x_adapt_act) # Normalize for next layer's input
+            raise ValueError(f"Eval input dim mismatch: {x_flattened_modified.shape[1]} vs {self.input_dim}")
 
-        # --- Subsequent Hidden Layers ---
-        for layer in self.layers:
-            # forward_with_goodness calculates goodness on pre-normalized activation
-            current_activation, goodness = layer.forward_with_goodness(current_activation)
+        layer_goodness = []
+        z = x_flattened_modified.reshape(x_flattened_modified.shape[0], -1)
+        z = self._layer_norm(z) # Normalize input
+
+        for idx, layer in enumerate(self.layers):
+            z_pre_act = layer(z)
+            # <<< CORRECTION: Use standard activation (act_fn_eval) for eval goodness >>>
+            z_act = self.act_fn_eval(z_pre_act)
+            goodness = torch.sum(z_act.pow(2), dim=1)
             layer_goodness.append(goodness)
-            # Note: current_activation is now the normalized output, ready for the *next* layer
+            # <<< CORRECTION: Detach before normalization for next layer input, matching train logic >>>
+            z_detached = z_act.detach()
+            z = self._layer_norm(z_detached) # Use corrected norm
 
         if len(layer_goodness) != len(self.hidden_dims):
-            logger.warning(f"Goodness scores length mismatch. Expected {len(self.hidden_dims)}, got {len(layer_goodness)}")
+            logger.warning(f"Eval goodness length mismatch: {len(layer_goodness)} vs {len(self.hidden_dims)}.")
         return layer_goodness

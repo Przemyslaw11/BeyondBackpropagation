@@ -1,648 +1,206 @@
-# File: src/algorithms/ff.py
+# File: ./src/algorithms/ff.py (FINAL CORRECTED - Including LR Schedule)
+# NOTE: This file content is identical to the previous response, as the core FF logic was already corrected.
+# The data split change happens in datasets.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import numpy as np
 import logging
 from tqdm import tqdm
 import pynvml # Import for type hint
 from typing import Dict, Any, Optional, Tuple, List, Callable
-import functools
 import os
 import time
 
-from src.architectures.ff_mlp import FF_MLP, FF_Layer
+# Import the MODIFIED FF_MLP
+from src.architectures.ff_mlp import FF_MLP # Ensure this path is correct
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists
-from src.utils.monitoring import get_gpu_memory_usage # Import memory usage function
+from src.utils.helpers import format_time, save_checkpoint, create_directory_if_not_exists
+from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
 
-# --- ff_loss_fn (Unchanged) ---
-def ff_loss_fn(
-    pos_goodness: torch.Tensor, neg_goodness: torch.Tensor, threshold: float
-) -> torch.Tensor:
-    """
-    Calculates the Forward-Forward loss for a layer using the logistic function (implemented via softplus).
-    """
-    if not isinstance(pos_goodness, torch.Tensor) or not isinstance(
-        neg_goodness, torch.Tensor
-    ):
-        raise TypeError("Goodness inputs must be PyTorch Tensors.")
-    if pos_goodness.shape != neg_goodness.shape:
-        raise ValueError(
-            f"Positive ({pos_goodness.shape}) and negative ({neg_goodness.shape}) goodness tensors must have the same shape."
-        )
-    if pos_goodness.dim() > 1:
-        logger.warning(
-            f"Goodness tensors have dimension {pos_goodness.dim()}, expected 1 (batch size). Loss calculated element-wise then averaged."
-        )
-    loss_pos = F.softplus(-(pos_goodness - threshold))
-    loss_neg = F.softplus(neg_goodness - threshold)
-    loss = torch.mean(loss_pos + loss_neg)
-    return loss
-
-# --- create_ff_pixel_label_input (Unchanged) ---
-def create_ff_pixel_label_input(
-    original_images: torch.Tensor,
-    labels: torch.Tensor,
-    num_classes: int,
-    replace_value_on: float = 1.0,
-    replace_value_off: float = 0.0,
-) -> torch.Tensor:
-    """
-    Creates FF input by replacing the initial pixels of the image (flattened view)
-    with a representation of the label. Mimics Hinton's paper (Sec 3.3) for MNIST.
-    Assumes images are channel-first (B, C, H, W). Replaces pixels in channel 0.
-    """
-    batch_size, channels, height, width = original_images.shape
-    device = original_images.device
-
-    if num_classes > height * width:
-        raise ValueError(
-            f"num_classes ({num_classes}) is larger than the number of pixels per channel ({height*width}). Cannot embed label."
-        )
-
-    one_hot_labels = F.one_hot(labels, num_classes=num_classes).to(
-        device=device, dtype=torch.float
-    )
-    label_patch = torch.where(one_hot_labels == 1, replace_value_on, replace_value_off)
-    modified_images = original_images.clone()
-    first_channel_flat = modified_images[:, 0, :, :].view(batch_size, -1)
-    first_channel_flat[:, :num_classes] = label_patch
-    modified_images[:, 0, :, :] = first_channel_flat.view(batch_size, height, width)
-    flattened_modified_images = modified_images.view(batch_size, -1)
-    return flattened_modified_images
-
-# --- generate_ff_pos_neg_pixel_data (Unchanged) ---
-def generate_ff_pos_neg_pixel_data(
+# --- Helper for Pixel Label Embedding (Matches reference logic) ---
+def generate_ff_hinton_inputs(
     base_images: torch.Tensor,
     base_labels: torch.Tensor,
     num_classes: int,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    device: torch.device,
+    replace_value_on: float = 1.0, # Reference uses 1.0
+    replace_value_off: float = 0.0, # Reference uses 0.0
+    neutral_value: float = 0.1, # Reference uses 0.1 for neutral
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Generates positive and negative flattened image tensors for FF training
-    using the pixel replacement method. Ensures negative label is different.
+    Generates positive, negative, and neutral flattened image tensors for FF training
+    using Hinton's pixel replacement method. Ensures negative label is different.
+    Matches the logic in the reference `ff_mnist.py`.
+
+    Returns:
+        Tuple (pos_flattened, neg_flattened, neutral_flattened)
     """
     batch_size = base_images.shape[0]
-    device = base_images.device
-    pos_flattened_images = create_ff_pixel_label_input(
-        base_images, base_labels, num_classes
-    )
-    rand_offset = torch.randint(
-        1, num_classes, (batch_size,), device=device, dtype=torch.long
-    )
+    base_flat_view = base_images.view(batch_size, -1)
+    image_pixels = base_flat_view.shape[1]
+    if num_classes > image_pixels: raise ValueError(f"num_classes ({num_classes}) > total pixels ({image_pixels}). Cannot embed label.")
+    one_hot_pos = F.one_hot(base_labels, num_classes=num_classes).to(device=device, dtype=torch.float)
+    label_patch_pos = torch.where(one_hot_pos == 1, replace_value_on, replace_value_off)
+    pos_flattened = base_flat_view.clone(); pos_flattened[:, :num_classes] = label_patch_pos
+    rand_offset = torch.randint(1, num_classes, (batch_size,), device=device, dtype=torch.long)
     neg_labels = (base_labels + rand_offset) % num_classes
-    collision = neg_labels == base_labels
-    retries = 0
-    max_retries = 5
+    collision = neg_labels == base_labels; retries = 0; max_retries = 5
     while torch.any(collision) and retries < max_retries:
-        num_collisions = collision.sum().item()
-        new_rand_offset = torch.randint(
-            1, num_classes, (num_collisions,), device=device, dtype=torch.long
-        )
+        num_collisions = collision.sum().item(); new_rand_offset = torch.randint(1, num_classes, (num_collisions,), device=device, dtype=torch.long)
         neg_labels[collision] = (base_labels[collision] + new_rand_offset) % num_classes
-        collision = neg_labels == base_labels
-        retries += 1
-    if retries == max_retries and torch.any(collision):
-        logger.warning(
-            f"Could not guarantee distinct negative labels after {max_retries} retries for {collision.sum().item()} samples. Forcing difference."
-        )
-        neg_labels[collision] = (neg_labels[collision] + 1) % num_classes
-    neg_flattened_images = create_ff_pixel_label_input(
-        base_images, neg_labels, num_classes
-    )
-    return pos_flattened_images, neg_flattened_images
+        collision = neg_labels == base_labels; retries += 1
+    if retries == max_retries and torch.any(collision): logger.warning(f"Could not guarantee distinct negative labels after {max_retries} retries. Forcing."); neg_labels[collision] = (neg_labels[collision] + 1) % num_classes
+    one_hot_neg = F.one_hot(neg_labels, num_classes=num_classes).to(device=device, dtype=torch.float)
+    label_patch_neg = torch.where(one_hot_neg == 1, replace_value_on, replace_value_off)
+    neg_flattened = base_flat_view.clone(); neg_flattened[:, :num_classes] = label_patch_neg
+    neutral_patch = torch.full((batch_size, num_classes), neutral_value, device=device, dtype=torch.float)
+    neutral_flattened = base_flat_view.clone(); neutral_flattened[:, :num_classes] = neutral_patch
+    return pos_flattened.detach(), neg_flattened.detach(), neutral_flattened.detach()
 
+# <<< LR Cooldown function from reference utils.py >>>
+def get_linear_cooldown_lr(initial_lr: float, epoch: int, total_epochs: int):
+    current_epoch_num = epoch + 1
+    if current_epoch_num > (total_epochs // 2):
+        lr_factor = 2.0 * (1 + total_epochs - current_epoch_num) / float(total_epochs); new_lr = initial_lr * lr_factor
+        return max(new_lr, 1e-9)
+    else: return initial_lr
 
-# --- train_ff_layer (MODIFIED: Added gradient clipping) ---
-def train_ff_layer(
-    model: FF_MLP,
-    layer_module: nn.Module,
-    is_input_adapter_layer: bool,
-    optimizer: optim.Optimizer,
-    train_loader: DataLoader,
-    get_layer_input_fn: Callable[
-        [torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]
-    ],
-    threshold: float,
-    epochs: int,
-    device: torch.device,
-    layer_index: int,
-    wandb_run: Optional[Any] = None,
-    log_interval: int = 100,
-    step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
-    nvml_active: bool = False,
-    gradient_clip_value: Optional[float] = 1.0, # <<< ADDED: Grad clipping value
-) -> Tuple[float, float]:
-    """
-    Trains a single effective layer (input adapter or subsequent FF_Layer) of the FF_MLP.
-    Updates weights locally based on the FF loss calculated from positive/negative goodness.
-    MODIFIED: Added gradient clipping before optimizer step.
-    Returns the average loss of the last epoch and the peak memory observed during its training.
-    """
-    layer_module.train()
-    layer_module.to(device)
-    log_prefix = f"FF/Layer {layer_index + 1} ({'Input Adapter' if is_input_adapter_layer else 'Hidden'})"
-    logger.info(f"Starting FF training for {log_prefix}")
-    peak_mem_layer_train = 0.0
-    last_epoch_avg_loss = float('nan')
-    last_epoch_grad_norm_w_mean = float('nan')
-    last_epoch_grad_norm_b_mean = float('nan')
-    last_epoch_grad_norm_total_mean = float('nan') # For clipped norm
-
-    for epoch in range(epochs):
-        epoch_loss = 0.0
-        epoch_samples = 0
-        epoch_pos_goodness_acc = 0.0
-        epoch_neg_goodness_acc = 0.0
-        epoch_loss_pos_acc = 0.0
-        epoch_loss_neg_acc = 0.0
-        epoch_grad_norm_w_acc = 0.0
-        epoch_grad_norm_b_acc = 0.0
-        epoch_grad_norm_total_acc = 0.0 # Accumulator for total norm
-        num_grad_batches = 0
-
-        peak_mem_layer_epoch = 0.0
-        pbar = tqdm(
-            train_loader,
-            desc=f"{log_prefix} Epoch {epoch+1}/{epochs}",
-            leave=False,
-        )
-        for batch_idx, (images, labels) in enumerate(pbar):
-            step_ref[0] += 1
-            current_global_step = step_ref[0]
-
-            images, labels = images.to(device), labels.to(device)
-
-            try:
-                pos_activation_input, neg_activation_input = get_layer_input_fn(
-                    images, labels
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error getting layer input at {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}: {e}",
-                    exc_info=True,
-                )
-                continue
-
-            pos_activation_input = pos_activation_input.to(device)
-            neg_activation_input = neg_activation_input.to(device)
-
-            pos_goodness: torch.Tensor
-            neg_goodness: torch.Tensor
-            loss_pos: torch.Tensor
-            loss_neg: torch.Tensor
-
-            try:
-                if is_input_adapter_layer:
-                    pos_lin = layer_module(pos_activation_input)
-                    neg_lin = layer_module(neg_activation_input)
-                    pos_act = model.first_layer_activation(pos_lin)
-                    neg_act = model.first_layer_activation(neg_lin)
-                    pos_goodness = torch.sum(pos_act.pow(2), dim=1)
-                    neg_goodness = torch.sum(neg_act.pow(2), dim=1)
-                else:
-                    # layer_module must be FF_Layer if not input_adapter
-                    _, pos_goodness = layer_module.forward_with_goodness( # type: ignore
-                        pos_activation_input
-                    )
-                    _, neg_goodness = layer_module.forward_with_goodness( # type: ignore
-                        neg_activation_input
-                    )
-
-                # Calculate individual loss components
-                loss_pos = F.softplus(-(pos_goodness - threshold))
-                loss_neg = F.softplus(neg_goodness - threshold)
-                loss = torch.mean(loss_pos + loss_neg)
-
-            except Exception as e:
-                logger.error(
-                    f"Error during forward/goodness/loss calculation at {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}: {e}",
-                    exc_info=True,
-                )
-                continue
-
-            if torch.isnan(loss) or torch.isinf(loss):
-                logger.error(
-                    f"NaN or Inf loss detected at {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}. Stopping layer training."
-                )
-                epoch_loss = float('nan'); epoch_samples = 1
-                epoch_pos_goodness_acc=float('nan'); epoch_neg_goodness_acc=float('nan')
-                epoch_loss_pos_acc=float('nan'); epoch_loss_neg_acc=float('nan')
-                epoch_grad_norm_w_acc=float('nan'); epoch_grad_norm_b_acc=float('nan')
-                epoch_grad_norm_total_acc=float('nan'); num_grad_batches=1
-                break
-
-            optimizer.zero_grad()
-            loss.backward()
-
-            # --- Gradient norm calculation (for logging) ---
-            grad_norm_w = 0.0
-            grad_norm_b = 0.0
-            has_bias = False
-            if isinstance(layer_module, (nn.Linear, FF_Layer)): # Check if it has weight/bias
-                 lin_layer = layer_module if isinstance(layer_module, nn.Linear) else layer_module.linear
-                 if lin_layer.weight.grad is not None:
-                     grad_norm_w = torch.linalg.norm(lin_layer.weight.grad).item()
-                 if lin_layer.bias is not None and lin_layer.bias.grad is not None:
-                     has_bias = True
-                     grad_norm_b = torch.linalg.norm(lin_layer.bias.grad).item()
-                 epoch_grad_norm_w_acc += grad_norm_w
-                 epoch_grad_norm_b_acc += grad_norm_b
-                 num_grad_batches += 1
-            # --- End Gradient norm calculation ---
-
-            # <<< GRADIENT CLIPPING >>>
-            total_norm_pre_clip = float('nan')
-            if gradient_clip_value is not None and gradient_clip_value > 0:
-                params_to_clip = optimizer.param_groups[0]['params']
-                if params_to_clip: # Check if list is not empty
-                    try:
-                        total_norm_pre_clip = torch.nn.utils.clip_grad_norm_(params_to_clip, gradient_clip_value)
-                        if torch.isnan(total_norm_pre_clip) or torch.isinf(total_norm_pre_clip):
-                            logger.warning(f"NaN/Inf gradient norm ({total_norm_pre_clip:.2f}) detected BEFORE clipping at {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}. Check LR/clip value.")
-                        epoch_grad_norm_total_acc += total_norm_pre_clip.item() # Accumulate pre-clip norm
-                    except Exception as e_clip:
-                        logger.error(f"Error during gradient clipping: {e_clip}", exc_info=True)
-                        # Decide how to handle clipping error - maybe skip step?
-                        # continue # Skip optimizer step if clipping fails? Risky.
-            # <<< END GRADIENT CLIPPING >>>
-
-
-            optimizer.step() # Step the optimizer after optional clipping
-
-            batch_size = images.size(0)
-            epoch_loss += loss.item() * batch_size
-            epoch_samples += batch_size
-            epoch_pos_goodness_acc += pos_goodness.mean().item() * batch_size
-            epoch_neg_goodness_acc += neg_goodness.mean().item() * batch_size
-            epoch_loss_pos_acc += loss_pos.mean().item() * batch_size
-            epoch_loss_neg_acc += loss_neg.mean().item() * batch_size
-
-            current_mem_used = float('nan')
-            if nvml_active and gpu_handle and ((batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1):
-                 mem_info = get_gpu_memory_usage(gpu_handle)
-                 if mem_info:
-                     current_mem_used = mem_info[0]
-                     peak_mem_layer_epoch = max(peak_mem_layer_epoch, current_mem_used)
-
-            if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
-                avg_loss_batch = loss.item()
-                pbar.set_postfix(loss=f"{avg_loss_batch:.4f}")
-                metrics_to_log = {
-                    "global_step": current_global_step,
-                    f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
-                    f"{log_prefix}/Pos_Goodness_Mean": pos_goodness.mean().item(),
-                    f"{log_prefix}/Neg_Goodness_Mean": neg_goodness.mean().item(),
-                    f"{log_prefix}/Loss_Pos_Mean": loss_pos.mean().item(),
-                    f"{log_prefix}/Loss_Neg_Mean": loss_neg.mean().item(),
-                    f"{log_prefix}/Grad_Norm_W_Mean": grad_norm_w,
-                    f"{log_prefix}/Grad_Norm_B_Mean": grad_norm_b if has_bias else float('nan'),
-                    f"{log_prefix}/Grad_Norm_Total_PreClip": total_norm_pre_clip, # Log pre-clip norm
-                }
-                if not torch.isnan(torch.tensor(current_mem_used)):
-                    metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
-                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
-
-        if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
-            logger.error(
-                f"Terminating training for {log_prefix} due to invalid loss in epoch {epoch+1}."
-            )
-            break
-
-        # --- Calculate epoch averages ---
-        last_epoch_avg_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float('nan')
-        avg_pos_goodness = epoch_pos_goodness_acc / epoch_samples if epoch_samples > 0 else float('nan')
-        avg_neg_goodness = epoch_neg_goodness_acc / epoch_samples if epoch_samples > 0 else float('nan')
-        avg_loss_pos = epoch_loss_pos_acc / epoch_samples if epoch_samples > 0 else float('nan')
-        avg_loss_neg = epoch_loss_neg_acc / epoch_samples if epoch_samples > 0 else float('nan')
-        last_epoch_grad_norm_w_mean = epoch_grad_norm_w_acc / num_grad_batches if num_grad_batches > 0 else float('nan')
-        last_epoch_grad_norm_b_mean = epoch_grad_norm_b_acc / num_grad_batches if num_grad_batches > 0 and has_bias else float('nan')
-        last_epoch_grad_norm_total_mean = epoch_grad_norm_total_acc / num_grad_batches if num_grad_batches > 0 else float('nan')
-        peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch)
-
-        logger.info(
-            f"{log_prefix} Epoch {epoch+1}/{epochs} - Avg Loss: {last_epoch_avg_loss:.4f}, Peak Mem Epoch: {peak_mem_layer_epoch:.1f} MiB"
-        )
-        # Log epoch summary metrics
-        epoch_summary_metrics = {
-            "global_step": current_global_step,
-            f"{log_prefix}/Train_Loss_EpochAvg": last_epoch_avg_loss,
-            f"{log_prefix}/Pos_Goodness_EpochAvg": avg_pos_goodness,
-            f"{log_prefix}/Neg_Goodness_EpochAvg": avg_neg_goodness,
-            f"{log_prefix}/Loss_Pos_EpochAvg": avg_loss_pos,
-            f"{log_prefix}/Loss_Neg_EpochAvg": avg_loss_neg,
-            f"{log_prefix}/Grad_Norm_W_EpochAvg": last_epoch_grad_norm_w_mean,
-            f"{log_prefix}/Grad_Norm_B_EpochAvg": last_epoch_grad_norm_b_mean,
-            f"{log_prefix}/Grad_Norm_Total_PreClip_EpochAvg": last_epoch_grad_norm_total_mean, # Log avg pre-clip norm
-            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_layer_epoch,
-        }
-        log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
-
-
-    if nvml_active and gpu_handle:
-        mem_info = get_gpu_memory_usage(gpu_handle)
-        if mem_info:
-            peak_mem_layer_train = max(peak_mem_layer_train, mem_info[0])
-
-    logger.info(f"Finished FF training for {log_prefix}. Overall Peak Mem for Layer: {peak_mem_layer_train:.1f} MiB")
-    layer_module.eval()
-    # Return more info for logging - Removed extra grad norms for now, just return loss/mem
-    # return last_epoch_avg_loss, peak_mem_layer_train, last_epoch_grad_norm_w_mean, last_epoch_grad_norm_b_mean
-    return last_epoch_avg_loss, peak_mem_layer_train
-
-
-# --- train_ff_model (MODIFIED: Pass gradient_clip_value) ---
+# --- train_ff_model (Includes LR Schedule Update) ---
 def train_ff_model(
-    model: FF_MLP,
-    train_loader: DataLoader,
-    config: Dict[str, Any],
-    device: torch.device,
-    wandb_run: Optional[Any] = None,
-    input_adapter: Optional[Callable] = None,
-    step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
-    nvml_active: bool = False,
-) -> float:
-    """
-    Orchestrates the layer-wise training of an FF_MLP model using pixel label embedding.
-    Logs layer summary metrics including peak memory.
-    MODIFIED: Added gradient_clip_value parameter to pass down.
-    Returns the overall peak GPU memory observed across all layer training phases.
-    """
-    model.to(device)
-    num_hidden_layers = len(model.hidden_dims)
-    logger.info(
-        f"Starting layer-wise FF training for {num_hidden_layers} hidden layers (using pixel label embedding)."
-    )
-    if input_adapter is not None:
-        logger.warning("FF Training: 'input_adapter' provided but FF uses internal pixel embedding. Adapter will not be used by FF training logic.")
-
-    algo_config = config.get("algorithm_params", config.get("training", {}))
-    optimizer_type = algo_config.get("optimizer_type", "Adam")
-    lr = algo_config.get("lr", 0.001)
-    weight_decay = algo_config.get("weight_decay", 0.0)
-    threshold = algo_config.get("threshold", 1.0)
-    epochs_per_layer = algo_config.get("epochs_per_layer", 10)
-    log_interval = algo_config.get("log_interval", 100)
-    optimizer_params_extra = algo_config.get("optimizer_params", {})
-    checkpoint_dir = config.get("checkpointing", {}).get("checkpoint_dir", None)
-    # <<< ADDED: Get clip value from config, default to 1.0 >>>
-    gradient_clip_value = algo_config.get("gradient_clip_value", 1.0)
-    if gradient_clip_value is not None and gradient_clip_value <= 0:
-         logger.info(f"Gradient clipping disabled (clip_value={gradient_clip_value}).")
-         gradient_clip_value = None # Set to None to disable
-    elif gradient_clip_value is not None:
-         logger.info(f"Using gradient clipping with value: {gradient_clip_value}")
-    # <<< END ADDED >>>
-
-    logger.info(
-        f"FF Parameters: Optimizer={optimizer_type}, LR={lr}, WD={weight_decay}, Threshold={threshold}, Epochs/Layer={epochs_per_layer}, GradClip={gradient_clip_value}"
-    )
-
-    @torch.no_grad()
-    def get_initial_input_data(images, labels):
-        pos_flat, neg_flat = generate_ff_pos_neg_pixel_data(
-            images, labels, model.num_classes
-        )
-        return pos_flat.to(device), neg_flat.to(device)
-
-    def create_layer_input_closure(model_ref: FF_MLP, prev_layer_idx: int):
-        if not (0 <= prev_layer_idx < len(model_ref.hidden_dims)):
-            raise ValueError(f"Invalid prev_layer_idx {prev_layer_idx}")
-
-        @torch.no_grad()
-        def get_layer_input(images, labels):
-            pos_flattened, neg_flattened = generate_ff_pos_neg_pixel_data(
-                images, labels, model_ref.num_classes
-            )
-            pos_flattened, neg_flattened = pos_flattened.to(device), neg_flattened.to(device)
-            model_ref.to(device)
-            model_ref.eval()
-            pos_input_current = model_ref.forward_upto(pos_flattened, prev_layer_idx)
-            neg_input_current = model_ref.forward_upto(neg_flattened, prev_layer_idx)
-            return pos_input_current.detach().to(device), neg_input_current.detach().to(device)
-        return get_layer_input
-
-    current_layer_input_fn = get_initial_input_data
-    peak_mem_train = 0.0
-
-    # 1. Train Input Adapter Layer (Effective Hidden Layer 0)
-    layer_log_idx_0 = 1 # For logging 1-based
-    log_prefix_0 = f"FF/Layer {layer_log_idx_0} (Input Adapter)"
-    logger.info(f"--- Training {log_prefix_0} ---")
-    layer_module_0 = model.input_adapter_layer
-    params_0 = list(layer_module_0.parameters())
-    layer_0_peak_mem = 0.0
-    final_avg_loss_layer_0 = float('nan')
-    # final_grad_w_0 = float('nan') # Removed - logging handled inside train_ff_layer
-    # final_grad_b_0 = float('nan') # Removed
-
-    if params_0:
-        optimizer_0_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
-        optimizer_0 = getattr(optim, optimizer_type)(params_0, **optimizer_0_kwargs)
-
-        # <<< Pass gradient_clip_value >>>
-        final_avg_loss_layer_0, layer_0_peak_mem = train_ff_layer(
-            model=model,
-            layer_module=layer_module_0,
-            is_input_adapter_layer=True,
-            optimizer=optimizer_0,
-            train_loader=train_loader,
-            get_layer_input_fn=current_layer_input_fn,
-            threshold=threshold,
-            epochs=epochs_per_layer,
-            device=device,
-            layer_index=0,
-            wandb_run=wandb_run,
-            log_interval=log_interval,
-            step_ref=step_ref,
-            gpu_handle=gpu_handle,
-            nvml_active=nvml_active,
-            gradient_clip_value=gradient_clip_value # <<< PASS CLIP VALUE >>>
-        )
-        peak_mem_train = max(peak_mem_train, layer_0_peak_mem)
-
-        for param in params_0: param.requires_grad = False
-        layer_module_0.eval()
-    else:
-         logger.warning(f"{log_prefix_0} has no parameters. Skipping training.")
-
-    current_global_step = step_ref[0]
-    layer_summary_metrics = {
-        "global_step": current_global_step,
-        f"{log_prefix_0}/Train_Loss_LayerAvg": final_avg_loss_layer_0,
-        f"{log_prefix_0}/Peak_GPU_Mem_Layer_MiB": layer_0_peak_mem,
-        # Grad norms logged inside train_ff_layer
-    }
-    log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
-    logger.debug(f"Logged {log_prefix_0} summary at global_step {current_global_step}")
-
-    if checkpoint_dir and params_0:
-        create_directory_if_not_exists(checkpoint_dir)
-        save_checkpoint(
-            state={"state_dict": model.state_dict(), "layer_trained": 0},
-            is_best=False, filename=f"ff_layer_0_complete.pth", checkpoint_dir=checkpoint_dir,
-        )
-
-    current_layer_input_fn = create_layer_input_closure(model, prev_layer_idx=0)
-
-    # 2. Train Subsequent Hidden FF_Layers
-    for i in range(len(model.layers)):
-        effective_layer_index = i + 1
-        layer_log_idx = effective_layer_index + 1 # 1-based
-        log_prefix_i = f"FF/Layer {layer_log_idx} (Hidden)"
-        logger.info(f"--- Training {log_prefix_i} ---")
-
-        ff_layer_module = model.layers[i]
-        params_i = list(ff_layer_module.parameters())
-        layer_i_peak_mem = 0.0
-        final_avg_loss_layer_i = float('nan')
-        # final_grad_w_i = float('nan') # Removed
-        # final_grad_b_i = float('nan') # Removed
-
-        if not params_i:
-            logger.warning(f"{log_prefix_i} has no parameters.")
-        else:
-            optimizer_i_kwargs = {"lr": lr, "weight_decay": weight_decay, **optimizer_params_extra}
-            optimizer_i = getattr(optim, optimizer_type)(params_i, **optimizer_i_kwargs)
-
-            # <<< Pass gradient_clip_value >>>
-            final_avg_loss_layer_i, layer_i_peak_mem = train_ff_layer(
-                model=model,
-                layer_module=ff_layer_module,
-                is_input_adapter_layer=False,
-                optimizer=optimizer_i,
-                train_loader=train_loader,
-                get_layer_input_fn=current_layer_input_fn,
-                threshold=threshold,
-                epochs=epochs_per_layer,
-                device=device,
-                layer_index=effective_layer_index,
-                wandb_run=wandb_run,
-                log_interval=log_interval,
-                step_ref=step_ref,
-                gpu_handle=gpu_handle,
-                nvml_active=nvml_active,
-                gradient_clip_value=gradient_clip_value # <<< PASS CLIP VALUE >>>
-            )
-            peak_mem_train = max(peak_mem_train, layer_i_peak_mem)
-
-            for param in params_i: param.requires_grad = False
-            ff_layer_module.eval()
-
-        current_global_step = step_ref[0]
-        layer_summary_metrics = {
-            "global_step": current_global_step,
-            f"{log_prefix_i}/Train_Loss_LayerAvg": final_avg_loss_layer_i,
-            f"{log_prefix_i}/Peak_GPU_Mem_Layer_MiB": layer_i_peak_mem,
-            # Grad norms logged inside train_ff_layer
-        }
-        log_metrics(layer_summary_metrics, wandb_run=wandb_run, commit=True)
-        logger.debug(f"Logged {log_prefix_i} summary at global_step {current_global_step}")
-
-        if checkpoint_dir and params_i:
-            create_directory_if_not_exists(checkpoint_dir)
-            save_checkpoint(
-                state={"state_dict": model.state_dict(), "layer_trained": effective_layer_index},
-                is_best=False, filename=f"ff_layer_{effective_layer_index}_complete.pth", checkpoint_dir=checkpoint_dir,
-            )
-
-        if effective_layer_index < num_hidden_layers - 1:
-            current_layer_input_fn = create_layer_input_closure(model, prev_layer_idx=effective_layer_index)
-
-    logger.info("Finished all layer-wise FF training.")
+    model: FF_MLP, train_loader: DataLoader, val_loader: Optional[DataLoader], config: Dict[str, Any], device: torch.device,
+    wandb_run: Optional[Any] = None, input_adapter: Optional[Callable] = None, step_ref: List[int] = [-1],
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, nvml_active: bool = False,
+) -> float: # Returns overall peak memory
+    model.to(device); logger.info(f"Starting Forward-Forward (Hinton style) training using modified FF_MLP.")
+    if input_adapter is not None: logger.warning("FF Training: 'input_adapter' provided but FF_MLP uses internal logic. Adapter ignored.")
+    train_config = config.get("training", {}); algo_config = config.get("algorithm_params", {}); loader_config = config.get("data_loader", {}); data_config = config.get("data", {}); checkpoint_config = config.get("checkpointing", {})
+    optimizer_type = algo_config.get("optimizer_type", "SGD")
+    try:
+        initial_ff_lr = float(algo_config.get("ff_learning_rate", 1e-3)); initial_ds_lr = float(algo_config.get("downstream_learning_rate", 1e-2))
+        ff_wd = float(algo_config.get("ff_weight_decay", 3e-4)); ds_wd = float(algo_config.get("downstream_weight_decay", 3e-3))
+        ff_momentum = float(algo_config.get("ff_momentum", 0.9)); ds_momentum = float(algo_config.get("downstream_momentum", 0.9))
+    except (ValueError, TypeError) as e: raise ValueError(f"Invalid LR/WD/Momentum format: {e}") from e
+    epochs = train_config.get("epochs", 100); log_interval = train_config.get("log_interval", 100); num_classes = data_config.get("num_classes", 10)
+    checkpoint_dir = checkpoint_config.get("checkpoint_dir", None); save_best_metric = "ff_val_accuracy"; save_best_metric_mode = "max"
+    ff_layer_params = [p for layer in model.layers for p in layer.parameters() if p.requires_grad]
+    classifier_params = [p for p in model.linear_classifier.parameters() if p.requires_grad]
+    optimizer_groups = []
+    if ff_layer_params:
+        group_ff = {"params": ff_layer_params, "lr": initial_ff_lr, "weight_decay": ff_wd};
+        if optimizer_type.lower() == 'sgd': group_ff['momentum'] = ff_momentum
+        optimizer_groups.append(group_ff); logger.info(f"Opt Group 0 (FF): Initial LR={initial_ff_lr}, WD={ff_wd}" + (f", Mom={ff_momentum}" if 'momentum' in group_ff else ""))
+    if classifier_params:
+        group_ds = {"params": classifier_params, "lr": initial_ds_lr, "weight_decay": ds_wd};
+        if optimizer_type.lower() == 'sgd': group_ds['momentum'] = ds_momentum
+        optimizer_groups.append(group_ds); logger.info(f"Opt Group 1 (DS): Initial LR={initial_ds_lr}, WD={ds_wd}" + (f", Mom={ds_momentum}" if 'momentum' in group_ds else ""))
+    if not optimizer_groups: logger.error("FF_MLP: No trainable parameters found."); return 0.0
+    try:
+        if optimizer_type.lower() == "sgd": optimizer = optim.SGD(optimizer_groups)
+        elif optimizer_type.lower() == "adamw": optimizer = optim.AdamW(optimizer_groups)
+        elif optimizer_type.lower() == "adam": optimizer = optim.Adam(optimizer_groups)
+        else: raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
+        logger.info(f"Using optimizer: {optimizer_type}")
+    except Exception as e: logger.error(f"Failed to create optimizer: {e}", exc_info=True); return 0.0
+    best_metric_value = -float("inf"); peak_mem_train = 0.0; run_start_time = time.time()
+    for epoch in range(epochs):
+        current_lr_ff = get_linear_cooldown_lr(initial_ff_lr, epoch, epochs); current_lr_ds = get_linear_cooldown_lr(initial_ds_lr, epoch, epochs)
+        if len(optimizer.param_groups) > 0: optimizer.param_groups[0]['lr'] = current_lr_ff
+        if len(optimizer.param_groups) > 1: optimizer.param_groups[1]['lr'] = current_lr_ds
+        logger.debug(f"Epoch {epoch+1}/{epochs}: LR Update - FF={current_lr_ff:.6f}, DS={current_lr_ds:.6f}")
+        model.train(); epoch_start_time = time.time()
+        epoch_total_loss, epoch_samples, epoch_ff_loss_total, epoch_peer_loss_total = 0.0, 0, 0.0, 0.0
+        epoch_cls_loss_total, epoch_cls_acc_total = 0.0, 0.0; epoch_layer_ff_acc_sum = {f"Layer_{i+1}": 0.0 for i in range(model.num_layers)}
+        num_batches_processed = 0; peak_mem_epoch = 0.0
+        pbar = tqdm(train_loader, desc=f"FF Epoch {epoch+1}/{epochs}", leave=False)
+        for batch_idx, (images, labels) in enumerate(pbar):
+            step_ref[0] += 1; current_global_step = step_ref[0]; current_batch_size = images.size(0)
+            images, labels = images.to(device), labels.to(device)
+            try: pos_images_flat, neg_images_flat, neutral_images_flat = generate_ff_hinton_inputs(images, labels, num_classes, device)
+            except Exception as e_gen: logger.error(f"Input gen error: {e_gen}", exc_info=True); continue
+            stacked_z = torch.cat([pos_images_flat, neg_images_flat], dim=0)
+            posneg_labels = torch.zeros(stacked_z.shape[0], device=device); posneg_labels[:current_batch_size] = 1
+            try:
+                ff_combined_loss, ff_metrics_dict = model.forward_ff_train(stacked_z, posneg_labels, current_batch_size)
+                cls_loss, cls_accuracy = model.forward_downstream_only(labels)
+                if torch.isnan(ff_combined_loss) or torch.isinf(ff_combined_loss): logger.warning(f"NaN/Inf FF loss ({ff_combined_loss.item()}). Skip."); continue
+                if torch.isnan(cls_loss) or torch.isinf(cls_loss): logger.warning(f"NaN/Inf Cls loss ({cls_loss.item()}). Skip."); continue
+                if not cls_loss.requires_grad and any(p.requires_grad for p in model.linear_classifier.parameters()): cls_loss = cls_loss.clone().requires_grad_(True)
+                total_batch_loss = ff_combined_loss + cls_loss
+            except Exception as e_fwd: logger.error(f"Forward/loss error: {e_fwd}", exc_info=True); continue
+            if torch.isnan(total_batch_loss) or torch.isinf(total_batch_loss): logger.error(f"NaN/Inf total loss before backward ({total_batch_loss.item()}). Skip."); continue
+            optimizer.zero_grad()
+            try: total_batch_loss.backward()
+            except Exception as e_bwd: logger.error(f"Backward pass error: {e_bwd}", exc_info=True); continue
+            optimizer.step()
+            epoch_total_loss += total_batch_loss.item() * current_batch_size
+            epoch_ff_loss_total += ff_metrics_dict.get("FF_Loss_Total", torch.tensor(0.0)).item() * current_batch_size
+            epoch_peer_loss_total += ff_metrics_dict.get("Peer_Normalization_Loss_Total", torch.tensor(0.0)).item() * current_batch_size
+            epoch_cls_loss_total += cls_loss.item() * current_batch_size; epoch_cls_acc_total += cls_accuracy * current_batch_size
+            epoch_samples += current_batch_size; num_batches_processed += 1
+            for i in range(model.num_layers): epoch_layer_ff_acc_sum[f"Layer_{i+1}"] += ff_metrics_dict.get(f"Layer_{i+1}/FF_Accuracy", 0.0) * current_batch_size
+            current_mem_used = float('nan')
+            if nvml_active and gpu_handle: mem_info = get_gpu_memory_usage(gpu_handle); current_mem_used = mem_info[0] if mem_info else float('nan'); peak_mem_epoch = max(peak_mem_epoch, current_mem_used if not torch.isnan(torch.tensor(current_mem_used)) else 0.0)
+            if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
+                metrics_to_log = {"global_step": current_global_step, "FF_Hinton/Train_Loss_Batch": total_batch_loss.item(), "FF_Hinton/FF_Loss_Batch": ff_metrics_dict.get("FF_Loss_Total", torch.tensor(0.0)).item(), "FF_Hinton/PeerNorm_Loss_Batch": ff_metrics_dict.get("Peer_Normalization_Loss_Total", torch.tensor(0.0)).item(), "FF_Hinton/Cls_Loss_Batch": cls_loss.item(), "FF_Hinton/Cls_Acc_Batch": cls_accuracy}
+                for i in range(model.num_layers): metrics_to_log[f"Layer_{i+1}/FF_Acc_Batch"] = ff_metrics_dict.get(f"Layer_{i+1}/FF_Accuracy", 0.0)
+                if not torch.isnan(torch.tensor(current_mem_used)): metrics_to_log["FF_Hinton/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True); pbar.set_postfix(loss=f"{total_batch_loss.item():.4f}", cls_acc=f"{cls_accuracy:.2f}%")
+        peak_mem_train = max(peak_mem_train, peak_mem_epoch)
+        if epoch_samples == 0: logger.warning(f"Epoch {epoch+1} completed with 0 samples. Skip eval."); continue
+        avg_epoch_loss = epoch_total_loss / epoch_samples; avg_ff_loss = epoch_ff_loss_total / epoch_samples; avg_peer_loss = epoch_peer_loss_total / epoch_samples; avg_cls_loss = epoch_cls_loss_total / epoch_samples; avg_cls_acc = epoch_cls_acc_total / epoch_samples
+        epoch_layer_ff_acc_avg = {};
+        for i in range(model.num_layers): epoch_layer_ff_acc_avg[f"Layer_{i+1}"] = epoch_layer_ff_acc_sum[f"Layer_{i+1}"] / epoch_samples
+        epoch_duration = time.time() - epoch_start_time
+        val_results = {}
+        if val_loader: val_results = evaluate_ff_model(model, val_loader, device); logger.info(f"FF Validation Epoch {epoch+1}/{epochs} - Accuracy: {val_results.get('eval_accuracy', 'N/A'):.2f}%")
+        else: val_results = {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+        current_global_step = step_ref[0]; epoch_summary_metrics = {"global_step": current_global_step, "FF_Hinton/Train_Loss_Epoch": avg_epoch_loss, "FF_Hinton/FF_Loss_Epoch": avg_ff_loss, "FF_Hinton/PeerNorm_Loss_Epoch": avg_peer_loss, "FF_Hinton/Cls_Loss_Epoch": avg_cls_loss, "FF_Hinton/Cls_Acc_Epoch": avg_cls_acc, "FF_Hinton/Val_Acc_Epoch": val_results.get("eval_accuracy", float("nan")), "FF_Hinton/Epoch_Duration_Sec": epoch_duration, "FF_Hinton/LR_FF_Layers": current_lr_ff, "FF_Hinton/LR_Downstream": current_lr_ds, "FF_Hinton/Epoch": epoch + 1, "FF_Hinton/Peak_GPU_Mem_Epoch_MiB": peak_mem_epoch}
+        for i in range(model.num_layers): epoch_summary_metrics[f"Layer_{i+1}/FF_Acc_EpochAvg"] = epoch_layer_ff_acc_avg[f"Layer_{i+1}"]
+        log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True); logger.info(f"FF Epoch {epoch+1}/{epochs} | Train Loss: {avg_epoch_loss:.4f}, Cls Acc: {avg_cls_acc:.2f}% | Val Acc: {val_results.get('eval_accuracy', 'N/A'):.2f}% | Peak Mem: {peak_mem_epoch:.1f} MiB | Duration: {format_time(epoch_duration)}")
+        current_metric_value = val_results.get("eval_accuracy", float("-inf")); is_best = False
+        if not torch.isnan(torch.tensor(current_metric_value)) and current_metric_value > best_metric_value: best_metric_value = current_metric_value; is_best = True; logger.info(f"Epoch {epoch+1}: New best val acc: {best_metric_value:.2f}%")
+        if checkpoint_dir:
+            create_directory_if_not_exists(checkpoint_dir); save_checkpoint(state={"epoch": epoch + 1, "state_dict": model.state_dict(), "optimizer": optimizer.state_dict(), "best_metric_value": best_metric_value, "val_accuracy": current_metric_value}, is_best=is_best, checkpoint_dir=checkpoint_dir, filename=f"ff_checkpoint_epoch_{epoch+1}.pth", best_filename=f"ff_{config.get('experiment_name', 'model')}_best.pth")
+    total_training_time = time.time() - run_start_time; logger.info(f"Finished Forward-Forward (Hinton) training. Total time: {format_time(total_training_time)}")
+    logger.info(f"NOTE: Reference implementation used PyTorch 1.11. Your environment uses {torch.__version__}. Small differences in final accuracy might arise from library versions or hardware.")
     return peak_mem_train
 
-
-# --- evaluate_ff_model (Unchanged) ---
+# --- evaluate_ff_model (Final Corrected Implementation) ---
 def evaluate_ff_model(
-    model: FF_MLP,
-    data_loader: DataLoader,
-    device: torch.device,
-    **kwargs,
+    model: FF_MLP, data_loader: DataLoader, device: torch.device, **kwargs,
 ) -> Dict[str, float]:
-    """
-    Evaluates the trained FF_MLP model using multi-pass inference (Hinton Sec 3.3).
-    """
-    model.eval()
-    model.to(device)
-    num_classes = model.num_classes
-    logger.info(
-        f"Evaluating FF model using multi-pass inference ({num_classes} passes per image, pixel embedding)."
-    )
-
-    total_correct = 0
-    total_samples = 0
-
+    model.eval(); model.to(device); num_classes = model.num_classes
+    logger.info(f"Evaluating FF (Hinton style) model using multi-pass inference.")
+    total_correct, total_samples = 0, 0
     with torch.no_grad():
-        pbar = tqdm(data_loader, desc="Evaluating FF Model", leave=False)
+        pbar = tqdm(data_loader, desc="Evaluating FF (Hinton) Model", leave=False)
         for batch_idx, (images, labels) in enumerate(pbar):
-            images, labels = images.to(device), labels.to(device)
-            batch_size = images.shape[0]
+            images, labels = images.to(device), labels.to(device); batch_size = images.shape[0]
             batch_total_goodness = torch.zeros((batch_size, num_classes), device=device)
-
             for label_candidate in range(num_classes):
                 candidate_labels = torch.full((batch_size,), label_candidate, dtype=torch.long, device=device)
-                try:
-                    ff_input_candidate = create_ff_pixel_label_input(
-                        images, candidate_labels, num_classes
-                    )
-                except Exception as e:
-                    logger.error(f"Error creating pixel input for candidate {label_candidate}: {e}", exc_info=True)
-                    batch_total_goodness[:, label_candidate] = -torch.inf
-                    continue
-
+                try: ff_input_candidate, _, _ = generate_ff_hinton_inputs(images, candidate_labels, num_classes, device)
+                except Exception as e_gen: logger.error(f"Eval input gen err {label_candidate}: {e_gen}"); batch_total_goodness[:, label_candidate] = -torch.inf; continue
                 try:
                     layer_goodness_list = model.forward_goodness_per_layer(ff_input_candidate)
-                except Exception as e:
-                    logger.error(f"Error in FF goodness forward pass for candidate {label_candidate}: {e}", exc_info=True)
-                    batch_total_goodness[:, label_candidate] = -torch.inf
-                    continue
-
-                if not layer_goodness_list:
-                    total_goodness_candidate = torch.zeros((batch_size,), device=device)
-                else:
-                    try:
-                        # Sum goodness across layers (excluding layer 0 input layer)
-                        # Hinton's paper (Sec 3.3) implies summing goodness of *hidden* layers.
-                        # The goodness list corresponds to layers 1 through L.
-                        if len(layer_goodness_list) != model.num_hidden_layers:
-                             logger.warning(f"Goodness list len ({len(layer_goodness_list)}) != num hidden layers ({model.num_hidden_layers})")
-                        # Summing all returned goodness scores (layers 1 to L)
-                        total_goodness_candidate = torch.stack(layer_goodness_list, dim=0).sum(dim=0)
-                        if total_goodness_candidate.shape != (batch_size,):
-                            raise ValueError(f"Unexpected shape after summing goodness: {total_goodness_candidate.shape}")
-                    except Exception as e:
-                        logger.error(f"Error stacking/summing goodness for candidate {label_candidate}: {e}", exc_info=True)
-                        batch_total_goodness[:, label_candidate] = -torch.inf
-                        continue
-
+                    if not layer_goodness_list: total_goodness_candidate = torch.zeros((batch_size,), device=device); logger.warning(f"Eval no goodness {label_candidate}.")
+                    elif len(layer_goodness_list) > 1: total_goodness_candidate = torch.stack(layer_goodness_list[1:], dim=0).sum(dim=0)
+                    else: logger.warning("Eval only 1 hidden layer, using its goodness."); total_goodness_candidate = layer_goodness_list[0]
+                    if total_goodness_candidate.shape != (batch_size,): raise ValueError(f"Bad goodness shape: {total_goodness_candidate.shape}")
+                except Exception as e_fwd: logger.error(f"Eval fwd err {label_candidate}: {e_fwd}"); batch_total_goodness[:, label_candidate] = -torch.inf; continue
                 batch_total_goodness[:, label_candidate] = total_goodness_candidate
-
             try:
                 all_inf_mask = torch.all(torch.isinf(batch_total_goodness) & (batch_total_goodness < 0), dim=1)
-                if torch.any(all_inf_mask):
-                    num_all_inf = all_inf_mask.sum().item()
-                    logger.warning(f"Batch {batch_idx+1}: {num_all_inf} samples had -inf goodness for all candidates. Predicting 0 for these.")
-                    predicted_labels = torch.zeros_like(labels)
-                    valid_indices = ~all_inf_mask
-                    if torch.any(valid_indices):
-                        predicted_labels[valid_indices] = torch.argmax(batch_total_goodness[valid_indices], dim=1)
-                else:
-                    predicted_labels = torch.argmax(batch_total_goodness, dim=1)
-            except Exception as e:
-                logger.error(f"Error during argmax prediction for batch {batch_idx+1}: {e}", exc_info=True)
                 predicted_labels = torch.zeros_like(labels)
-
-            total_correct += (predicted_labels == labels).sum().item()
-            total_samples += batch_size
-
+                if torch.any(~all_inf_mask): valid_indices = ~all_inf_mask; predicted_labels[valid_indices] = torch.argmax(batch_total_goodness[valid_indices], dim=1)
+                if torch.any(all_inf_mask): logger.warning(f"Eval Batch {batch_idx+1}: {all_inf_mask.sum().item()}/{batch_size} samples failed all candidates.")
+            except Exception as e_pred: logger.error(f"Eval pred err Batch {batch_idx+1}: {e_pred}"); predicted_labels = torch.zeros_like(labels)
+            total_correct += (predicted_labels == labels).sum().item(); total_samples += batch_size
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
-    logger.info(f"FF Evaluation Accuracy (Pixel Embedding, Multi-Pass): {accuracy:.2f}%")
-    results = {"eval_accuracy": accuracy, "eval_loss": float("nan")}
-    return results
+    logger.info(f"FF Evaluation Accuracy (Hinton Multi-Pass): {accuracy:.2f}%")
+    return {"eval_accuracy": accuracy, "eval_loss": float("nan")}
