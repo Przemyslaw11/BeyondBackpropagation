@@ -1,0 +1,81 @@
+# File: configs/bp_baselines/mnist_mlp_3x1000_bp.yaml
+# Configuration for Backpropagation Baseline on MNIST with 3x1000 MLP
+
+# Experiment Identification
+experiment_name: "bp_mnist_mlp_3x1000"
+algorithm:
+  name: "BP" # Specify Backpropagation
+
+# Dataset Configuration
+data:
+  name: "MNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration (Use standard baseline batch size)
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+# Model Architecture Configuration
+model:
+  name: "FF_MLP" # Engine will convert this name to a standard Sequential MLP for BP
+  params:
+    # input_dim: 784 # Calculated automatically
+    hidden_dims: [1000, 1000, 1000] # <<< Target Architecture
+    activation: "ReLU" # Standard activation for BP
+    bias: true
+    # norm_eps/bias_init are ignored when engine creates Sequential model
+
+# Optimizer Configuration (NEEDS TUNING)
+optimizer:
+  type: "AdamW" # Default starting point for tuning
+  # <<< IMPORTANT: These LR and WD values are placeholders! >>>
+  # <<< Run Optuna search using run_optuna_search.py script on this file. >>>
+  # <<< The script will automatically update these after search. >>>
+  lr: 0.001
+  weight_decay: 0.0001
+
+# Training Configuration
+training:
+  epochs: 100 # Standard baseline epoch count
+  criterion: "CrossEntropyLoss"
+  log_interval: 100
+
+# Hyperparameter Tuning Configuration (Enable Optuna)
+tuning:
+  enabled: true # <<< Enable Optuna tuning for this baseline >>>
+  n_trials: 50 # Number of trials to run
+  num_epochs: 25 # Epochs per Optuna trial
+  direction: "maximize" # Optimize for validation accuracy
+  metric: "val_accuracy" # Metric Optuna objective returns
+  sampler: "TPE" # Sampler algorithm
+  pruner: "Median" # Pruner algorithm
+  lr_range: [1.0e-5, 1.0e-2] # Range for learning rate search (log scale)
+  wd_range: [1.0e-6, 1.0e-3] # Range for weight decay search (log scale)
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+    # project: "BeyondBackpropagation" # Defined in base.yaml
+    # entity: "przspyra11" # Defined in base.yaml
+
+# Checkpointing
+checkpointing:
+  checkpoint_dir: "checkpoints/bp_mnist_mlp_3x1000" # Specific directory
+  save_best_metric: "bp_val_accuracy" # Save based on validation accuracy
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
