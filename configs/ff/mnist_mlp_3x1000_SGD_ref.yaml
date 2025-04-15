@@ -31,7 +31,7 @@ model:
     bias: true
     # Use reference code defaults for eps/bias
     norm_eps: 1.0e-8
-    bias_init: 0.0
+    bias_init: 0.0 # <<< NOTE: FF_MLP now forces this to 0.0 for ReLU like reference >>>
 
 # Algorithm Specific Configuration (Matching Reference Code)
 algorithm_params:
@@ -73,6 +73,3 @@ monitoring:
 profiling:
   enabled: true
   verbose: false
-
-# <<< NOTE: Ensure your `src/algorithms/ff.py` reads the momentum values >>>
-# <<<       when constructing the SGD optimizer.                     >>>

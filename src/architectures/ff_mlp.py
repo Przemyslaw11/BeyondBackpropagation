@@ -1,4 +1,4 @@
-# File: src/architectures/ff_mlp.py (MODIFIED - Replaces previous content)
+# File: src/architectures/ff_mlp.py (FINAL CORRECTED - Replaces previous content)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,12 +18,13 @@ class ReLU_full_grad(torch.autograd.Function):
         return input_val.clamp(min=0)
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> torch.Tensor:
+        # <<< CORRECTION: Pass gradient through unchanged. >>>
         return grad_output.clone()
 
 # --- Modified FF_MLP to match Hinton's reference logic ---
 class FF_MLP(torch.nn.Module):
     """
-    MODIFIED MLP model to implement Hinton's reference Forward-Forward (FF) algorithm logic.
+    CORRECTED MLP model implementing Hinton's reference Forward-Forward (FF) algorithm logic.
     Uses simultaneous local gradient updates via detach. Includes downstream classifier.
     Structure adapted to work with the modified training loop in src/algorithms/ff.py.
     """
@@ -39,7 +40,7 @@ class FF_MLP(torch.nn.Module):
         activation: Optional[str] = "relu",
         bias: Optional[bool] = True,
         norm_eps: Optional[float] = 1.0e-8,
-        bias_init: Optional[float] = 0.0,
+        bias_init: Optional[float] = 0.0, # Note: Will be forced to 0.0 if activation is ReLU
     ):
         super().__init__()
 
@@ -62,11 +63,12 @@ class FF_MLP(torch.nn.Module):
         self.hidden_dims = hidden_dims if hidden_dims is not None else self.model_params.get("hidden_dims", [1000, 1000, 1000])
         self.num_classes = num_classes if num_classes is not None else self.data_config.get("num_classes", 10)
         self.num_layers = len(self.hidden_dims)
+        # <<< CORRECTION: Read activation from model_params >>>
         self.activation_name = (activation if activation is not None else self.model_params.get("activation", "ReLU")).lower()
         self.use_bias = bias if bias is not None else self.model_params.get("bias", True)
-        # <<< CORRECTION: Use bias_init from reference default >>>
-        self.bias_init = bias_init if bias_init is not None else self.model_params.get("bias_init", 0.0) # Default 0.0
-        # <<< CORRECTION: Use norm_eps from reference default >>>
+        # <<< CORRECTION: Read bias_init from model_params, but default to 0.0 if ReLU >>>
+        self.bias_init = bias_init if bias_init is not None else self.model_params.get("bias_init", 0.0)
+        # <<< CORRECTION: Read norm_eps from model_params >>>
         self.norm_eps = norm_eps if norm_eps is not None else self.model_params.get("norm_eps", 1.0e-8) # Default 1e-8
 
         # --- Get Algorithm Params from Config ---
@@ -76,19 +78,20 @@ class FF_MLP(torch.nn.Module):
         self.peer_momentum = float(self.algo_params.get("peer_momentum", 0.9))
 
         # --- Activation Function Selection ---
-        # <<< CORRECTION: Ensure correct train/eval activations >>>
+        # <<< CORRECTION: Ensure correct train/eval activations & bias init for ReLU >>>
         if self.activation_name == 'relu':
             self.act_fn_train = ReLU_full_grad() # Use special ReLU for FF training grads
             self.act_fn_eval = nn.ReLU()         # Use standard ReLU for goodness eval
             # <<< CORRECTION: Reference uses 0.0 bias init >>>
-            self.bias_init = 0.0 # Overwrite if ReLU specified, ref uses 0 init
+            if self.bias_init != 0.0:
+                 logger.info(f"{self.__class__.__name__}: Using ReLU activation, forcing bias_init to 0.0 (was {self.bias_init}).")
+                 self.bias_init = 0.0
         elif self.activation_name == 'tanh':
-             # Tanh not used in reference, but keeping for completeness
              logger.warning("Tanh activation specified, reference uses ReLU. Behavior might differ.")
              self.act_fn_train = nn.Tanh()
              self.act_fn_eval = nn.Tanh()
              if self.bias_init != 0.0:
-                 logger.info(f"{self.__class__.__name__}: Using Tanh activation, ensuring bias_init is 0.0 (was {self.bias_init}).")
+                 logger.info(f"{self.__class__.__name__}: Using Tanh activation, forcing bias_init to 0.0 (was {self.bias_init}).")
                  self.bias_init = 0.0
         else:
             logger.error(f"{self.__class__.__name__}: Unsupported activation '{self.activation_name}'. Defaulting to ReLU.")
@@ -101,7 +104,8 @@ class FF_MLP(torch.nn.Module):
         current_dim = self.input_dim
         for i, h_dim in enumerate(self.hidden_dims):
             linear_layer = nn.Linear(current_dim, h_dim, bias=self.use_bias)
-            self._init_layer_weights(linear_layer) # Apply corrected initialization
+            # <<< CORRECTION: Call corrected initialization >>>
+            self._init_layer_weights(linear_layer)
             self.layers.append(linear_layer)
             current_dim = h_dim
 
@@ -122,7 +126,6 @@ class FF_MLP(torch.nn.Module):
         # --- Downstream Classification Head ---
         # <<< CORRECTION: Reference uses activations from layers 1..N-1 >>>
         if self.num_layers <= 1:
-             # If only 1 hidden layer, use its activation (idx=0)
              logger.warning(f"{self.__class__.__name__}: Only <=1 hidden layer. Downstream classifier input uses layer 0 activation.")
              channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0
         else:
@@ -131,15 +134,14 @@ class FF_MLP(torch.nn.Module):
 
         if channels_for_classification_loss <= 0 and self.num_layers > 0:
              logger.error(f"{self.__class__.__name__}: Downstream classifier input dimension calculated as 0 or less ({channels_for_classification_loss}). Check hidden_dims config.")
-             # Fallback to layer 0 if possible, otherwise raise error
              channels_for_classification_loss = self.hidden_dims[0] if self.num_layers > 0 else 0
-             if channels_for_classification_loss <= 0:
-                 raise ValueError("Cannot determine downstream classifier input dimension.")
+             if channels_for_classification_loss <= 0: raise ValueError("Cannot determine downstream classifier input dimension.")
 
         self.linear_classifier = nn.Sequential(
             nn.Linear(channels_for_classification_loss, self.num_classes, bias=False) # No bias in ref classifier
         )
-        self._init_classifier_weights() # Apply corrected initialization
+        # <<< CORRECTION: Call corrected initialization >>>
+        self._init_classifier_weights()
 
         logger.info(
             f"Initialized Modified FF_MLP with {self.num_layers} hidden layers. "
@@ -151,16 +153,12 @@ class FF_MLP(torch.nn.Module):
 
     def _init_layer_weights(self, layer: nn.Linear):
         """Initializes weights for a single FF linear layer according to reference."""
-        # <<< CORRECTION: Match reference normal initialization >>>
-        # std = 1 / sqrt(fan_in) = 1 / sqrt(weight.shape[1]) if using Linear layer default
-        # Reference std = 1 / sqrt(weight.shape[0]) which seems unusual (usually fan_in). Let's try matching reference.
-        # Re-checking reference: init uses `m.weight.shape[0]` which IS fan_out for Linear. This seems correct for Kaiming/Xavier scaling based on output size.
-        # However, the *formula* they used seems like std=1/sqrt(fan_out). Let's use their direct code.
-        std_dev = 1.0 / math.sqrt(layer.weight.shape[0])
+        # <<< CORRECTION: Match reference normal initialization std=1/sqrt(fan_out) >>>
+        std_dev = 1.0 / math.sqrt(layer.weight.shape[0]) # shape[0] is fan_out for nn.Linear
         nn.init.normal_(layer.weight, mean=0, std=std_dev)
-        # <<< CORRECTION: Match reference bias initialization (zeros) >>>
+        # <<< CORRECTION: Match reference bias initialization (0.0 for ReLU) >>>
         if self.use_bias and layer.bias is not None:
-            nn.init.constant_(layer.bias, self.bias_init) # Use self.bias_init (which is now 0.0 for ReLU)
+            nn.init.constant_(layer.bias, self.bias_init) # self.bias_init is now 0.0 if ReLU
 
     def _init_classifier_weights(self):
         """Initializes weights for the downstream linear classifier."""
@@ -169,18 +167,10 @@ class FF_MLP(torch.nn.Module):
             if isinstance(m, nn.Linear): nn.init.zeros_(m.weight)
 
     def _layer_norm(self, z: torch.Tensor) -> torch.Tensor:
-        """Applies length normalization (dividing by L2 norm) matching reference."""
-        # Reference uses sqrt(mean(z^2)) which is RMS, not quite L2 norm.
-        # But Hinton's text often refers to normalizing the length. Let's stick to L2 norm.
-        # Note: Original reference code `ff_model.py` provided in prompt uses:
-        # return z / (torch.sqrt(torch.mean(z ** 2, dim=-1, keepdim=True)) + eps)
-        # This IS RMS normalization. Let's match that.
+        """Applies RMS length normalization matching reference."""
+        # <<< CORRECTION: Use RMS normalization like reference code >>>
         rms_norm = torch.sqrt(torch.mean(z ** 2, dim=-1, keepdim=True))
         return z / (rms_norm + self.norm_eps)
-        # Original L2 norm approach (commented out):
-        # norm = torch.linalg.norm(z, dim=1, keepdim=True)
-        # return z / (norm + self.norm_eps)
-
 
     def _calc_peer_normalization_loss(self, layer_idx: int, z_pos: torch.Tensor) -> torch.Tensor:
         """Calculates peer normalization loss matching reference."""
@@ -190,30 +180,22 @@ class FF_MLP(torch.nn.Module):
         running_mean = self.running_means[layer_idx]
         new_running_mean = running_mean.detach() * self.peer_momentum + mean_activity * (1 - self.peer_momentum)
         self.running_means[layer_idx] = new_running_mean
-        # <<< CORRECTION: Reference peer loss formula >>>
-        # Original ref code comment implies loss is (mean(running_means) - running_means)^2
-        # Let's implement this based on the comment.
+        # <<< CORRECTION: Reference peer loss formula from comment >>>
         peer_loss = (torch.mean(new_running_mean) - new_running_mean) ** 2
         return torch.mean(peer_loss)
 
     def _calc_ff_loss(self, z_pre_norm: torch.Tensor, labels: torch.Tensor) -> Tuple[torch.Tensor, float]:
         """Calculates FF loss and accuracy using DYNAMIC threshold matching reference."""
         sum_of_squares = torch.sum(z_pre_norm ** 2, dim=-1)
-        # <<< CORRECTION: Use dynamic threshold based on input dimension >>>
-        # The reference code `ff_model.py` uses `z.shape[1]`.
-        # `z_pre_norm` here is the activation *output*. The threshold should relate
-        # to the *input* dimensionality that *produced* this output, or just the output dim itself?
-        # The reference comment says "sum_of_squares - z.shape[1]". 'z' there is the activation output.
-        # So, the threshold is the *output* dimensionality of the layer (number of neurons).
-        dynamic_threshold = z_pre_norm.shape[1]
-        logits = sum_of_squares - dynamic_threshold # Use dynamic threshold
+        # <<< CORRECTION: Use dynamic threshold based on layer's output dimension >>>
+        dynamic_threshold = z_pre_norm.shape[1] # Threshold = number of neurons in the layer
+        logits = sum_of_squares - dynamic_threshold
         ff_loss = self.ff_loss_criterion(logits, labels.float())
         with torch.no_grad():
-            # Accuracy calculation is correct
             ff_accuracy = (torch.sum((torch.sigmoid(logits) > 0.5) == labels) / z_pre_norm.shape[0]).item() * 100.0
         return ff_loss, ff_accuracy
 
-    # --- Standard Forward (for FLOPs/Compatibility - Minimal Change) ---
+    # --- Standard Forward (for FLOPs/Compatibility) ---
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Standard forward pass using standard activation and normalization."""
         if x.shape[1] != self.input_dim:
@@ -238,7 +220,8 @@ class FF_MLP(torch.nn.Module):
             z_act = self.act_fn_train.apply(z_pre_act)
             if self.use_peer_normalization:
                 z_pos = z_act[:current_batch_size]
-                peer_loss = self._calc_peer_normalization_loss(idx, z_pos) # Corrected loss calc inside
+                # <<< CORRECTION: Use corrected peer loss calc >>>
+                peer_loss = self._calc_peer_normalization_loss(idx, z_pos)
                 scalar_outputs["Peer_Normalization_Loss_Total"] += peer_loss
                 scalar_outputs[f"Layer_{idx+1}/Peer_Norm_Loss"] = peer_loss.item()
                 scalar_outputs["Loss"] += self.peer_normalization_factor * peer_loss
@@ -249,9 +232,8 @@ class FF_MLP(torch.nn.Module):
             scalar_outputs["FF_Loss_Total"] += ff_loss; scalar_outputs["Loss"] += ff_loss
             # <<< CORRECTION: Detach *before* normalization for next layer >>>
             z_detached = z_act.detach()
-            z_norm = self._layer_norm(z_detached)
-            # Collect activations from layer 1 onwards (indices 1 to num_layers-1)
-            # Reference uses hidden layers [1:] for classifier input
+            z_norm = self._layer_norm(z_detached) # Use corrected norm
+            # <<< CORRECTION: Collect activations from layer 1..N-1 for downstream >>>
             if idx >= 1:
                 normalized_activations_for_downstream.append(z_norm[:current_batch_size].detach())
             z = z_norm # Use normalized, detached output as input for next layer
@@ -273,15 +255,22 @@ class FF_MLP(torch.nn.Module):
         try: expected_dim = self.linear_classifier[0].in_features
         except (IndexError, AttributeError): logger.error("Could not get classifier input dim."); return torch.zeros(1, device=self.device, requires_grad=True), 0.0
         if expected_dim == 0: logger.debug("Downstream classifier expects 0 features."); dummy_loss = torch.zeros(1, device=self.device); return dummy_loss, 0.0
-        if input_cls.shape[1] != expected_dim: logger.error(f"Downstream dim mismatch: Input {input_cls.shape[1]}, Expected {expected_dim}."); dummy_loss = torch.zeros(1, device=self.device); return dummy_loss, 0.0
+        # <<< CORRECTION: Check for dim mismatch AFTER checking expected_dim > 0 >>>
+        if input_cls.shape[1] != expected_dim:
+             logger.error(f"Downstream dim mismatch: Input {input_cls.shape[1]}, Expected {expected_dim}.")
+             # Create dummy loss compatible with requires_grad status
+             dummy_loss = torch.zeros(1, device=self.device)
+             if any(p.requires_grad for p in self.linear_classifier.parameters()):
+                 dummy_loss.requires_grad_(True)
+             return dummy_loss, 0.0
 
         output = self.linear_classifier(input_cls)
         classification_loss = self.classification_loss_criterion(output, class_labels)
         with torch.no_grad(): classification_accuracy = calculate_accuracy(output.data, class_labels)
-        if hasattr(self, "_current_downstream_input"): del self._current_downstream_input
+        if hasattr(self, "_current_downstream_input"): del self._current_downstream_input # Clean up
         return classification_loss, classification_accuracy
 
-    # --- Evaluation Forward (Goodness - Ensure standard ReLU) ---
+    # --- Evaluation Forward (Goodness - Ensure standard ReLU & Detach/Norm Order) ---
     def forward_goodness_per_layer(self, x_flattened_modified: torch.Tensor) -> List[torch.Tensor]:
         """Forward pass calculating goodness per layer for evaluation."""
         if x_flattened_modified.shape[1] != self.input_dim: raise ValueError(f"Eval input dim mismatch: {x_flattened_modified.shape[1]} vs {self.input_dim}")
@@ -293,6 +282,6 @@ class FF_MLP(torch.nn.Module):
             goodness = torch.sum(z_act.pow(2), dim=1); layer_goodness.append(goodness)
             # <<< CORRECTION: Detach before normalization for next layer input >>>
             z_detached = z_act.detach()
-            z = self._layer_norm(z_detached)
+            z = self._layer_norm(z_detached) # Use corrected norm
         if len(layer_goodness) != len(self.hidden_dims): logger.warning(f"Eval goodness length mismatch: {len(layer_goodness)} vs {len(self.hidden_dims)}.")
         return layer_goodness
