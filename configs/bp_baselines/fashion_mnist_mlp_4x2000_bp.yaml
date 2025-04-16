@@ -28,8 +28,8 @@ training:
   log_interval: 100
 optimizer:
   type: AdamW
-  lr: 0.00011990857815870225
-  weight_decay: 1.1264991483646212e-06
+  lr: 0.0002040628171913876
+  weight_decay: 4.186646492145325e-06
 logging:
   level: INFO
   wandb:
@@ -47,8 +47,8 @@ profiling:
   verbose: false
 tuning:
   enabled: true
-  n_trials: 50
-  num_epochs: 25
+  n_trials: 10
+  num_epochs: 15
   direction: maximize
   metric: val_accuracy
   sampler: TPE

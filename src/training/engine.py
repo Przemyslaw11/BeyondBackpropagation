@@ -20,14 +20,16 @@ from src.utils.monitoring import (
 )
 from src.utils.profiling import profile_model_flops
 from src.data_utils.datasets import get_dataloaders
-# Import the modified FF_MLP
-from src.architectures import FF_MLP, CaFo_CNN, MF_MLP
+# Import specific architectures
+from src.architectures.ff_mlp import FF_MLP
+from src.architectures.cafo_cnn import CaFo_CNN
+from src.architectures.mf_mlp import MF_MLP
 from src.algorithms import (
     get_training_function,
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function (MODIFIED for updated FF_MLP) ---
+# --- get_model_and_adapter function (MODIFIED for CaFo BP Baseline Fix) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[ nn.Module, Optional[Callable[[torch.Tensor], torch.Tensor]] ]:
@@ -47,7 +49,7 @@ def get_model_and_adapter(
 
     logger.info(f"Creating model arch: {arch_name} (Algo: {algorithm_name.upper()})")
 
-    valid_baseline_architectures = ["ff_mlp", "cafo_cnn", "mf_mlp"] # ff_mlp now refers to the modified one
+    valid_baseline_architectures = ["ff_mlp", "cafo_cnn", "mf_mlp"]
     if is_bp_baseline and arch_name not in valid_baseline_architectures:
         logger.warning(f"BP baseline uses arch '{arch_name}', check correspondence.")
 
@@ -87,24 +89,36 @@ def get_model_and_adapter(
             logger.debug("Created BP baseline Sequential model from modified FF_MLP spec.")
         else:
             # Instantiate the modified FF_MLP, passing full config and device
-            # Ensure arch_params are passed too, as __init__ uses them
             model = FF_MLP(config=config, device=device, **arch_params)
             logger.debug("Using native modified FF_MLP structure.")
 
     elif arch_name == "cafo_cnn":
+        # Instantiate the base CaFo structure first
         cafo_base = CaFo_CNN(**arch_params)
         if is_bp_baseline:
             logger.info("Creating BP baseline model from CaFo_CNN blocks + final Linear layer.")
-            cafo_base.to(device)
+            cafo_base.to(device) # Move to device to calculate output shape
             with torch.no_grad():
-                dummy_input = torch.randn(1, input_channels, image_size, image_size).to(device)
+                # Use the image size/channels passed in arch_params or inferred
+                dummy_input = torch.randn(1, arch_params['input_channels'], arch_params['image_size'], arch_params['image_size']).to(device)
+                # Use the dedicated forward pass that returns only the last block's output
                 last_block_output = cafo_base.forward_blocks_only(dummy_input)
                 num_output_features = last_block_output.numel()
-            cafo_base.cpu()
+            cafo_base.cpu() # Move base back to CPU after calculation
             logger.debug(f"Flattened output dimension from CaFo blocks: {num_output_features}")
-            model = nn.Sequential(cafo_base.blocks, nn.Flatten(), nn.Linear(num_output_features, num_classes))
+
+            # <<< --- CORRECTED MODEL CREATION --- >>>
+            # Unpack the ModuleList using '*' and add Flatten + Linear
+            model = nn.Sequential(
+                *cafo_base.blocks, # Unpack the list of CaFoBlock modules here
+                nn.Flatten(),
+                nn.Linear(num_output_features, num_classes)
+            )
+            # <<< --- END CORRECTION --- >>>
+
             logger.debug("Created BP baseline Sequential model from CaFo_CNN spec.")
         else:
+            # Use the native CaFo_CNN structure for CaFo training
             model = cafo_base
             logger.debug("Using native CaFo_CNN structure.")
 
@@ -118,14 +132,14 @@ def get_model_and_adapter(
     return model, input_adapter
 
 
-# --- run_training (Ensure val_loader passed to FF) ---
+# --- run_training (No changes needed here, relies on get_model_and_adapter fix) ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {}
     nvml_active = False
     gpu_handle = None
     monitor = None
     run_start_time = time.time()
-    step_ref = [-1]
+    step_ref = [-1] # Use list to pass step by reference
     peak_gpu_mem_during_training = float('nan')
     algorithm_name = config.get("algorithm", {}).get("name", "").lower()
 
@@ -149,14 +163,16 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             wandb_run = setup_wandb(config, job_type="training")
         if wandb_run:
             try:
-                wandb_run.define_metric("global_step", summary="max")
-                wandb_run.define_metric("*", step_metric="global_step")
+                # Define step metric for smoother W&B plots
+                wandb_run.define_metric("global_step", summary="max") # Track max step
+                wandb_run.define_metric("*", step_metric="global_step") # Use step for all other metrics
                 logger.info("Defined 'global_step' as the default x-axis metric for W&B.")
             except Exception as e_define:
                 logger.error(f"Failed to define W&B metric 'global_step': {e_define}")
 
+        # Monitoring Setup
         monitoring_config = config.get("monitoring", {})
-        initial_metrics = {}
+        initial_metrics = {} # Collect metrics to log before training starts
         if device.type == "cuda":
             if init_nvml():
                 nvml_active = True
@@ -167,6 +183,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                     mem_info_start = get_gpu_memory_usage(gpu_handle)
                     if mem_info_start:
                         initial_metrics["initial_gpu_mem_used_mib"] = mem_info_start[0]
+                        logger.info(f"Initial GPU Mem: {mem_info_start[0]:.2f} MiB Used / {mem_info_start[1]:.2f} MiB Total")
                 else:
                     logger.warning(f"NVML active but failed get handle for GPU {gpu_index}.")
                     nvml_active = False # Treat as inactive if handle fails
@@ -191,7 +208,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             dataset_name=data_config.get("name", "FashionMNIST"),
             batch_size=loader_config.get("batch_size", 64),
             data_root=data_config.get("root", "./data"),
-            val_split=data_config.get("val_split", 0.1),
+            val_split=data_config.get("val_split", 0.1), # Specific split handled in get_dataloaders
             seed=seed,
             num_workers=loader_config.get("num_workers", 4),
             pin_memory=(loader_config.get("pin_memory", True) and device.type == "cuda"),
@@ -199,19 +216,18 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         )
         logger.info("Dataloaders created.")
 
-        # Model Instantiation
+        # Model Instantiation (using the fixed function)
         model, input_adapter = get_model_and_adapter(config, device)
         model.to(device)
         logger.info(f"Model '{config.get('model', {}).get('name')}' on {device}.")
-        try:
+        try: # Log parameter counts
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             num_total_params = sum(p.numel() for p in model.parameters())
             initial_metrics["model_parameters_trainable"] = num_params
             initial_metrics["model_parameters_total"] = num_total_params
             logger.info(f"Model trainable parameters: {num_params:,}")
             logger.info(f"Model total parameters: {num_total_params:,}")
-        except Exception as e:
-            logger.warning(f"Could not count model parameters: {e}")
+        except Exception as e: logger.warning(f"Could not count model parameters: {e}")
 
         # FLOPs Profiling
         profiling_config = config.get("profiling", {})
@@ -219,13 +235,17 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         estimated_bp_update_gflops = float('nan')
         if profiling_config.get("enabled", True):
             try:
+                # Get a single sample batch
                 sample_input_img, _ = next(iter(train_loader))
                 sample_input_device = sample_input_img.to(device)
 
+                # Create input constructor for profiler (handles adapter)
                 if input_adapter:
+                    # Use adapter and ensure batch size 1
                     profile_input_constructor = lambda: input_adapter(sample_input_device[:1])
                     logger.debug("Using adapter and batch size 1 for FLOPs.")
                 else:
+                    # No adapter, ensure batch size 1
                     profile_input_constructor = lambda: sample_input_device[:1]
                     logger.debug("No adapter, using batch size 1 for FLOPs.")
 
@@ -243,12 +263,15 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                     results["estimated_fwd_gflops"] = estimated_fwd_gflops
                     initial_metrics["estimated_fwd_gflops"] = estimated_fwd_gflops
                     logger.info(f"Estimated Forward Pass GFLOPs: {estimated_fwd_gflops:.4f} G")
+                    # Estimate BP cost only if it's a BP baseline
                     if algorithm_name == "bp":
-                        estimated_bp_update_gflops = estimated_fwd_gflops * 3.0 # Fwd + ~2x Fwd for Bwd
+                        # Standard approximation: BP is ~3x FWD pass
+                        estimated_bp_update_gflops = estimated_fwd_gflops * 3.0
                         results["estimated_bp_update_gflops"] = estimated_bp_update_gflops
                         initial_metrics["estimated_bp_update_gflops"] = estimated_bp_update_gflops
                         logger.info(f"Estimated BP Update Cycle GFLOPs (Fwd+Bwd ~3x Fwd): {estimated_bp_update_gflops:.4f} G")
                     else:
+                        # Not applicable for BP-free methods
                         results["estimated_bp_update_gflops"] = float('nan')
                         initial_metrics["estimated_bp_update_gflops"] = float('nan')
                         logger.info(f"Algorithm '{algorithm_name}' is BP-free, Est. BP Update GFLOPs is N/A.")
@@ -258,12 +281,10 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                     initial_metrics["estimated_fwd_gflops"] = float('nan')
                     results["estimated_bp_update_gflops"] = float('nan')
                     initial_metrics["estimated_bp_update_gflops"] = float('nan')
-            except StopIteration:
-                logger.warning("Empty DataLoader, cannot perform FLOPs profiling.")
-            except Exception as e:
-                logger.error(f"FLOPs profiling failed: {e}", exc_info=True)
+            except StopIteration: logger.warning("Empty DataLoader, cannot perform FLOPs profiling.")
+            except Exception as e: logger.error(f"FLOPs profiling failed: {e}", exc_info=True)
 
-        # Log initial metrics
+        # Log initial metrics before training loop
         if initial_metrics:
             step_ref[0] = 0 # Set step to 0 for initial logging
             metrics_to_log = {"global_step": step_ref[0], **initial_metrics}
@@ -276,7 +297,9 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         train_loop_start_time = time.time()
         total_energy_joules = None
 
+        # Start energy monitor if available
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
+            # Prepare arguments common to all training functions
             training_args = {
                 "model": model,
                 "train_loader": train_loader,
@@ -287,12 +310,12 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 "gpu_handle": gpu_handle,
                 "nvml_active": nvml_active
             }
-            # Pass val_loader for algorithms that use it during training
-            if algorithm_name in ["bp", "ff"]:
+            # Add arguments specific to certain algorithms
+            if algorithm_name in ["bp", "ff"]: # BP and FF training use validation set during training
                 training_args["val_loader"] = val_loader
-            # Pass input_adapter for algorithms that expect it in the training function
-            if algorithm_name in ["bp", "mf", "cafo"]:
+            if algorithm_name in ["bp", "mf"]: # BP and MF use input adapter in main train loop
                 training_args["input_adapter"] = input_adapter
+            # CaFo and FF handle input internally
 
             # Call the appropriate training function
             train_output = training_fn(**training_args)
@@ -302,8 +325,9 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 peak_gpu_mem_during_training = train_output
                 logger.info(f"Received Peak GPU Memory (sampled during training): {peak_gpu_mem_during_training:.2f} MiB")
             else:
-                 logger.warning(f"Training function for '{algorithm_name}' returned type {type(train_output)}. Expected peak memory (float/int).")
-                 peak_gpu_mem_during_training = float('nan') # Set to NaN if not returned
+                 # Add warning if the return type is unexpected
+                 logger.warning(f"Training function for '{algorithm_name}' returned type {type(train_output)}. Expected peak memory (float/int). Peak memory set to NaN.")
+                 peak_gpu_mem_during_training = float('nan') # Set to NaN if not returned correctly
 
         # --- Post-Training Monitoring ---
         train_loop_duration = time.time() - train_loop_start_time
@@ -311,6 +335,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         final_summary_step = step_ref[0] + 1 if step_ref[0] >= 0 else 0 # Handle case where step_ref might still be -1
         logger.debug(f"Training loop complete. Final global_step: {step_ref[0]}. Final summary step: {final_summary_step}")
 
+        # Stop energy monitor and get results
         if monitor:
             total_energy_joules = monitor.get_total_energy_joules()
             if total_energy_joules is not None:
@@ -328,10 +353,13 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
              mem_info_end = get_gpu_memory_usage(gpu_handle)
              if mem_info_end:
                  logger.info(f"GPU Mem (End): {mem_info_end[0]:.2f} MiB Used / {mem_info_end[1]:.2f} MiB Total")
+             else:
+                 logger.warning("Failed to get final GPU memory usage.")
 
         # --- Evaluation ---
         logger.info("Starting evaluation phase on test set...")
         eval_config = config.get("evaluation", {})
+        # Allow eval criterion override, default to CrossEntropyLoss if needed
         eval_criterion_name = eval_config.get("criterion", "CrossEntropyLoss")
         eval_criterion = nn.CrossEntropyLoss() if eval_criterion_name.lower() == "crossentropyloss" else None
 
@@ -340,22 +368,27 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         test_loss_key = "test_loss"
         test_acc_key = "test_accuracy"
 
+        # Prepare arguments common to all evaluation functions
         eval_args = {
             "model": model,
             "data_loader": test_loader,
             "device": device
         }
         # Add arguments needed by specific evaluation functions
-        if algorithm_name in ["bp", "mf", "cafo"]:
+        if algorithm_name in ["bp", "cafo", "mf"]: # These need criterion for loss
             eval_args["criterion"] = eval_criterion
-        if algorithm_name in ["bp", "mf", "cafo"]:
-            eval_args["input_adapter"] = input_adapter # FF eval uses internal logic
-        if algorithm_name == "cafo":
+        if algorithm_name in ["bp", "mf"]: # These need input adapter
+            eval_args["input_adapter"] = input_adapter
+        if algorithm_name == "cafo": # CaFo needs predictors and aggregation method
+            # Ensure predictors are attached to the model after training
             eval_args["predictors"] = getattr(model, "trained_predictors", None)
             eval_args["aggregation_method"] = config.get("algorithm_params", {}).get("aggregation_method", "sum")
+        # FF eval handles input internally
 
         try:
+            # Call the appropriate evaluation function
             eval_output = evaluation_fn(**eval_args)
+            # Parse results (assuming dict return or tuple (loss, acc))
             if isinstance(eval_output, dict):
                 eval_results[test_loss_key] = eval_output.get("eval_loss", float("nan"))
                 eval_results[test_acc_key] = eval_output.get("eval_accuracy", float("nan"))
@@ -363,34 +396,34 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 eval_results[test_loss_key] = eval_output[0]
                 eval_results[test_acc_key] = eval_output[1]
             else:
-                logger.error(f"Unexpected eval return type: {type(eval_output)}")
+                logger.error(f"Unexpected eval return type: {type(eval_output)}. Setting results to NaN.")
                 eval_results = {test_loss_key: float("nan"), test_acc_key: float("nan")}
         except Exception as e:
             logger.error(f"Evaluation failed for {algorithm_name}: {e}", exc_info=True)
             eval_results = {test_loss_key: float("nan"), test_acc_key: float("nan")}
 
         logger.info(f"Test Set Results: Acc: {eval_results.get(test_acc_key, 'N/A'):.2f}%, Loss: {eval_results.get(test_loss_key, 'N/A'):.4f}")
-        results.update(eval_results)
+        results.update(eval_results) # Add eval results to main results dict
 
     except Exception as e:
         logger.critical(f"\n--- Experiment Failed ---")
         logger.critical(f"Error during run: {e}", exc_info=True)
         results["error"] = str(e)
+        # Attempt to finish W&B run with error code
         if wandb_run and hasattr(wandb_run, 'finish'):
-            try:
-                wandb_run.finish(exit_code=1)
-                logger.info("W&B run finished with error.")
-            except Exception as e_wandb:
-                logger.error(f"Error finishing W&B after exception: {e_wandb}")
+            try: wandb_run.finish(exit_code=1); logger.info("W&B run finished with error.")
+            except Exception as e_wandb: logger.error(f"Error finishing W&B after exception: {e_wandb}")
         # Re-raise the exception for the main script to catch
         raise e
     finally:
-        # --- Final Summary Logging (Single Call) ---
+        # --- Final Summary Logging (Always Runs) ---
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
-        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0 # Correct handling for step -1
+        # Ensure final step is at least 0 for logging
+        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0
         logger.debug(f"Final summary logging step: {final_summary_step}")
 
+        # Consolidate final metrics for logging
         final_summary_metrics = {
             "global_step": final_summary_step,
             "final/total_run_duration_sec": total_run_time,
@@ -409,11 +442,16 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         logger.info(f"Total run duration: {format_time(total_run_time)}")
 
         # Clean up W&B run if it wasn't already finished due to error
-        if wandb_run and hasattr(wandb_run, 'finish') and results.get("error") is None and os.environ.get("WANDB_MODE") != "offline":
-            try:
-                wandb_run.finish()
-                logger.info("W&B run finished.")
-            except Exception as e:
-                logger.error(f"Error finishing W&B run: {e}")
+        if wandb_run and hasattr(wandb_run, 'finish') and results.get("error") is None:
+            # Check WANDB_MODE env var if running offline
+            if os.environ.get("WANDB_MODE", "").lower() == "offline":
+                 logger.info("W&B running in offline mode. Run 'wandb sync' later.")
+            else:
+                try: wandb_run.finish(); logger.info("W&B run finished.")
+                except Exception as e: logger.error(f"Error finishing W&B run: {e}")
+
+        # Clean up NVML
+        if nvml_active:
+            shutdown_nvml() # Shutdown NVML at the very end of the run
 
     return results

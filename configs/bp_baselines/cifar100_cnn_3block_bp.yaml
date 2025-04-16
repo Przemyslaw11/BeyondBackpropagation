@@ -34,8 +34,8 @@ training:
   log_interval: 100
 tuning:
   enabled: true
-  n_trials: 50
-  num_epochs: 25
+  n_trials: 10
+  num_epochs: 15
   direction: maximize
   metric: val_accuracy
   sampler: TPE
