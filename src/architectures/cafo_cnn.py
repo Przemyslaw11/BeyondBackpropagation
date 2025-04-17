@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 class CaFoBlock(nn.Module):
     """
-    A single block for the CaFo CNN, typically: Conv -> BN -> Activation -> Pool.
+    A single block for the CaFo CNN, typically: Conv -> Activation -> Pool -> BN.
+    MODIFIED: Changed layer order to Conv->Act->Pool->BN to match paper/reference.
     MODIFIED: Added explicit Kaiming uniform initialization for Conv layer.
     """
 
@@ -36,7 +37,7 @@ class CaFoBlock(nn.Module):
             bias=not use_batchnorm,  # Disable bias if using BatchNorm
         )
 
-        # <<< START MODIFICATION: Explicit Initialization >>>
+        # <<< MODIFICATION: Explicit Initialization >>>
         # Explicitly initialize weights using Kaiming uniform for ReLU non-linearity
         nn.init.kaiming_uniform_(self.conv.weight, mode='fan_in', nonlinearity='relu')
         # Initialize bias to zero if it exists (should be None if use_batchnorm=True)
@@ -45,7 +46,6 @@ class CaFoBlock(nn.Module):
         logger.debug(f"CaFoBlock Conv ({in_channels}->{out_channels}): Explicitly applied Kaiming Uniform init.")
         # <<< END MODIFICATION >>>
 
-        self.bn = nn.BatchNorm2d(out_channels) if use_batchnorm else nn.Identity()
         self.activation = activation_cls()
         # Ensure pooling doesn't reduce dimension to zero if input is small
         self.pool = (
@@ -53,12 +53,18 @@ class CaFoBlock(nn.Module):
             if pool_kernel_size > 0
             else nn.Identity()
         )
+        self.bn = nn.BatchNorm2d(out_channels) if use_batchnorm else nn.Identity()
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # <<< MODIFICATION START: Changed layer order >>>
+        # Original order: Conv -> BN -> Act -> Pool
+        # Corrected order (Paper/Reference): Conv -> Act -> Pool -> BN
         x = self.conv(x)
-        x = self.bn(x)
         x = self.activation(x)
         x = self.pool(x)
+        x = self.bn(x)
+        # <<< MODIFICATION END >>>
         return x
 
     def get_output_shape(
@@ -78,6 +84,7 @@ class CaFoBlock(nn.Module):
             # Ensure block is also on the same device
             self.to(device)
             dummy_output = self.forward(dummy_input)
+            # Note: Applying BN last should not change the output shape C, H, W
             # Move block back to CPU if it was temporarily moved? Depends on usage.
             # self.cpu()
             return dummy_output.shape[1:]  # Return C, H, W
@@ -92,6 +99,8 @@ class CaFoPredictor(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features, num_classes, bias=bias)
+        # Default initialization is used for self.fc, which is standard PyTorch practice
+        # and aligns with the reference's BP predictor ('fc') approach.
         logger.debug(f"CaFoPredictor: In={in_features}, Out={num_classes}, Bias={bias}")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -166,6 +175,7 @@ class CaFo_CNN(nn.Module):
             self.blocks.append(block)
 
             try:
+                # Calculation depends on the corrected forward pass in CaFoBlock
                 output_shape = block.get_output_shape(
                     current_input_shape, device=device
                 )

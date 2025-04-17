@@ -26,8 +26,8 @@ model:
     pool_stride: 2
 optimizer:
   type: AdamW
-  lr: 0.0067628739201322655
-  weight_decay: 4.7418070637518205e-06
+  lr: 0.0002016918626930215
+  weight_decay: 2.3310182998856617e-06
 training:
   epochs: 100
   criterion: CrossEntropyLoss

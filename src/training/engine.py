@@ -21,7 +21,7 @@ from src.utils.monitoring import (
 from src.utils.profiling import profile_model_flops
 from src.data_utils.datasets import get_dataloaders
 # Import specific architectures
-from src.architectures.ff_mlp import FF_MLP
+from src.architectures.ff_mlp import FF_MLP # Assuming FF_MLP exists and is correct
 from src.architectures.cafo_cnn import CaFo_CNN
 from src.architectures.mf_mlp import MF_MLP
 from src.algorithms import (
@@ -89,6 +89,7 @@ def get_model_and_adapter(
             logger.debug("Created BP baseline Sequential model from modified FF_MLP spec.")
         else:
             # Instantiate the modified FF_MLP, passing full config and device
+            # Assuming FF_MLP constructor accepts config and device
             model = FF_MLP(config=config, device=device, **arch_params)
             logger.debug("Using native modified FF_MLP structure.")
 
@@ -107,14 +108,14 @@ def get_model_and_adapter(
             cafo_base.cpu() # Move base back to CPU after calculation
             logger.debug(f"Flattened output dimension from CaFo blocks: {num_output_features}")
 
-            # <<< --- CORRECTED MODEL CREATION --- >>>
-            # Unpack the ModuleList using '*' and add Flatten + Linear
+            # <<< --- MODIFICATION START: Corrected BP Baseline Creation --- >>>
+            # Unpack the ModuleList containing the blocks using '*'
             model = nn.Sequential(
                 *cafo_base.blocks, # Unpack the list of CaFoBlock modules here
                 nn.Flatten(),
                 nn.Linear(num_output_features, num_classes)
             )
-            # <<< --- END CORRECTION --- >>>
+            # <<< --- MODIFICATION END --- >>>
 
             logger.debug("Created BP baseline Sequential model from CaFo_CNN spec.")
         else:
@@ -132,7 +133,7 @@ def get_model_and_adapter(
     return model, input_adapter
 
 
-# --- run_training (No changes needed here, relies on get_model_and_adapter fix) ---
+# --- run_training function (Remains the same as it uses the corrected get_model_and_adapter) ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {}
     nvml_active = False
@@ -216,7 +217,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         )
         logger.info("Dataloaders created.")
 
-        # Model Instantiation (using the fixed function)
+        # Model Instantiation (using the corrected function)
         model, input_adapter = get_model_and_adapter(config, device)
         model.to(device)
         logger.info(f"Model '{config.get('model', {}).get('name')}' on {device}.")

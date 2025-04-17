@@ -1,11 +1,11 @@
-experiment_name: bp_baseline_cifar10_cnn_3block
+experiment_name: bp_baseline_cifar100_cnn_3block
 algorithm:
   name: BP
 data:
-  name: CIFAR10
+  name: CIFAR100
   root: ./data
   val_split: 0.1
-  num_classes: 10
+  num_classes: 100
   input_channels: 3
   image_size: 32
 data_loader:
@@ -26,8 +26,8 @@ model:
     pool_stride: 2
 optimizer:
   type: AdamW
-  lr: 0.0067628739201322655
-  weight_decay: 4.7418070637518205e-06
+  lr: 0.0003201243830098061
+  weight_decay: 5.880350745731698e-05
 training:
   epochs: 100
   criterion: CrossEntropyLoss
@@ -47,7 +47,7 @@ tuning:
   - 1.0e-06
   - 0.001
 checkpointing:
-  checkpoint_dir: checkpoints/bp_baseline_cifar10_cnn_3block
+  checkpoint_dir: checkpoints/bp_baseline_cifar100_cnn_3block
   save_best_metric: bp_val_accuracy
 logging:
   level: INFO
