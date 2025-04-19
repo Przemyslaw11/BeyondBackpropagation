@@ -1,0 +1,75 @@
+# File: configs/cafo/cifar10_cnn_3block.yaml
+# MODIFIED: Enabled and configured DFA block training
+
+# Inherit from base config
+experiment_name: "cafodfa_cifar10_cnn_3block" # Updated name
+algorithm:
+  name: "CaFo"
+
+# Dataset Configuration
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+# Data Loader Configuration
+data_loader:
+  batch_size': 128
+  num_workers: 4
+  pin_memory: true
+
+# Model Architecture Configuration (Base blocks)
+model:
+  name: "CaFo_CNN"
+  params:
+    # input_channels: 3 # Calculated
+    block_channels: [32, 128, 512]
+    activation: "ReLU"
+    use_batchnorm: true
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
+    # image_size: 32 # Calculated
+    # num_classes: 10 # Calculated
+
+# Algorithm Specific Configuration (CaFo-DFA-CE)
+algorithm_params:
+  # --- Block Training (DFA) ---
+  train_blocks: true                  # Enable block training
+  block_training_epochs: 50           # Epochs for DFA block training (tune this)
+  block_optimizer_type: "Adam"        # Optimizer for blocks during DFA
+  block_lr: 0.0001                    # Learning rate for block training (tune this)
+  block_weight_decay: 0.0             # Weight decay for block training
+
+  # --- Predictor Training (CE) ---
+  predictor_optimizer_type: "Adam"    # Renamed from optimizer_type
+  predictor_lr: 0.001                 # Renamed from lr
+  predictor_weight_decay: 0.0         # Renamed from weight_decay
+  loss_type: "CrossEntropyLoss"       # Loss for predictors
+  num_epochs_per_block: 500           # Epochs for predictor training on CIFAR-10
+  log_interval: 100                   # Reduced log interval
+  aggregation_method: "sum"           # Explicitly state aggregation
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  # log_file: null
+  wandb:
+    use_wandb: true
+
+# Checkpointing
+checkpointing:
+  checkpoint_dir: "checkpoints/cafodfa_cifar10_cnn_3block" # Updated name
+  save_best_metric: "bp_val_accuracy" # Still here, but less relevant for CaFo final eval
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

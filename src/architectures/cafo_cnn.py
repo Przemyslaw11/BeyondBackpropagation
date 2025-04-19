@@ -141,6 +141,7 @@ class CaFo_CNN(nn.Module):
 
         self.blocks = nn.ModuleList()
         self._block_output_shapes: List[Tuple[int, int, int]] = []
+        self._block_output_dims_flat: List[int] = [] # Store flattened dims
 
         current_channels = input_channels
         current_feature_map_size = image_size
@@ -150,11 +151,15 @@ class CaFo_CNN(nn.Module):
             current_feature_map_size,
         )
 
-        device = (
-            next(self.parameters()).device
-            if list(self.parameters())
-            else torch.device("cpu")
-        )
+        # Determine device early for shape calculations
+        device_to_check = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # A bit hacky, ideally device comes from outside, but needed for shape calc here
+        temp_param = nn.Parameter(torch.empty(0))
+        try:
+             device = temp_param.device
+        except: device = device_to_check
+        # Remove temp_param if not needed
+        del temp_param
 
         for i, out_channels in enumerate(block_channels):
             # Determine padding based on kernel size to preserve dimensions if stride=1
@@ -180,6 +185,9 @@ class CaFo_CNN(nn.Module):
                     current_input_shape, device=device
                 )
                 self._block_output_shapes.append(output_shape)
+                flat_dim = output_shape[0] * output_shape[1] * output_shape[2]
+                self._block_output_dims_flat.append(flat_dim) # Store flattened dim
+
                 current_input_shape = output_shape
                 current_channels = output_shape[0]
             except Exception as e:
@@ -194,12 +202,12 @@ class CaFo_CNN(nn.Module):
             f"Block channels: {input_channels} -> {' -> '.join(map(str, block_channels))}"
         )
         logger.info(f"Block output shapes (C, H, W): {self._block_output_shapes}")
+        logger.info(f"Block output flattened dims: {self._block_output_dims_flat}")
 
     def get_predictor_input_dim(self, block_index: int) -> int:
         """Returns the expected flattened input dimension for the predictor of a given block."""
-        if 0 <= block_index < len(self._block_output_shapes):
-            shape = self._block_output_shapes[block_index]
-            return shape[0] * shape[1] * shape[2]
+        if 0 <= block_index < len(self._block_output_dims_flat):
+            return self._block_output_dims_flat[block_index]
         else:
             raise IndexError(f"Block index {block_index} out of range.")
 
