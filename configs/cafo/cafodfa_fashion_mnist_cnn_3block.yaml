@@ -39,7 +39,7 @@ model:
 algorithm_params:
   # --- Block Training (DFA) ---
   train_blocks: true                  # Enable block training
-  block_training_epochs: 15           # Epochs for DFA block training (tune this)
+  block_training_epochs: 15          # Epochs for DFA block training (tune this)
   block_optimizer_type: "Adam"        # Optimizer for blocks during DFA
   block_lr: 0.0001                    # Learning rate for block training (tune this)
   block_weight_decay: 0.0             # Weight decay for block training
@@ -49,7 +49,7 @@ algorithm_params:
   predictor_lr: 0.001                 # Renamed from lr (predictor epochs was 'epochs_per_block')
   predictor_weight_decay: 0.0         # Renamed from weight_decay
   loss_type: "CrossEntropyLoss"       # Loss for predictors
-  num_epochs_per_block: 300          # Epochs for predictor training (kept original high value)
+  num_epochs_per_block: 125        # Epochs for predictor training (kept original high value)
   log_interval: 100                   # Reduced log interval
   aggregation_method: "sum"           # Explicitly state aggregation
 
