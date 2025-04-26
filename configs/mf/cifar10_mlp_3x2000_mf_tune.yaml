@@ -1,0 +1,71 @@
+# File: configs/mf/cifar10_mlp_3x2000_mf_tune.yaml
+# Configuration for Optuna TUNING of Mono-Forward (MF) on CIFAR-10 with 3x2000 MLP
+
+# Inherit from base config
+experiment_name: "tune_mf_cifar10_mlp_3x2000" # Add 'tune_' prefix
+algorithm:
+  name: "MF"
+
+# Dataset Configuration (Same as non-tuning)
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+# Data Loader Configuration (Can reduce batch size for faster trials if memory constrained)
+data_loader:
+  batch_size: 128
+  num_workers: 0 # Use 0 for Optuna trials
+  pin_memory: false
+
+# Model Architecture Configuration (Same as non-tuning)
+model:
+  name: "MF_MLP"
+  params:
+    # input_dim: 3072 # Calculated
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+    # num_classes: 10 # Calculated
+
+# Algorithm Specific Configuration (Placeholders - Optuna will override)
+algorithm_params:
+  optimizer_type: "Adam" # Optimizer used internally by MF trainer
+  lr: 0.0001329291894316216              # Placeholder - overridden by Optuna
+  weight_decay: 0.0      # Placeholder - currently not tuned, can add wd range if desired
+  epochs_per_layer: 29   # Placeholder - overridden by Optuna
+  log_interval: 9999     # Reduce logging noise during trials
+# Logging Configuration (W&B disabled for trials by default via tuning section)
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: false # <<< Disable W&B logging for Optuna trials >>>
+
+# Checkpointing (Disabled for trials)
+checkpointing:
+  checkpoint_dir: null
+
+# Monitoring/Profiling (Disabled for trials for speed)
+monitoring:
+  enabled: false
+  energy_enabled: false
+profiling:
+  enabled: false
+
+# --- Optuna Tuning Configuration ---
+tuning:
+  enabled: true # <<< Enable Optuna >>>
+  n_trials: 50  # Number of trials to run
+  # num_epochs: N/A # This BP parameter is not used by the MF objective
+  direction: "maximize"
+  metric: "val_accuracy" # MF objective evaluates validation accuracy
+  sampler: "TPE"
+  pruner: "None" # Pruning mid-MF training is complex, disable it
+  # --- Define RANGES for MF parameters ---
+  mf_lr_range: [1.0e-5, 1.0e-2]       # Range for algorithm_params.lr
+  mf_epochs_per_layer_range: [5, 30] # Range for algorithm_params.epochs_per_layer (keep reasonable)
+  # Optional: Add weight decay range if you want to tune it
+  # mf_wd_range: [1.0e-6, 1.0e-3]
