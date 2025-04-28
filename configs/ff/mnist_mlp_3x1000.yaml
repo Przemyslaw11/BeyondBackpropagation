@@ -33,20 +33,20 @@ model:
     norm_eps: 1.0e-8
     bias_init: 0.0 # <<< NOTE: FF_MLP now forces this to 0.0 for ReLU like reference >>>
 
-# Algorithm Specific Configuration (Matching Reference Code)
 algorithm_params:
-  optimizer_type: "SGD" # <<< CORRECTION: Use SGD >>>
+  optimizer_type: "SGD" # <<< NOTE: Confirmed Use SGD >>>
   # --- Learning Rates & Weight Decay (from reference utils.py setup) ---
-  ff_learning_rate: 0.001 # Original: 1e-3
-  ff_weight_decay: 0.0003 # Original: 3e-4
-  ff_momentum: 0.9 # <<< CORRECTION: Added SGD momentum >>>
-  downstream_learning_rate: 0.01 # Original: 1e-2
-  downstream_weight_decay: 0.003 # Original: 3e-3
-  downstream_momentum: 0.9 # <<< CORRECTION: Added SGD momentum >>>
+  ff_learning_rate: 0.0019075980272792064 # Original: 1e-3
+  ff_weight_decay: 0.0005229088821652552 # Original: 3e-4
+  ff_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
+  downstream_learning_rate: 0.03234998392840941 # Original: 1e-2
+  downstream_weight_decay: 0.0047668064095875455 # Original: 3e-3
+  downstream_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
   # --- FF Specific (Threshold removed, Peer Norm parameters from ref) ---
   # threshold: 2.0 # <<< CORRECTION: Removed - Now calculated dynamically in model >>>
   peer_normalization_factor: 0.03 # From reference config
   peer_momentum: 0.9 # Momentum for PEER NORM running mean (model.momentum in ref)
+
 
 # Training Configuration
 training:

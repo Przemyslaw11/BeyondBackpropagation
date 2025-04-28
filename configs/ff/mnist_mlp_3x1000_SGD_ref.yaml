@@ -37,11 +37,11 @@ model:
 algorithm_params:
   optimizer_type: "SGD" # <<< NOTE: Confirmed Use SGD >>>
   # --- Learning Rates & Weight Decay (from reference utils.py setup) ---
-  ff_learning_rate: 0.001 # Original: 1e-3
-  ff_weight_decay: 0.0003 # Original: 3e-4
+  ff_learning_rate: 0.0019075980272792064 # Original: 1e-3
+  ff_weight_decay: 0.0005229088821652552 # Original: 3e-4
   ff_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
-  downstream_learning_rate: 0.01 # Original: 1e-2
-  downstream_weight_decay: 0.003 # Original: 3e-3
+  downstream_learning_rate: 0.03234998392840941 # Original: 1e-2
+  downstream_weight_decay: 0.0047668064095875455 # Original: 3e-3
   downstream_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
   # --- FF Specific (Threshold removed, Peer Norm parameters from ref) ---
   # threshold: 2.0 # <<< CORRECTION: Removed - Now calculated dynamically in model >>>

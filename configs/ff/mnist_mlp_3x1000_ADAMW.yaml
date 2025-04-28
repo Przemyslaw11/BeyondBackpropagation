@@ -37,10 +37,10 @@ model:
 algorithm_params:
   optimizer_type: "AdamW" # <<< CHANGED TO AdamW
   # --- Learning Rates & Weight Decay (Match 4x2000 example) ---
-  ff_learning_rate: 1e-3
-  ff_weight_decay: 3e-4
-  downstream_learning_rate: 1e-2
-  downstream_weight_decay: 3e-3
+  ff_learning_rate: 0.0004759134394296565
+  ff_weight_decay: 0.0004169096909947932
+  downstream_learning_rate: 0.010727571797342173
+  downstream_weight_decay: 0.0061527185182837065
   # ff_momentum: 0.9 # REMOVED - Not used by AdamW
   # downstream_momentum: 0.9 # REMOVED - Not used by AdamW
   # --- FF Specific ---

@@ -30,10 +30,10 @@ model:
 algorithm_params:
   optimizer_type: "AdamW"
   # Ensure these are numbers, NOT strings
-  ff_learning_rate: 1e-3
-  ff_weight_decay: 3e-4
-  downstream_learning_rate: 1e-2
-  downstream_weight_decay: 3e-3
+  ff_learning_rate: 0.0005253511034001832
+  ff_weight_decay: 0.0004227844165066995
+  downstream_learning_rate: 0.0027075510107757122
+  downstream_weight_decay: 0.0035730744916099627
   # Momentum (only used if optimizer_type is SGD)
   # ff_momentum: 0.9
   # downstream_momentum: 0.9
