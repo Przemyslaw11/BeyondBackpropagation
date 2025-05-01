@@ -1,0 +1,69 @@
+experiment_name: tune_ff_fmnist_4x2000
+algorithm:
+  name: FF
+data:
+  name: FashionMNIST
+  root: ./data
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+data_loader:
+  batch_size: 100
+  num_workers: 0
+  pin_memory: false
+model:
+  name: FF_MLP
+  params:
+    hidden_dims:
+    - 2000
+    - 2000
+    - 2000
+    - 2000
+    activation: ReLU
+    bias: true
+    norm_eps: 1.0e-08
+    bias_init: 0.0
+algorithm_params:
+  optimizer_type: AdamW
+  ff_learning_rate: 0.0003722230492626773
+  ff_weight_decay: 0.0003583569744251919
+  downstream_learning_rate: 0.011120232890144957
+  downstream_weight_decay: 0.0051200359925764015
+  peer_normalization_factor: 0.03
+  peer_momentum: 0.9
+  threshold: 2.0
+training:
+  epochs: 50
+  log_interval: 9999
+logging:
+  level: INFO
+  wandb:
+    use_wandb: false
+checkpointing:
+  checkpoint_dir: null
+monitoring:
+  enabled: false
+  energy_enabled: false
+profiling:
+  enabled: false
+tuning:
+  enabled: true
+  n_trials: 50
+  num_epochs: 50
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: None
+  ff_lr_range:
+  - 0.0002
+  - 0.005
+  ff_wd_range:
+  - 0.0001
+  - 0.001
+  ds_lr_range:
+  - 0.002
+  - 0.05
+  ds_wd_range:
+  - 0.001
+  - 0.01
