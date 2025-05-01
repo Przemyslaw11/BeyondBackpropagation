@@ -11,6 +11,13 @@ training:
   epochs: 100 # Default total epochs for BP and equivalent budget reference
   criterion: "CrossEntropyLoss" # Default loss for BP
   log_interval: 100 # Default logging frequency
+  # <<< ADDED: Early Stopping Configuration >>>
+  early_stopping_enabled: true         # Enable/disable early stopping
+  early_stopping_metric: "bp_val_loss" # Metric to monitor ('bp_val_loss', 'bp_val_accuracy')
+  early_stopping_patience: 10          # Epochs to wait for improvement before stopping
+  early_stopping_mode: "min"           # 'min' for loss, 'max' for accuracy
+  early_stopping_min_delta: 0.0        # Minimum change to qualify as improvement
+  # <<< END ADDED >>>
 
 # Default Data Loader parameters
 data_loader:
