@@ -19,70 +19,90 @@ These are compared against standard **Backpropagation (BP)** baselines using ide
 ├── LICENSE
 ├── README.md # This file
 ├── configs/ # Experiment configuration files (YAML)
-│   ├── base.yaml # Base configuration defaults
-│   ├── bp_baselines/ # Configs for BP baselines (tuned)
-│   │   ├── cifar100_cnn_3block_bp.yaml
-│   │   ├── cifar100_mlp_3x2000_bp.yaml
-│   │   ├── cifar10_cnn_3block_bp.yaml
-│   │   ├── cifar10_mlp_3x2000_bp.yaml
-│   │   ├── fashion_mnist_cnn_3block_bp.yaml
-│   │   ├── fashion_mnist_mlp_2x1000_bp.yaml
-│   │   ├── fashion_mnist_mlp_4x2000_bp.yaml
-│   │   ├── mnist_cnn_3block_bp.yaml
-│   │   ├── mnist_mlp_3x1000_bp.yaml
-│   │   └── mnist_mlp_4x2000_bp.yaml
-│   ├── cafo/ # Configs for CaFo experiments
-│   │   ├── cifar100_cnn_3block.yaml
-│   │   ├── cifar10_cnn_3block.yaml
-│   │   ├── fashion_mnist_cnn_3block.yaml
-│   │   └── mnist_cnn_3block.yaml
-│   ├── ff/ # Configs for FF experiments
-│   │   ├── fashion_mnist_mlp_4x2000.yaml
-│   │   ├── mnist_mlp_3x1000_ADAMW.yaml
-│   │   ├── mnist_mlp_3x1000_SGD_ref.yaml
-│   │   └── mnist_mlp_4x2000.yaml
-│   ├── mf/ # Configs for MF experiments
-│   │   ├── cifar100_mlp_3x2000.yaml
-│   │   ├── cifar10_mlp_3x2000.yaml
-│   │   └── fashion_mnist_mlp_2x1000.yaml
-│   └── test/ # Configs for quick test runs
-│       ├── test_bp_fmnist_mlp_2x1000.yaml
-│       ├── test_cafo_fmnist_cnn_3block.yaml
-│       ├── test_ff_fmnist_mlp_4x2000.yaml
-│       └── test_mf_fmnist_mlp_2x1000.yaml
+│ ├── base.yaml # Base configuration defaults
+│ ├── bp_baselines/ # Configs for BP baselines (tuned)
+│ │ ├── cifar100_cnn_3block_bp.yaml
+│ │ ├── cifar100_mlp_3x2000_bp.yaml
+│ │ ├── cifar10_cnn_3block_bp.yaml
+│ │ ├── cifar10_mlp_3x2000_bp.yaml
+│ │ ├── fashion_mnist_cnn_3block_bp.yaml
+│ │ ├── fashion_mnist_mlp_2x1000_bp.yaml
+│ │ ├── fashion_mnist_mlp_4x2000_bp.yaml
+│ │ ├── mnist_cnn_3block_bp.yaml
+│ │ ├── mnist_mlp_3x1000_bp.yaml
+│ │ └── mnist_mlp_4x2000_bp.yaml
+│ ├── cafo/ # Configs for CaFo experiments
+│ │ ├── cafodfa_cifar100_cnn_3block.yaml
+│ │ ├── cafodfa_cifar100_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── cafodfa_cifar10_cnn_3block.yaml
+│ │ ├── cafodfa_cifar10_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── cafodfa_fashion_mnist_cnn_3block.yaml
+│ │ ├── cafodfa_fashion_mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── cafodfa_mnist_cnn_3block.yaml
+│ │ ├── cafodfa_mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── cifar100_cnn_3block.yaml
+│ │ ├── cifar100_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── cifar10_cnn_3block.yaml
+│ │ ├── cifar10_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── fashion_mnist_cnn_3block.yaml
+│ │ ├── fashion_mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── mnist_cnn_3block.yaml
+│ │ └── mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
+│ ├── ff/ # Configs for FF experiments
+│ │ ├── fashion_mnist_mlp_4x2000.yaml
+│ │ ├── fashion_mnist_mlp_4x2000_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── mnist_mlp_3x1000_ADAMW.yaml
+│ │ ├── mnist_mlp_3x1000_ADAMW_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── mnist_mlp_3x1000_SGD_ref.yaml
+│ │ ├── mnist_mlp_3x1000_SGD_ref_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── mnist_mlp_4x2000.yaml
+│ │ └── mnist_mlp_4x2000_tune.yaml # <<< ADDED Tuning Config
+│ ├── mf/ # Configs for MF experiments
+│ │ ├── cifar100_mlp_3x2000.yaml
+│ │ ├── cifar100_mlp_3x2000_mf_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── cifar10_mlp_3x2000.yaml
+│ │ ├── cifar10_mlp_3x2000_mf_tune.yaml # <<< ADDED Tuning Config
+│ │ ├── fashion_mnist_mlp_2x1000.yaml
+│ │ └── fashion_mnist_mlp_2x1000_mf_tune.yaml # <<< ADDED Tuning Config
+│ └── test/ # Configs for quick test runs
+│ ├── test_bp_fmnist_mlp_2x1000.yaml
+│ ├── test_cafo_fmnist_cnn_3block.yaml
+│ ├── test_ff_fmnist_mlp_4x2000.yaml
+│ └── test_mf_fmnist_mlp_2x1000.yaml
 ├── data/ # (Gitignored) Datasets downloaded here
-├── notebooks/ # Jupyter notebooks for analysis, visualization
-├── print_content.py # Utility script to print file contents
 ├── requirements.txt # Python package dependencies
 ├── results/ # (Gitignored) Parent dir for generated outputs
-│   ├── logs/ # Python application logs
-│   └── optuna/ # Optuna study databases
+│ ├── logs/ # Python application logs
+│ └── optuna/ # Optuna study databases
 ├── scripts/ # Main Python execution scripts
-│   ├── run_experiment.py # Run a single experiment from a config file
-│   ├── run_optuna_search.py # Run Optuna hyperparameter search for BP baselines
-│   ├── update_bp_configs.py # <<< ADDED Utility to update BP configs from Optuna DB
-│   └── slurm_scripts/ # SLURM submission scripts for Athena cluster
-│       ├── run_array.slurm # Example for running multiple configs via job array
-│       ├── run_optuna.slurm # Submit an Optuna search job
-│       ├── run_single_experiment.slurm # Submit a single experiment job
-│       └── run_test_experiment.slurm # Submit a short test experiment job
+│ ├── run_experiment.py # Run a single experiment from a config file
+│ ├── run_optuna_search.py # Run Optuna hyperparameter search (supports BP, FF, CaFo, MF)
+│ ├── update_bp_configs.py # Utility to update BP configs from Optuna DB
+│ ├── update_cafo_configs.py # <<< ADDED Utility to update CaFo configs from Optuna DB
+│ ├── update_ff_configs.py # <<< ADDED Utility to update FF configs from Optuna DB
+│ ├── update_mf_configs.py # <<< ADDED Utility to update MF configs from Optuna DB
+│ └── slurm_scripts/ # SLURM submission scripts for Athena cluster
+│ ├── run_array.slurm # Example for running multiple configs via job array
+│ ├── run_optuna.slurm # Submit an Optuna search job (now auto-detects algorithm)
+│ ├── run_single_experiment.slurm # Submit a single experiment job
+│ └── run_test_experiment.slurm # Submit a short test experiment job
 ├── slurm_logs/ # (Gitignored) SLURM stdout/stderr files
 ├── src/ # Source code
-│   ├── __init__.py
-│   ├── algorithms/ # Implementations of training algorithms (FF, CaFo, MF)
-│   │   └── ...
-│   ├── architectures/ # PyTorch nn.Module definitions (FF_MLP, CaFo_CNN, MF_MLP)
-│   │   └── ...
-│   ├── baselines/ # Implementation of BP baseline logic
-│   │   └── ...
-│   ├── data_utils/ # Dataset handling, loading, preprocessing
-│   │   └── ...
-│   ├── training/ # Core training loop and engine
-│   │   └── ...
-│   ├── tuning/ # Optuna objective function
-│   │   └── ...
-│   └── utils/ # Helper functions, logging, monitoring, profiling, config parsing
-│       └── ...
+│ ├── init.py
+│ ├── algorithms/ # Implementations of training algorithms (FF, CaFo, MF)
+│ │ └── ...
+│ ├── architectures/ # PyTorch nn.Module definitions (FF_MLP, CaFo_CNN, MF_MLP)
+│ │ └── ...
+│ ├── baselines/ # Implementation of BP baseline logic
+│ │ └── ...
+│ ├── data_utils/ # Dataset handling, loading, preprocessing
+│ │ └── ...
+│ ├── training/ # Core training loop and engine
+│ │ └── ...
+│ ├── tuning/ # Optuna objective functions (for BP, FF, CaFo, MF)
+│ │ └── ...
+│ └── utils/ # Helper functions, logging, monitoring, profiling, config parsing
+│ └── ...
 └── venv/ # (Gitignored) Python virtual environment
 ```
 
