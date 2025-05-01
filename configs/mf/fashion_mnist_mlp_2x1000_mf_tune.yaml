@@ -22,9 +22,9 @@ model:
     bias: true
 algorithm_params:
   optimizer_type: Adam
-  lr: 0.0005996514302986535
+  lr: 0.0003873086262136253
   weight_decay: 0.0
-  epochs_per_layer: 19
+  epochs_per_layer: 12
   log_interval: 9999
 logging:
   level: INFO

@@ -34,9 +34,9 @@ model:
 # Algorithm Specific Configuration (Mono-Forward)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.0001329291894316216              # Placeholder - overridden by Optuna
+  lr: 0.0003241756767272183              # Placeholder - overridden by Optuna
   weight_decay: 0.0      # Placeholder - currently not tuned, can add wd range if desired
-  epochs_per_layer: 29   # Placeholder - overridden by Optuna
+  epochs_per_layer: 28   # Placeholder - overridden by Optuna
   log_interval: 9999     # Reduce logging noise during trials
 
 # Logging Configuration
