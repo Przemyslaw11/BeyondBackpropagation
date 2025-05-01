@@ -43,8 +43,15 @@ algorithm_params:
 
 # Training Configuration
 training:
-  epochs: 100 # Total epochs
+  epochs: 100 # Max epochs
   log_interval: 100
+  # <<< ADDED: Early Stopping Configuration >>>
+  early_stopping_enabled: true
+  early_stopping_metric: "FF_Hinton/Val_Acc_Epoch" # Monitor validation accuracy from FF eval
+  early_stopping_patience: 10                      # Number of epochs to wait for improvement
+  early_stopping_mode: "max"                       # Maximize accuracy
+  early_stopping_min_delta: 0.01                   # Minimum change in accuracy to qualify as improvement
+  # <<< END ADDED >>>
 
 logging:
   level: "INFO"
