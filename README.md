@@ -1,110 +1,3 @@
-# Beyond Backpropagation: Exploring Innovative Algorithms for Energy-Efficient Deep Neural Network Training
-
-This repository contains the code for a Master's thesis investigating the performance and energy efficiency of alternative, backpropagation-free deep learning training algorithms compared to standard backpropagation.
-
-## Project Goal
-
-The primary objective is to rigorously compare the training performance (accuracy, convergence) and energy efficiency (energy consumption, time, FLOPs, memory) of three alternative algorithms:
-
-1.  **Forward-Forward (FF)** \cite{hinton2022forward}
-2.  **Cascaded Forward (CaFo)** \cite{zhao2023cafo}
-3.  **Mono-Forward (MF)** \cite{gong2025mono}
-
-These are compared against standard **Backpropagation (BP)** baselines using identical network architectures to isolate the effect of the training algorithm itself. Experiments are conducted on MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100 datasets using a consistent, modern software environment.
-
-## Repository Structure
-
-```
-.
-├── LICENSE
-├── README.md # This file
-├── configs/ # Experiment configuration files (YAML)
-│ ├── base.yaml # Base configuration defaults
-│ ├── bp_baselines/ # Configs for BP baselines (tuned)
-│ │ ├── cifar100_cnn_3block_bp.yaml
-│ │ ├── cifar100_mlp_3x2000_bp.yaml
-│ │ ├── cifar10_cnn_3block_bp.yaml
-│ │ ├── cifar10_mlp_3x2000_bp.yaml
-│ │ ├── fashion_mnist_cnn_3block_bp.yaml
-│ │ ├── fashion_mnist_mlp_2x1000_bp.yaml
-│ │ ├── fashion_mnist_mlp_4x2000_bp.yaml
-│ │ ├── mnist_cnn_3block_bp.yaml
-│ │ ├── mnist_mlp_3x1000_bp.yaml
-│ │ └── mnist_mlp_4x2000_bp.yaml
-│ ├── cafo/ # Configs for CaFo experiments
-│ │ ├── cafodfa_cifar100_cnn_3block.yaml
-│ │ ├── cafodfa_cifar100_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── cafodfa_cifar10_cnn_3block.yaml
-│ │ ├── cafodfa_cifar10_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── cafodfa_fashion_mnist_cnn_3block.yaml
-│ │ ├── cafodfa_fashion_mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── cafodfa_mnist_cnn_3block.yaml
-│ │ ├── cafodfa_mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── cifar100_cnn_3block.yaml
-│ │ ├── cifar100_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── cifar10_cnn_3block.yaml
-│ │ ├── cifar10_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── fashion_mnist_cnn_3block.yaml
-│ │ ├── fashion_mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── mnist_cnn_3block.yaml
-│ │ └── mnist_cnn_3block_tune.yaml # <<< ADDED Tuning Config
-│ ├── ff/ # Configs for FF experiments
-│ │ ├── fashion_mnist_mlp_4x2000.yaml
-│ │ ├── fashion_mnist_mlp_4x2000_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── mnist_mlp_3x1000_ADAMW.yaml
-│ │ ├── mnist_mlp_3x1000_ADAMW_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── mnist_mlp_3x1000_SGD_ref.yaml
-│ │ ├── mnist_mlp_3x1000_SGD_ref_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── mnist_mlp_4x2000.yaml
-│ │ └── mnist_mlp_4x2000_tune.yaml # <<< ADDED Tuning Config
-│ ├── mf/ # Configs for MF experiments
-│ │ ├── cifar100_mlp_3x2000.yaml
-│ │ ├── cifar100_mlp_3x2000_mf_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── cifar10_mlp_3x2000.yaml
-│ │ ├── cifar10_mlp_3x2000_mf_tune.yaml # <<< ADDED Tuning Config
-│ │ ├── fashion_mnist_mlp_2x1000.yaml
-│ │ └── fashion_mnist_mlp_2x1000_mf_tune.yaml # <<< ADDED Tuning Config
-│ └── test/ # Configs for quick test runs
-│ ├── test_bp_fmnist_mlp_2x1000.yaml
-│ ├── test_cafo_fmnist_cnn_3block.yaml
-│ ├── test_ff_fmnist_mlp_4x2000.yaml
-│ └── test_mf_fmnist_mlp_2x1000.yaml
-├── data/ # (Gitignored) Datasets downloaded here
-├── requirements.txt # Python package dependencies
-├── results/ # (Gitignored) Parent dir for generated outputs
-│ ├── logs/ # Python application logs
-│ └── optuna/ # Optuna study databases
-├── scripts/ # Main Python execution scripts
-│ ├── run_experiment.py # Run a single experiment from a config file
-│ ├── run_optuna_search.py # Run Optuna hyperparameter search (supports BP, FF, CaFo, MF)
-│ ├── update_bp_configs.py # Utility to update BP configs from Optuna DB
-│ ├── update_cafo_configs.py # <<< ADDED Utility to update CaFo configs from Optuna DB
-│ ├── update_ff_configs.py # <<< ADDED Utility to update FF configs from Optuna DB
-│ ├── update_mf_configs.py # <<< ADDED Utility to update MF configs from Optuna DB
-│ └── slurm_scripts/ # SLURM submission scripts for Athena cluster
-│ ├── run_array.slurm # Example for running multiple configs via job array
-│ ├── run_optuna.slurm # Submit an Optuna search job (now auto-detects algorithm)
-│ ├── run_single_experiment.slurm # Submit a single experiment job
-│ └── run_test_experiment.slurm # Submit a short test experiment job
-├── slurm_logs/ # (Gitignored) SLURM stdout/stderr files
-├── src/ # Source code
-│ ├── init.py
-│ ├── algorithms/ # Implementations of training algorithms (FF, CaFo, MF)
-│ │ └── ...
-│ ├── architectures/ # PyTorch nn.Module definitions (FF_MLP, CaFo_CNN, MF_MLP)
-│ │ └── ...
-│ ├── baselines/ # Implementation of BP baseline logic
-│ │ └── ...
-│ ├── data_utils/ # Dataset handling, loading, preprocessing
-│ │ └── ...
-│ ├── training/ # Core training loop and engine
-│ │ └── ...
-│ ├── tuning/ # Optuna objective functions (for BP, FF, CaFo, MF)
-│ │ └── ...
-│ └── utils/ # Helper functions, logging, monitoring, profiling, config parsing
-│ └── ...
-└── venv/ # (Gitignored) Python virtual environment
-```
 
 ## Setup
 
@@ -179,49 +72,48 @@ All commands below assume you are in the project's root directory (`$SCRATCH/<yo
 
 *   **On Athena (using Slurm):**
     1.  Verify/Edit `scripts/slurm_scripts/run_single_experiment.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and the loaded modules match the setup (Python 3.10.4, CUDA 12.4.0).
-    2.  **Offline Wandb:** The Slurm scripts are configured to run Weights & Biases in offline mode (`export WANDB_MODE=offline`) to avoid network errors on compute nodes. Logs will be stored locally in the `wandb/` directory within the project root.
-    3.  Submit the job using `sbatch`, passing the config file path relative to the project root as an argument. You can set a descriptive job name using `--job-name`.
+    2.  **Offline Wandb:** The Slurm scripts are configured to run Weights & Biases in offline mode (`export WANDB_MODE=offline`). Logs will be stored locally in the `wandb/` directory within the project root.
+    3.  Submit the job using `sbatch`, passing the *final* config file path (e.g., from `configs/ff/`, `configs/cafo/`, `configs/mf/`, `configs/bp_baselines/`) relative to the project root.
         ```bash
-        # Example:
-        sbatch --job-name="FF_MNIST_SGD" scripts/slurm_scripts/run_single_experiment.slurm configs/ff/mnist_mlp_3x1000_SGD_ref.yaml
-        # Another example:
-        sbatch --job-name="BP_CaFo_MNIST" scripts/slurm_scripts/run_single_experiment.slurm configs/bp_baselines/mnist_cnn_3block_bp.yaml
+        # Example: Running final FF MNIST SGD experiment
+        sbatch --job-name="FF_MNIST_SGD_final" scripts/slurm_scripts/run_single_experiment.slurm configs/ff/mnist_mlp_3x1000_SGD_ref.yaml
+        # Example: Running final CaFo-DFA CIFAR-100 experiment
+        sbatch --job-name="CaFoDFA_C100_final" scripts/slurm_scripts/run_single_experiment.slurm configs/cafo/cafodfa_cifar100_cnn_3block.yaml
+        # Example: Running a BP baseline
+        sbatch --job-name="BP_CNN_C10_final" scripts/slurm_scripts/run_single_experiment.slurm configs/bp_baselines/cifar10_cnn_3block_bp.yaml
         ```
-    4.  Slurm output logs will be saved in `slurm_logs/`. Experiment results (metrics, logs) will be saved in `results/`. Wandb offline logs are in `wandb/`.
-    5.  **Syncing Offline Wandb:** After the job finishes, sync the results from the Athena login node (or another machine with internet):
-        ```bash
-        cd $SCRATCH/BeyondBackpropagation # Navigate to project root
-        source venv/bin/activate          # Activate environment
-        wandb login                       # Log in if needed
-        wandb sync --sync-all             # Sync all runs in the local wandb/ directory
-        # Or sync specific runs: wandb sync wandb/offline-run-<run_id>*
-        ```
+    4.  Slurm output logs go to `slurm_logs/`. Experiment results go to `results/`. Wandb offline logs are in `wandb/`.
+    5.  **Syncing Offline Wandb:** After completion, sync using `wandb sync --sync-all` from the login node.
 
-### Running Hyperparameter Optimization (Optuna for BP Baselines)
+### Running Hyperparameter Optimization (Optuna)
 
 *   **On Athena (using Slurm):**
-    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and modules match. Wandb is typically *disabled* for Optuna trials to reduce overhead (`use_wandb: false` in the `tuning:` section of the config), but the Slurm script is set up for offline mode if enabled.
-    2.  Submit the job using `sbatch`, passing the baseline config file path and optionally the number of trials (which overrides the config value). Set a descriptive job name.
+    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and modules match. Wandb is typically disabled for Optuna trials (`use_wandb: false` in the `tuning:` section of the config).
+    2.  Submit the job using `sbatch`, passing the **tuning configuration file path** (from `configs/tuning/` for FF/CaFo/MF, or `configs/bp_baselines/` for BP) and optionally the number of trials.
         ```bash
-        # Example: Tuning BP for the CaFo CIFAR-10 CNN baseline with 50 trials
-        sbatch --job-name="Optuna_BP_CaFo_C10" scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/cifar10_cnn_3block_bp.yaml 50
-        # Example: Tuning BP for the FF MNIST 3x1000 MLP baseline using config's trial count
-        sbatch --job-name="Optuna_BP_FF_MNIST_3x1000" scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/mnist_mlp_3x1000_bp.yaml
+        # Example: Tuning CaFo-DFA for CIFAR-100 CNN with 50 trials
+        sbatch --job-name="Optuna_CaFoDFA_C100" scripts/slurm_scripts/run_optuna.slurm configs/tuning/cafo_cafodfa_cifar100_cnn_3block_tune.yaml 50
+
+        # Example: Tuning FF (AdamW) for MNIST 4x2000 MLP using config's trial count
+        sbatch --job-name="Optuna_FF_MNIST_4x2000" scripts/slurm_scripts/run_optuna.slurm configs/tuning/ff_mnist_mlp_4x2000_tune.yaml
+
+        # Example: Tuning BP for the MF CIFAR-10 MLP baseline using config's trial count
+        sbatch --job-name="Optuna_BP_MF_C10" scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml
         ```
-    3.  The Optuna study database (`.db`) will be saved in `results/optuna/`. Slurm logs are in `slurm_logs/`. The script also outputs the best parameters found to the Slurm `.out` file and saves them to a `_best_params.yaml` file.
-    4.  **IMPORTANT:** The `run_optuna.slurm` script attempts to **automatically update** the corresponding baseline `.yaml` file using the `scripts/update_bp_configs.py` utility script after the Optuna search completes successfully.
+    3.  The Optuna study database (`.db`) will be saved in `results/optuna/`. Slurm logs are in `slurm_logs/`. The script outputs best parameters to the Slurm `.out` file and saves them to `_best_params.yaml`.
+    4.  **IMPORTANT:** The `run_optuna.slurm` script attempts to **automatically update** the corresponding *final* `.yaml` config file (e.g., `configs/ff/mnist_mlp_4x2000.yaml` if tuning was run with `configs/tuning/ff_mnist_mlp_4x2000_tune.yaml`) using the appropriate utility script from `scripts/tuning_utils/` after the search completes.
         *   **Check the Slurm `.out` log** to confirm if the automatic update succeeded or failed.
-        *   If it failed, or if you want to manually update, use the output YAML snippet from the log or the `_best_params.yaml` file to update the `optimizer` section (`lr`, `weight_decay`) in the baseline `.yaml` file.
-        *   **A backup** of the original config file (`.bak_<timestamp>`) is created by default before automatic update.
+        *   If it failed, or for manual updates, use the output YAML snippet from the log or the `_best_params.yaml` file to update the `optimizer` (for BP) or `algorithm_params` (for FF/CaFo/MF) section in the *final* algorithm config file (e.g., in `configs/ff/`, `configs/cafo/`, `configs/mf/`).
+        *   **A backup** of the original config file (`.bak_<timestamp>`) is created by the update script before automatic update.
 
 ### Running Multiple Experiments (Slurm Job Array - Example)
 
-The `scripts/slurm_scripts/run_array.slurm` script provides an example for submitting multiple experiments defined in an array within the script.
+The `scripts/slurm_scripts/run_array.slurm` script provides an example for submitting multiple *final* experiments defined in an array within the script.
 
 1.  Modify `scripts/slurm_scripts/run_array.slurm`:
     *   Set the correct account: `-A <your_grant_name>-gpu-a100`.
-    *   Update the `CONFIG_FILES` array with desired config paths.
-    *   Adjust the `--array=1-N` range (where N is the *exact* number of configs listed in the `CONFIG_FILES` array).
+    *   Update the `CONFIG_FILES` array with desired *final* config paths (from `configs/ff/`, `configs/cafo/`, `configs/mf/`, `configs/bp_baselines/`).
+    *   Adjust the `--array=1-N` range (where N is the *exact* number of configs listed).
     *   Ensure loaded modules match the setup. (Wandb will run offline per task).
 2.  Submit the job array:
     ```bash
@@ -253,4 +145,4 @@ If you use this code or methodology, please cite the relevant papers for the alg
 *   **Module/Environment Conflicts:** Always `module purge` before loading your specific required modules (`Python/3.10.4`, `CUDA/12.4.0`). Ensure you activate the correct virtual environment (`source venv/bin/activate`). Check Slurm log files (`slurm_logs/`) for errors related to module loading or environment activation.
 *   **Wandb Errors:** If you see network errors related to Wandb in `.err` files, ensure your Slurm script sets `export WANDB_MODE=offline`. Remember to sync runs later using `wandb sync --sync-all`. If syncing fails, check your `WANDB_API_KEY` and internet connection.
 *   **NVML Errors:** Errors like `NVML_ERROR_LIBRARY_NOT_FOUND` or `NVML_ERROR_DRIVER_NOT_LOADED` usually indicate issues with the NVIDIA driver or the node environment. Report persistent NVML errors on compute nodes to Cyfronet support. Warnings about missing version info are generally harmless.
-*   **Optuna `update_bp_configs.py` Errors:** Check the Slurm log for the `run_optuna.slurm` job. Common issues include incorrect database path (`--db-path`), config path (`--config-path`), or study name (`--study-name`), or file permission errors. Ensure the `.db` file exists and the script has write permission for the `.yaml` file.
+*   **Optuna Config Update Errors:** Check the Slurm log for the `run_optuna.slurm` job. Common issues include incorrect database path (`--db-path`), target config path (`--config-path`), or study name (`--study-name`), or file permission errors. Ensure the `.db` file exists and the update script (now located in `scripts/tuning_utils/`) has write permission for the target `.yaml` file in `configs/<algo>/` or `configs/bp_baselines/`.

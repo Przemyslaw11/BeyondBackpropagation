@@ -154,13 +154,13 @@ if [ $OPTUNA_EXIT_CODE -eq 0 ]; then
         UPDATE_SCRIPT="" # Initialize empty
         # Select the correct update script based on the detected algorithm
         if [ "$ALGORITHM_NAME" = "BP" ]; then
-            UPDATE_SCRIPT="scripts/update_bp_configs.py"
+            UPDATE_SCRIPT="scripts/tuning_utils/update_bp_configs.py"
         elif [ "$ALGORITHM_NAME" = "MF" ]; then
-            UPDATE_SCRIPT="scripts/update_mf_configs.py"
+            UPDATE_SCRIPT="scripts/tuning_utils/update_mf_configs.py"
         elif [ "$ALGORITHM_NAME" = "CAFO" ]; then
-            UPDATE_SCRIPT="scripts/update_cafo_configs.py"
+            UPDATE_SCRIPT="scripts/tuning_utils/update_cafo_configs.py"
         elif [ "$ALGORITHM_NAME" = "FF" ]; then
-            UPDATE_SCRIPT="scripts/update_ff_configs.py" # <<< ADDED FF
+            UPDATE_SCRIPT="scripts/tuning_utils/update_ff_configs.py" # <<< ADDED FF
         else
             echo "ERROR: Cannot determine update script for algorithm $ALGORITHM_NAME."
         fi
