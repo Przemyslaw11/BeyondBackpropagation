@@ -5,38 +5,51 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000M
-#SBATCH --time=08:00:00      # Time limit PER TASK
+#SBATCH --time=08:00:00      # Time limit PER TASK (adjust if needed for complex datasets like C100)
 #SBATCH -A plgoncotherapy-gpu-a100 # !!! YOUR GRANT ACCOUNT !!!
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out # Output file (%A=jobid, %a=taskid)
 #SBATCH --error=slurm_logs/%x-%A_%a.err  # Error file
-#SBATCH --array=1-14 # <<< IMPORTANT: UPDATE THIS RANGE to match the number of lines in CONFIG_FILES >>>
+#SBATCH --array=1-25 # <<< UPDATED: Total number of config files listed below is 25 >>>
 
 # --- Configuration ---
-# Define an array of configuration files (relative to project root)
-# <<< IMPORTANT: Ensure the --array range above matches the number of config files listed below! >>>
+# Define an array of FINAL configuration files (relative to project root)
+# Ensure the --array range above matches the number of files listed!
 CONFIG_FILES=(
-    # --- FF ---
-    "configs/ff/fashion_mnist_mlp_4x2000.yaml"
-    "configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml" # Make sure this is tuned!
+    # --- BP Baselines (10 files) ---
+    "configs/bp_baselines/cifar100_cnn_3block_bp.yaml"
+    "configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml"
+    "configs/bp_baselines/cifar10_cnn_3block_bp.yaml"
+    "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml"
+    "configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml"
+    "configs/bp_baselines/fashion_mnist_mlp_2x1000_bp.yaml"
+    "configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml"
+    "configs/bp_baselines/mnist_cnn_3block_bp.yaml"
+    "configs/bp_baselines/mnist_mlp_3x1000_bp.yaml"
+    "configs/bp_baselines/mnist_mlp_4x2000_bp.yaml"
 
-    # --- CaFo ---
-    "configs/cafo/fashion_mnist_cnn_3block.yaml"
-    "configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml" # Make sure this is tuned!
-    "configs/cafo/cifar10_cnn_3block.yaml"
-    "configs/bp_baselines/cifar10_cnn_3block_bp.yaml" # Make sure this is tuned!
+    # --- CaFo Final/Tuned (8 files) ---
+    "configs/cafo/cafodfa_cifar100_cnn_3block.yaml"
+    "configs/cafo/cafodfa_cifar10_cnn_3block.yaml"
+    "configs/cafo/cafodfa_fashion_mnist_cnn_3block.yaml"
+    "configs/cafo/cafodfa_mnist_cnn_3block.yaml"
     "configs/cafo/cifar100_cnn_3block.yaml"
-    "configs/bp_baselines/cifar100_cnn_3block_bp.yaml" # Make sure this is tuned!
+    "configs/cafo/cifar10_cnn_3block.yaml"
+    "configs/cafo/fashion_mnist_cnn_3block.yaml"
+    "configs/cafo/mnist_cnn_3block.yaml"
 
-    # --- MF ---
-    "configs/mf/fashion_mnist_mlp_2x1000.yaml"
-    "configs/bp_baselines/fashion_mnist_mlp_2x1000_bp.yaml" # Make sure this is tuned!
-    "configs/mf/cifar10_mlp_3x2000.yaml"
-    "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml" # Make sure this is tuned!
+    # --- FF Final/Tuned (4 files) ---
+    "configs/ff/fashion_mnist_mlp_4x2000.yaml"
+    "configs/ff/mnist_mlp_3x1000_ADAMW.yaml"
+    "configs/ff/mnist_mlp_3x1000_SGD_ref.yaml"
+    "configs/ff/mnist_mlp_4x2000.yaml"
+
+    # --- MF Final/Tuned (3 files) ---
     "configs/mf/cifar100_mlp_3x2000.yaml"
-    "configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml" # Make sure this is tuned!
+    "configs/mf/cifar10_mlp_3x2000.yaml"
+    "configs/mf/fashion_mnist_mlp_2x1000.yaml"
 )
-# <<< IMPORTANT: Ensure the --array range above matches the number of config files listed! >>>
+# <<< IMPORTANT: Ensure the --array=1-25 range above matches the 25 files listed! >>>
 
 
 # Get number of configs (for verification, range is set manually above)
@@ -47,7 +60,7 @@ if [ "${SLURM_ARRAY_TASK_MAX}" -ne "${NUM_CONFIGS}" ]; then
     echo "!! WARNING: Slurm --array range (1-${SLURM_ARRAY_TASK_MAX}) DOES NOT MATCH the number   !!"
     echo "!!          of config files listed below (${NUM_CONFIGS}). Check the script!            !!"
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    # Optionally exit here: exit 1
+    # Optionally exit here if the mismatch is critical: exit 1
 fi
 
 INDEX=$((SLURM_ARRAY_TASK_ID - 1)) # Bash array is 0-indexed
@@ -76,7 +89,7 @@ echo "Using config file (${INDEX}): $CONFIG_FILE"
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 
-cd $SLURM_SUBMIT_DIR || exit 1
+cd "$SLURM_SUBMIT_DIR" || exit 1
 
 echo "Loading modules..."
 module purge
