@@ -44,6 +44,19 @@ algorithm_params:
   epochs_per_block: 500 # Re-using FMNIST value, adjust if needed for MNIST convergence
   log_interval: 200
 
+
+# <<< ADDED/MODIFIED: Training Configuration for Early Stopping >>>
+training:
+  # epochs: N/A # Base 'epochs' not directly used by CaFo layer-wise training
+  criterion: "CrossEntropyLoss" # Used by underlying predictor trainer if needed
+  log_interval: 100 # Base log interval (predictor log_interval overrides if needed)
+  early_stopping_enabled: true
+  early_stopping_metric: "cafo_val_accuracy" # Monitor aggregated validation accuracy
+  early_stopping_patience: 10                # Stop if no improvement after 10 predictor stages
+  early_stopping_mode: "max"                 # Maximize accuracy
+  early_stopping_min_delta: 0.01             # Require at least 0.01% improvement
+# <<< END ADDED/MODIFIED >>>
+
 # Logging Configuration
 logging:
   level: "INFO"

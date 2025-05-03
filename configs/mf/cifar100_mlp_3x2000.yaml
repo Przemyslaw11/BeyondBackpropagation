@@ -39,6 +39,16 @@ algorithm_params:
   epochs_per_layer: 30   # Placeholder - overridden by Optuna
   log_interval: 9999     # Reduce logging noise during trials
 
+# <<< ADDED/MODIFIED: Training Configuration for Early Stopping >>>
+training:
+  criterion: "CrossEntropyLoss" # Used internally by MF layer trainer
+  log_interval: 9999
+  early_stopping_enabled: true
+  early_stopping_metric: "mf_val_accuracy" # MF eval only returns accuracy
+  early_stopping_patience: 10              # Stop if val acc doesn't improve for 10 layer stages
+  early_stopping_mode: "max"               # Always maximize accuracy for MF
+  early_stopping_min_delta: 0.01           # Require 0.01% improvement
+
 # Logging Configuration
 logging:
   level: "INFO"
