@@ -59,7 +59,7 @@ monitoring:
 # Profiling Defaults
 profiling:
   enabled: true              # Enable FLOPs profiling by default
-  verbose: false             # Show less detailed torchprof output
+  verbose: false             
 
 # Checkpointing Defaults
 checkpointing:

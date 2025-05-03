@@ -56,7 +56,7 @@ echo "Set WANDB_MODE=offline"
 echo "Checking PyTorch CUDA..."
 python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'cuDNN version: {torch.backends.cudnn.version()}')" || { echo "PyTorch check failed" >&2; exit 1; }
 echo "Packages with versions..."
-pip list | grep -E "torch|torchvision|pynvml|torchprof|wandb|optuna|PyYAML|numpy|scikit-learn|tqdm"
+pip list | grep -E "torch|torchvision|pynvml|wandb|optuna|PyYAML|numpy|scikit-learn|tqdm"
 
 # --- Run the Experiment ---
 echo "Running the TEST experiment script..."
