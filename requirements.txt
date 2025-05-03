@@ -16,4 +16,4 @@ numpy>=1.21.0      # Keep requirement, allow updates
 scikit-learn       # Allow latest compatible
 tqdm               # Allow latest compatible
 
-# Add other specific dependencies as they arise
+codecarbon         # Add CodeCarbon library

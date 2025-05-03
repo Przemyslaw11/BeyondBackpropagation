@@ -11,13 +11,11 @@ training:
   epochs: 100 # Default total epochs for BP and equivalent budget reference
   criterion: "CrossEntropyLoss" # Default loss for BP
   log_interval: 100 # Default logging frequency
-  # <<< ADDED: Early Stopping Configuration >>>
   early_stopping_enabled: true         # Enable/disable early stopping
-  early_stopping_metric: "bp_val_loss" # Metric to monitor ('bp_val_loss', 'bp_val_accuracy')
+  early_stopping_metric: "bp_val_loss" # Metric to monitor ('bp_val_loss', 'bp_val_accuracy', 'FF_Hinton/Val_Acc_Epoch')
   early_stopping_patience: 20          # Epochs to wait for improvement before stopping
   early_stopping_mode: "min"           # 'min' for loss, 'max' for accuracy
   early_stopping_min_delta: 0.0        # Minimum change to qualify as improvement
-  # <<< END ADDED >>>
 
 # Default Data Loader parameters
 data_loader:
@@ -32,23 +30,18 @@ data:
   val_split: 0.1 # Default validation split
 
 # Default Optimizer parameters (Placeholders, override in specific configs)
-# Used primarily by BP baselines; alternatives might use different settings
-# in algorithm_params
 optimizer:
   type: "AdamW" # Default optimizer type for baselines
   lr: 0.001 # Default LR (likely overridden by tuning for baselines)
   weight_decay: 0.0001 # Default WD (likely overridden by tuning for baselines)
-  # params: {} # Additional optimizer-specific params (e.g., momentum, betas)
 
 # Logging Defaults
 logging:
   level: "INFO" # Default logging level
-  # log_file: null # Set dynamically by run scripts based on experiment name/output dir
   wandb:
     use_wandb: true # Enable W&B by default
     project: "BeyondBackpropagation"
-    entity: "przspyra11" # <<< ADDED: Specify your W&B entity here
-    # run_name: null # Set dynamically by run scripts
+    entity: "przspyra11" # <<< Ensure your W&B entity is correct >>>
 
 # Monitoring Defaults
 monitoring:
@@ -56,25 +49,36 @@ monitoring:
   energy_enabled: true       # Enable background power sampling if available
   energy_interval_sec: 0.2   # Sampling interval (e.g., 200ms = 5 Hz)
 
+# <<< ADDED: Carbon Tracking Configuration >>>
+carbon_tracker:
+  enabled: true             # Enable/disable tracking globally
+  mode: "offline"           # <<< CRUCIAL: Use "offline" for HPC >>>
+  output_dir: "results/carbon" # Directory to save the CSV report
+  # --- IMPORTANT: Set the correct ISO code for the cluster location ---
+  country_iso_code: "POL"   # 3-letter ISO code for Poland (Athena location)
+  # Optional: Specify region if known and supported by CodeCarbon's offline data
+  # region: "malopolskie" # Example for Małopolska Voivodeship
+  # Optional: Provide a fixed emission rate (gCO2e/kWh) as fallback or override
+  # offline_mode_fixed_emission_rate_gCO2e_per_kWh: 350.0 # Example: Research avg for Poland grid
+
 # Profiling Defaults
 profiling:
   enabled: true              # Enable FLOPs profiling by default
-  verbose: false             
+  verbose: false
 
 # Checkpointing Defaults
 checkpointing:
-  checkpoint_dir: null       # Base directory for checkpoints (experiment-specific subdir recommended)
-                             # Set to a path like "checkpoints/" in specific configs to enable.
-  save_best_metric: "bp_val_accuracy" # Metric to track for saving best BP model ('bp_val_accuracy' or 'bp_val_loss')
+  checkpoint_dir: null       # Base directory for checkpoints (set in specific configs)
+  save_best_metric: "bp_val_accuracy" # Default metric to track for saving best BP model
 
 # Default Tuning parameters (Used by Optuna script if tuning section exists)
 tuning:
-  enabled: false # Default to disabled unless specified in baseline config
+  enabled: false # Default to disabled unless specified in baseline/tuning config
   n_trials: 50
-  num_epochs: 25 # Epochs per Optuna trial
+  # num_epochs: 25 # Epochs per Optuna trial (BP uses this, FF/MF/CaFo have different logic)
   direction: "maximize"
   metric: "val_accuracy" # Metric objective returns (raw name, not W&B key)
   sampler: "TPE"
-  pruner: "Median"
-  lr_range: [1.0e-5, 1.0e-2]
-  wd_range: [1.0e-6, 1.0e-3]
+  pruner: "Median" # Pruner is often set to None for FF/MF/CaFo
+  lr_range: [1.0e-5, 1.0e-2] # Default tuning range for BP LR
+  wd_range: [1.0e-6, 1.0e-3] # Default tuning range for BP WD

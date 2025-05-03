@@ -131,25 +131,47 @@ def log_metrics(
     """
     Logs metrics to W&B (if enabled) and standard logger.
     Assumes the 'global_step' key is present in the metrics dictionary.
+    MODIFIED: Logs metrics to console line-by-line for readability.
 
     Args:
         metrics: Dictionary of metric names and values, MUST include 'global_step'.
         wandb_run: The active W&B run object. If None, tries to use the global run.
         commit: If True (default), commits the log to W&B. Set to False to batch logs.
     """
-    # Log to standard logger
     step_val = metrics.get("global_step", "N/A") # Get step from dict
-    # Prepare string excluding the step itself for cleaner console log
-    metrics_str = ", ".join(
-        [
-            f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
-            for k, v in metrics.items() if k != "global_step" # Exclude step here
-        ]
-    )
-    step_str = f"Step {step_val}: "
-    logger.info(f"{step_str}{metrics_str}")
 
-    # Log to W&B
+    # --- Log to standard logger (Modified for multi-line output) ---
+    # Determine if this is likely a final summary log based on keys
+    is_final_summary = any(key.startswith("final/") for key in metrics)
+
+    if is_final_summary:
+        logger.info(f"--- Final Summary Metrics (Step: {step_val}) ---")
+    else:
+        logger.info(f"--- Metrics Log (Step: {step_val}) ---") # Header for the block
+
+    for k, v in metrics.items():
+        if k == "global_step": # Skip logging the step itself again
+            continue
+        # Format floats for better readability
+        if isinstance(v, float):
+            # Use more precision for small values like emissions/energy, less for others
+            if ("emission" in k.lower() or "energy" in k.lower() or abs(v) < 1e-3) and v != 0.0:
+                log_value = f"{v:.6f}" # More precision for energy/emissions
+            elif "gflops" in k.lower():
+                log_value = f"{v:.4f}" # Standard 4 for gflops
+            else:
+                log_value = f"{v:.4f}" # Standard 4 decimal places otherwise
+        else:
+            log_value = v
+        logger.info(f"  {k}: {log_value}") # Indent each metric
+
+    if is_final_summary:
+        logger.info(f"--- End Final Summary ---")
+    else:
+        logger.info(f"--- End Metrics Log ---") # Footer for the block
+    # --- End Logging Modification ---
+
+    # Log to W&B (Unchanged)
     active_run = wandb_run or wandb.run
     if active_run:
         try:

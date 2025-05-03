@@ -25,6 +25,11 @@ training:
   epochs: 100
   criterion: CrossEntropyLoss
   log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "bp_val_loss"
+  early_stopping_patience: 5
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.0 
 optimizer:
   type: AdamW
   lr: 0.00010362161015212055

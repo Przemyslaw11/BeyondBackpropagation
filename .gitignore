@@ -5,6 +5,8 @@ a.txt
 wandb/
 wheels_3_10/
 checkpoints/
+wheels_3104/
+venv_backup/
 
 __pycache__/
 *.py[cod]
