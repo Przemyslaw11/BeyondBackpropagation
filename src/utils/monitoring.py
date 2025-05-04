@@ -1,4 +1,3 @@
-# File: src/utils/monitoring.py
 import torch
 import pynvml
 import time
@@ -195,7 +194,7 @@ def get_gpu_memory_usage(
         return None
 
 
-# --- Energy Monitoring Class (MODIFIED - Added time_delta check) ---
+# --- Energy Monitoring Class (Includes non-positive time delta check) ---
 class GPUEnergyMonitor:
     """
     Monitors GPU energy consumption using background thread sampling.

@@ -1,4 +1,6 @@
-# File: src/training/engine.py
+# --------------------------------------------------------------------------------
+# File: ./src/training/engine.py (MODIFIED - Only log gCO2e, not kgCO2e)
+# --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import logging
@@ -6,7 +8,7 @@ import time
 import os
 import contextlib
 import pynvml
-import pandas as pd # <-- ADDED
+import pandas as pd
 from typing import Dict, Any, Optional, Tuple, Callable, List
 import pprint # Import pprint for formatting results dict output
 
@@ -21,7 +23,7 @@ from src.utils.monitoring import (
     GPUEnergyMonitor,
 )
 # Import the new CodeCarbon utility
-from src.utils.codecarbon_utils import setup_codecarbon_tracker # <-- Ensure this import path is correct
+from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.profiling import profile_model_flops
 from src.data_utils.datasets import get_dataloaders
 # Import specific architectures
@@ -112,15 +114,12 @@ def get_model_and_adapter(
             cafo_base.cpu() # Move base back to CPU after calculation
             logger.debug(f"Flattened output dimension from CaFo blocks: {num_output_features}")
 
-            # <<< --- CORRECTED MODEL CREATION --- >>>
             # Unpack the ModuleList containing the blocks using '*'
             model = nn.Sequential(
                 *cafo_base.blocks, # Unpack the list of CaFoBlock modules here
                 nn.Flatten(),
                 nn.Linear(num_output_features, num_classes)
             )
-            # <<< --- END CORRECTION --- >>>
-
             logger.debug("Created BP baseline Sequential model from CaFo_CNN spec.")
         else:
             # Use the native CaFo_CNN structure for CaFo training
@@ -137,7 +136,7 @@ def get_model_and_adapter(
     return model, input_adapter
 
 
-# --- run_training function (MODIFIED with Grams Conversion and removed redundant print) ---
+# --- run_training function ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {} # Initialize results dictionary
     nvml_active = False
@@ -375,7 +374,6 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         if wandb_run and hasattr(wandb_run, 'finish'):
             try: wandb_run.finish(exit_code=1); logger.info("W&B run finished with error.")
             except Exception as e_wandb: logger.error(f"Error finishing W&B after exception: {e_wandb}")
-        # Don't re-raise, let finally block run
     finally:
         # --- Final Summary Logging (Always Runs) ---
         total_run_time = time.time() - run_start_time
@@ -393,7 +391,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 tracker.stop() # Stop implicitly saves the file
                 logger.info(f"CodeCarbon offline data saved to: {carbon_csv_path}")
 
-                # --- MODIFIED: Retry Logic for Reading CSV ---
+                # --- Retry Logic for Reading CSV ---
                 if carbon_csv_path and os.path.exists(carbon_csv_path):
                     max_retries = 5
                     retry_delay = 0.3 # seconds
@@ -407,7 +405,6 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                                 emissions_value_kg = df['emissions'].iloc[-1]
                                 if pd.notna(emissions_value_kg):
                                     codecarbon_emissions_kg = float(emissions_value_kg)
-                                    # <<< CONVERSION TO GRAMS >>>
                                     codecarbon_emissions_g = codecarbon_emissions_kg * 1000.0
                                     logger.info(f"Successfully read emissions from CSV: {codecarbon_emissions_kg:.6f} kgCO2e ({codecarbon_emissions_g:.3f} gCO2e) (attempt {attempt+1})")
                                     break # Success! Exit retry loop
@@ -439,7 +436,8 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             except Exception as e_tracker:
                 logger.error(f"Error stopping CodeCarbon tracker: {e_tracker}", exc_info=True)
 
-        # Store both kg and g values in results
+        # Store grams in the main results dictionary
+        # We keep kg internally just in case, but won't log it later
         results["codecarbon_emissions_kgCO2e"] = codecarbon_emissions_kg
         results["codecarbon_emissions_gCO2e"] = codecarbon_emissions_g
 
@@ -461,7 +459,8 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
              else:
                  logger.warning("Failed to get final GPU memory usage.")
 
-        # Consolidate final metrics including the (potentially now valid) emissions
+        # <<< MODIFICATION: Create final_summary_metrics dictionary *without* kgCO2e >>>
+        # Consolidate final metrics for logging
         final_summary_metrics = {
             "global_step": final_summary_step,
             "final/total_run_duration_sec": total_run_time,
@@ -473,16 +472,15 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             "final/Test_Loss": results.get("test_loss", float("nan")),
             "final/estimated_fwd_gflops": results.get("estimated_fwd_gflops", float("nan")),
             "final/estimated_bp_update_gflops": results.get("estimated_bp_update_gflops", float('nan')),
-            "final/codecarbon_emissions_kgCO2e": codecarbon_emissions_kg, # Keep kg
-            "final/codecarbon_emissions_gCO2e": codecarbon_emissions_g, # Log grams to W&B
+            # Only include grams here
+            "final/codecarbon_emissions_gCO2e": codecarbon_emissions_g,
         }
+        # <<< END MODIFICATION >>>
 
+        # Log the filtered dictionary to W&B and console
         log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
 
         logger.info(f"Total run duration: {format_time(total_run_time)}")
-
-        # --- REMOVED REDUNDANT PRINTING BLOCK ---
-        # This block was removed to avoid printing the results dict twice
 
         # Explicitly log emissions in grams for clarity if available
         if pd.notna(results.get("codecarbon_emissions_gCO2e")):
@@ -501,6 +499,11 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         # Clean up NVML
         if nvml_active:
             shutdown_nvml()
+
+    # <<< MODIFICATION: Remove kgCO2e from the final returned/printed dictionary >>>
+    results.pop('codecarbon_emissions_kgCO2e', None)
+    logger.debug("Removed 'codecarbon_emissions_kgCO2e' from results dict before final print.")
+    # <<< END MODIFICATION >>>
 
     # Always return results, even if an error occurred
     return results

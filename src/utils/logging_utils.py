@@ -1,3 +1,6 @@
+# --------------------------------------------------------------------------------
+# File: ./src/utils/logging_utils.py (MODIFIED)
+# --------------------------------------------------------------------------------
 # File: src/utils/logging_utils.py
 import wandb
 import os
@@ -122,7 +125,7 @@ def setup_wandb(
         return None
 
 
-# --- MODIFIED log_metrics ---
+# --- MODIFIED log_metrics (Skips logging specific key) ---
 def log_metrics(
     metrics: Dict[str, Any], # Expects metrics dictionary *including* 'global_step'
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
@@ -131,7 +134,8 @@ def log_metrics(
     """
     Logs metrics to W&B (if enabled) and standard logger.
     Assumes the 'global_step' key is present in the metrics dictionary.
-    MODIFIED: Logs metrics to console line-by-line for readability.
+    MODIFIED: Logs metrics to console line-by-line for readability with spacing.
+    MODIFIED: Skips logging 'final/codecarbon_emissions_kgCO2e' to console.
 
     Args:
         metrics: Dictionary of metric names and values, MUST include 'global_step'.
@@ -140,10 +144,11 @@ def log_metrics(
     """
     step_val = metrics.get("global_step", "N/A") # Get step from dict
 
-    # --- Log to standard logger (Modified for multi-line output) ---
+    # --- Log to standard logger (Modified for multi-line output and filtering) ---
     # Determine if this is likely a final summary log based on keys
     is_final_summary = any(key.startswith("final/") for key in metrics)
 
+    logger.info("") # Blank line for spacing
     if is_final_summary:
         logger.info(f"--- Final Summary Metrics (Step: {step_val}) ---")
     else:
@@ -152,6 +157,11 @@ def log_metrics(
     for k, v in metrics.items():
         if k == "global_step": # Skip logging the step itself again
             continue
+        # <<< MODIFICATION: Skip logging the specific key to console >>>
+        if k == "final/codecarbon_emissions_kgCO2e":
+            continue
+        # <<< END MODIFICATION >>>
+
         # Format floats for better readability
         if isinstance(v, float):
             # Use more precision for small values like emissions/energy, less for others
@@ -169,9 +179,10 @@ def log_metrics(
         logger.info(f"--- End Final Summary ---")
     else:
         logger.info(f"--- End Metrics Log ---") # Footer for the block
+    logger.info("") # Blank line for spacing
     # --- End Logging Modification ---
 
-    # Log to W&B (Unchanged)
+    # Log to W&B (Unchanged - still logs both kg and g)
     active_run = wandb_run or wandb.run
     if active_run:
         try:

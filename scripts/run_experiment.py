@@ -68,6 +68,8 @@ def main(args):
         results = run_training(
             config, wandb_run=None
         )  # Pass config, W&B run is handled internally
+        results.pop('codecarbon_emissions_kgCO2e', None)
+        logger.debug("Removed 'codecarbon_emissions_kgCO2e' from results dict before final print.")
         logger.info("\n--- Experiment Finished ---")
         logger.info("Results:")
         # Use logger for results too
