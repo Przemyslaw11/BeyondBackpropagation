@@ -1,6 +1,5 @@
-# File: ./src/training/engine.py
 # --------------------------------------------------------------------------------
-# File: ./src/training/engine.py (MODIFIED - Pass val_loader to MF)
+# File: ./src/training/engine.py (MODIFIED - Added Debugging)
 # --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
@@ -27,21 +26,25 @@ from src.utils.monitoring import (
 from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.profiling import profile_model_flops
 from src.data_utils.datasets import get_dataloaders
-# Import specific architectures
-from src.architectures.ff_mlp import FF_MLP
-from src.architectures.cafo_cnn import CaFo_CNN
-from src.architectures.mf_mlp import MF_MLP
+# <<< MODIFIED: Import MF_CNN >>>
+from src.architectures import (
+    FF_MLP, CaFo_CNN, MF_MLP, MF_CNN, # Import all architecture classes
+    get_architecture # We are modifying this logic directly below, but keep import if needed elsewhere
+)
 from src.algorithms import (
     get_training_function,
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function (Remains the same) ---
+# --- get_model_and_adapter function (MODIFIED with Debugging) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[ nn.Module, Optional[Callable[[torch.Tensor], torch.Tensor]] ]:
     model_config = config.get("model", {})
-    arch_name = model_config.get("name", "").lower()
+    arch_name_raw = model_config.get("name", "") # Get raw name first
+    arch_name = arch_name_raw.lower() # Then lowercase
+    logger.debug(f"get_model_and_adapter: Raw arch name='{arch_name_raw}', Lowercase='{arch_name}'") # <<< DEBUG >>>
+
     arch_params = model_config.get("params", {})
     dataset_config = config.get("data", {})
     num_classes = dataset_config.get("num_classes", 10)
@@ -51,82 +54,116 @@ def get_model_and_adapter(
     algorithm_name = config.get("algorithm", {}).get("name", "").lower()
     is_bp_baseline = algorithm_name == "bp"
 
+    logger.info(f"Getting architecture: {arch_name} (Algo: {algorithm_name.upper()})")
+
+    # --- Add default/calculated parameters if missing ---
+    # Ensure num_classes is present in arch_params for constructors
+    if 'num_classes' not in arch_params: arch_params['num_classes'] = num_classes
+
+    if arch_name in ['ff_mlp', 'mf_mlp']:
+         if 'input_dim' not in arch_params:
+             arch_params['input_dim'] = input_channels * image_size * image_size
+             logger.debug(f"Calculated input_dim={arch_params['input_dim']} for {arch_name}")
+         input_adapter = lambda x: x.view(x.shape[0], -1) # Flatten input
+         logger.debug(f"Arch {arch_name} requires input flattening adapter.")
+    elif arch_name in ['cafo_cnn', 'mf_cnn']:
+         if 'input_channels' not in arch_params: arch_params['input_channels'] = input_channels
+         if 'image_size' not in arch_params: arch_params['image_size'] = image_size
+         input_adapter = None # CNNs typically don't need this adapter
+         logger.debug(f"Arch {arch_name} does not require standard input adapter.")
+    else:
+        # Raise error early if name isn't even in the expected categories
+        raise ValueError(f"Unknown model architecture category for name: {arch_name}")
+
+    # --- Instantiate Architecture ---
     model: Optional[nn.Module] = None
-    input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
+    logger.debug(f"Checking architecture name '{arch_name}' against known types...") # <<< DEBUG >>>
 
-    logger.info(f"Creating model arch: {arch_name} (Algo: {algorithm_name.upper()})")
+    if arch_name in ['ff_mlp', 'mf_mlp']:
+        logger.debug(f"'{arch_name}' matched MLP block.") # <<< DEBUG >>>
+        if arch_name == 'ff_mlp':
+            if is_bp_baseline:
+                logger.info("Adapting modified FF_MLP structure for BP baseline -> Standard nn.Sequential MLP.")
+                bp_input_dim = arch_params["input_dim"]
+                hidden_dims = arch_params.get("hidden_dims", [])
+                activation_name = arch_params.get("activation", "ReLU").lower()
+                use_bias = arch_params.get("bias", True)
+                if not hidden_dims: raise ValueError("BP baseline creation failed: hidden_dims missing for FF_MLP.")
+                layers = []
+                current_dim = bp_input_dim
+                act_cls = nn.ReLU if activation_name == 'relu' else nn.Tanh # Use standard activation
+                for h_dim in hidden_dims:
+                    layers.append(nn.Linear(current_dim, h_dim, bias=use_bias))
+                    layers.append(act_cls())
+                    current_dim = h_dim
+                layers.append(nn.Linear(current_dim, num_classes, bias=use_bias))
+                model = nn.Sequential(*layers)
+                logger.debug("Created BP baseline Sequential model from modified FF_MLP spec.")
+            else:
+                # Pass full config and device to the constructor
+                model = FF_MLP(config=config, device=device, **arch_params)
+                logger.debug("Using native modified FF_MLP structure.")
+        elif name == 'mf_mlp': # Corrected variable name 'name' to 'arch_name'
+            model = MF_MLP(**arch_params)
+            if is_bp_baseline: logger.info("Using standard forward pass of MF_MLP for BP baseline.")
+            else: logger.debug("Using native MF_MLP structure.")
 
-    valid_baseline_architectures = ["ff_mlp", "cafo_cnn", "mf_mlp"]
-    if is_bp_baseline and arch_name not in valid_baseline_architectures:
-        logger.warning(f"BP baseline uses arch '{arch_name}', check correspondence.")
+    elif arch_name in ['cafo_cnn', 'mf_cnn']:
+        logger.debug(f"'{arch_name}' matched CNN block.") # <<< DEBUG >>>
+        cnn_base = None # Initialize
+        if arch_name == 'cafo_cnn':
+            cnn_base = CaFo_CNN(**arch_params) # Instantiate CaFo base
+        elif arch_name == 'mf_cnn':
+            cnn_base = MF_CNN(**arch_params) # Instantiate MF base
 
-    # --- Determine params and adapter ---
-    if arch_name in ["ff_mlp", "mf_mlp"]:
-        if "input_dim" not in arch_params: arch_params["input_dim"] = input_channels * image_size * image_size
-        if "num_classes" not in arch_params: arch_params["num_classes"] = num_classes
-        input_adapter = lambda x: x.view(x.shape[0], -1) # Flatten input
-        logger.debug(f"Arch {arch_name} requires input flattening adapter.")
-    elif arch_name == "cafo_cnn":
-        if "input_channels" not in arch_params: arch_params["input_channels"] = input_channels
-        if "image_size" not in arch_params: arch_params["image_size"] = image_size
-        if "num_classes" not in arch_params: arch_params["num_classes"] = num_classes
-        input_adapter = None
-        logger.debug(f"Arch {arch_name} does not require standard input adapter.")
-    else: raise ValueError(f"Unknown model architecture: {arch_name}")
+        if cnn_base is None: # Should not happen if logic is correct
+             raise RuntimeError(f"Internal error: Failed to select CNN base for {arch_name}")
 
-    # --- Instantiate ---
-    if arch_name == "ff_mlp":
         if is_bp_baseline:
-            logger.info("Adapting modified FF_MLP structure for BP baseline -> Standard nn.Sequential MLP.")
-            bp_input_dim = arch_params["input_dim"]
-            hidden_dims = arch_params.get("hidden_dims", [])
-            activation_name = arch_params.get("activation", "ReLU").lower()
-            use_bias = arch_params.get("bias", True)
-            if not hidden_dims: raise ValueError("BP baseline creation failed: hidden_dims missing for FF_MLP.")
-            layers = []
-            current_dim = bp_input_dim
-            act_cls = nn.ReLU if activation_name == 'relu' else nn.Tanh # Use standard activation
-            for h_dim in hidden_dims:
-                layers.append(nn.Linear(current_dim, h_dim, bias=use_bias))
-                layers.append(act_cls())
-                current_dim = h_dim
-            layers.append(nn.Linear(current_dim, num_classes, bias=use_bias))
-            model = nn.Sequential(*layers)
-            logger.debug("Created BP baseline Sequential model from modified FF_MLP spec.")
-        else:
-            model = FF_MLP(config=config, device=device, **arch_params)
-            logger.debug("Using native modified FF_MLP structure.")
-
-    elif arch_name == "cafo_cnn":
-        cafo_base = CaFo_CNN(**arch_params)
-        if is_bp_baseline:
-            logger.info("Creating BP baseline model from CaFo_CNN blocks + final Linear layer.")
-            cafo_base.to(device)
+            logger.info(f"Creating BP baseline model from {arch_name.upper()} blocks + final Linear layer.")
+            # Determine final flattened dimension dynamically
+            cnn_base.to(device)
             with torch.no_grad():
-                dummy_input = torch.randn(1, arch_params['input_channels'], arch_params['image_size'], arch_params['image_size']).to(device)
-                last_block_output = cafo_base.forward_blocks_only(dummy_input)
-                num_output_features = last_block_output.numel()
-            cafo_base.cpu()
-            logger.debug(f"Flattened output dimension from CaFo blocks: {num_output_features}")
+                 dummy_input_shape = (1, arch_params['input_channels'], arch_params['image_size'], arch_params['image_size'])
+                 dummy_input = torch.randn(dummy_input_shape).to(device)
+                 # Use the BP-specific forward pass to get final features before classifier
+                 # Need to get features *before* the final linear layer of the base model
+                 # Let's assume the base model's forward() IS the BP forward pass
+                 # We need the output dimension BEFORE the final linear layer in the base model
+                 if hasattr(cnn_base, 'final_flat_dim'):
+                     num_output_features = cnn_base.final_flat_dim
+                     logger.debug(f"Got flattened output dimension from {arch_name.upper()} attribute: {num_output_features}")
+                 else: # Fallback: dynamically compute
+                     model_blocks = cnn_base.blocks # Assumes blocks attribute exists
+                     dummy_features = dummy_input
+                     for block in model_blocks:
+                          dummy_features = block(dummy_features)
+                     num_output_features = dummy_features.view(dummy_features.size(0), -1).shape[1] # Flattened size
+                     logger.debug(f"Dynamically computed flattened output dimension from {arch_name.upper()} blocks: {num_output_features}")
+
+            cnn_base.cpu() # Move base back if needed
+
+            # Create the BP baseline as Sequential
             model = nn.Sequential(
-                *cafo_base.blocks, nn.Flatten(), nn.Linear(num_output_features, num_classes)
+                *cnn_base.blocks, # Unpack the ModuleList of blocks
+                nn.Flatten(),
+                nn.Linear(num_output_features, num_classes) # Add the final classifier
             )
-            logger.debug("Created BP baseline Sequential model from CaFo_CNN spec.")
+            logger.debug(f"Created BP baseline Sequential model from {arch_name.upper()} spec.")
         else:
-            model = cafo_base
-            logger.debug("Using native CaFo_CNN structure.")
+            model = cnn_base # Use the native MF_CNN or CaFo_CNN structure
+            logger.debug(f"Using native {arch_name.upper()} structure.")
+    else:
+        # This block should ideally not be reached if the name is valid
+        logger.error(f"Architecture check failed inside factory. Lowercase name '{arch_name}' did not match ['ff_mlp', 'mf_mlp'] or ['cafo_cnn', 'mf_cnn']. Check logic.") # <<< DEBUG >>>
+        raise ValueError(f"Unknown model architecture: {arch_name}")
 
-    elif arch_name == "mf_mlp":
-        model = MF_MLP(**arch_params)
-        if is_bp_baseline: logger.info("Using standard forward pass of MF_MLP for BP baseline.")
-        else: logger.debug("Using native MF_MLP structure.")
-
-    if model is None: raise RuntimeError(f"Failed to instantiate model: {arch_name}")
-    logger.info(f"Model '{arch_name}' (Algo: {algorithm_name.upper()}) created.")
+    if model is None: raise RuntimeError("Model instantiation failed.")
+    logger.info(f"Model '{arch_name.upper()}' (Algo: {algorithm_name.upper()}) created.")
     return model, input_adapter
 
 
-# --- run_training function (MODIFIED - Pass val_loader to MF) ---
+# --- run_training function (No changes needed here, ensure it calls the modified get_model_and_adapter) ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {}
     nvml_active = False
@@ -173,7 +210,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             else: logger.warning("NVML initialization failed. GPU monitoring disabled.")
         else: logger.info("Running on CPU, GPU monitoring disabled.")
 
-        # --- CodeCarbon Setup ---
+        # CodeCarbon Setup
         tracker = setup_codecarbon_tracker(config, results)
         carbon_csv_path = results.get("codecarbon_csv_path")
         initial_metrics["codecarbon_enabled"] = results.get("codecarbon_enabled", False)
@@ -191,8 +228,10 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         )
         logger.info("Dataloaders created.")
 
-        # Model Instantiation
+        # <<< Call the MODIFIED factory function >>>
         model, input_adapter = get_model_and_adapter(config, device); model.to(device)
+        # <<< End Call >>>
+
         logger.info(f"Model '{config.get('model', {}).get('name')}' on {device}.")
         try:
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad); num_total_params = sum(p.numel() for p in model.parameters())
@@ -205,6 +244,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         if profiling_config.get("enabled", True):
             try:
                 sample_input_img, _ = next(iter(train_loader)); sample_input_device = sample_input_img.to(device)
+                # Adapt input for profiling based on adapter presence
                 profile_input_constructor = (lambda: input_adapter(sample_input_device[:1])) if input_adapter else (lambda: sample_input_device[:1])
                 logger.info("Profiling FLOPs...")
                 fwd_gflops = profile_model_flops(model, profile_input_constructor, device, profiling_config.get("verbose", False))
@@ -237,12 +277,12 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 "model": model, "train_loader": train_loader, "config": config, "device": device,
                 "wandb_run": wandb_run, "step_ref": step_ref, "gpu_handle": gpu_handle, "nvml_active": nvml_active
             }
-            # <<< MODIFICATION: Add val_loader for MF, BP, FF, CaFo >>>
+            # Add val_loader for algorithms that need it (BP, FF, CaFo, MF)
             if algorithm_name in ["bp", "ff", "cafo", "mf"]:
                 training_args["val_loader"] = val_loader
-            # <<< END MODIFICATION >>>
-            if algorithm_name in ["bp", "mf"]: # BP/MF use input adapter
-                training_args["input_adapter"] = input_adapter
+            # Add input_adapter only for algorithms that need it (BP/MLP, MF/MLP)
+            if algorithm_name in ["bp", "mf"] and not isinstance(model, (MF_CNN, CaFo_CNN)): # Only add if MLP
+                 training_args["input_adapter"] = input_adapter
 
             train_output = training_fn(**training_args)
 
@@ -264,7 +304,9 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         eval_results = {}; test_loss_key = "test_loss"; test_acc_key = "test_accuracy"
         eval_args = { "model": model, "data_loader": test_loader, "device": device }
         if algorithm_name in ["bp", "cafo", "mf"]: eval_args["criterion"] = eval_criterion
-        if algorithm_name in ["bp", "mf"]: eval_args["input_adapter"] = input_adapter
+        # Add input_adapter only for algorithms that need it (BP/MLP, MF/MLP)
+        if algorithm_name in ["bp", "mf"] and not isinstance(model, (MF_CNN, CaFo_CNN)):
+             eval_args["input_adapter"] = input_adapter
         if algorithm_name == "cafo": eval_args["predictors"] = getattr(model, "trained_predictors", None); eval_args["aggregation_method"] = config.get("algorithm_params", {}).get("aggregation_method", "sum")
         try:
             eval_output = evaluation_fn(**eval_args)
@@ -282,6 +324,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             except Exception as e_wandb: logger.error(f"Error finishing W&B after exception: {e_wandb}")
     finally:
         # --- Final Summary Logging (Always Runs) ---
+        # ... (rest of finally block remains the same) ...
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
         final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0
@@ -290,13 +333,20 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         if tracker:
             logger.info("Stopping CodeCarbon tracker...")
             try:
-                tracker.stop(); logger.info(f"CodeCarbon offline data saved to: {carbon_csv_path}")
+                # Use a small delay before reading the CSV, filesystem sync might be slow
+                emissions_data = tracker.stop() # stop() returns emissions in kWh
+                if emissions_data is not None:
+                    # convert kWh to kgCO2eq - needs factor, CodeCarbon does this internally when saving.
+                    # Reading from CSV is more reliable for offline mode.
+                     logger.info(f"CodeCarbon tracker stopped. Attempting to read from: {carbon_csv_path}")
+                else:
+                     logger.warning("CodeCarbon tracker.stop() returned None. Attempting CSV read.")
+
                 if carbon_csv_path and os.path.exists(carbon_csv_path):
-                    max_retries = 5; retry_delay = 0.3
+                    max_retries = 5; retry_delay = 0.5 # Increased delay
                     for attempt in range(max_retries):
                         try:
-                            if attempt > 0: time.sleep(retry_delay)
-                            else: time.sleep(0.1)
+                            time.sleep(retry_delay) # Wait for filesystem
                             df = pd.read_csv(carbon_csv_path)
                             if not df.empty and 'emissions' in df.columns:
                                 emissions_value_kg = df['emissions'].iloc[-1]
@@ -311,9 +361,9 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                         except Exception as e_read: logger.error(f"Read CSV attempt {attempt+1} failed: {e_read}", exc_info=True)
                         if attempt < max_retries - 1: logger.info(f"Retrying CSV read in {retry_delay}s...")
                         else: logger.error(f"Failed to read emissions from {carbon_csv_path} after {max_retries} attempts.")
-                elif carbon_csv_path: logger.warning(f"CodeCarbon CSV path '{carbon_csv_path}' not exist.")
+                elif carbon_csv_path: logger.warning(f"CodeCarbon CSV path '{carbon_csv_path}' does not exist.")
                 else: logger.warning("CodeCarbon CSV path not set.")
-            except Exception as e_tracker: logger.error(f"Error stopping CodeCarbon tracker: {e_tracker}", exc_info=True)
+            except Exception as e_tracker: logger.error(f"Error stopping/reading CodeCarbon tracker: {e_tracker}", exc_info=True)
         results["codecarbon_emissions_kgCO2e"] = codecarbon_emissions_kg; results["codecarbon_emissions_gCO2e"] = codecarbon_emissions_g
         if monitor:
             total_energy_joules = monitor.stop()
@@ -340,6 +390,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 try: wandb_run.finish(); logger.info("W&B run finished.")
                 except Exception as e: logger.error(f"Error finishing W&B run: {e}")
         if nvml_active: shutdown_nvml()
+
+    # Ensure specific key is removed before returning the dict for printing
     results.pop('codecarbon_emissions_kgCO2e', None)
-    logger.debug("Removed 'codecarbon_emissions_kgCO2e' from results dict before final print.")
     return results

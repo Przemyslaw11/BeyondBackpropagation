@@ -1,0 +1,57 @@
+experiment_name: tune_bp_cifar100_cnn_4layer
+algorithm:
+  name: BP
+data:
+  name: CIFAR100
+  root: ./data
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+data_loader:
+  batch_size: 128
+  num_workers: 0
+  pin_memory: false
+model:
+  name: MF_CNN
+  params:
+    activation: ReLU
+    bias: true
+optimizer:
+  type: AdamW
+  lr: 0.001227793956046801
+  weight_decay: 1.227499260663016e-06
+training:
+  epochs: 100
+  criterion: CrossEntropyLoss
+  log_interval: 9999
+  early_stopping_enabled: true
+  early_stopping_metric: bp_val_loss
+  early_stopping_patience: 20
+  early_stopping_mode: min
+  early_stopping_min_delta: 0.0
+logging:
+  level: INFO
+  wandb:
+    use_wandb: false
+checkpointing:
+  checkpoint_dir: null
+monitoring:
+  enabled: false
+  energy_enabled: false
+profiling:
+  enabled: false
+tuning:
+  enabled: true
+  n_trials: 50
+  num_epochs: 50
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: Median
+  lr_range:
+  - 1.0e-05
+  - 0.003
+  wd_range:
+  - 1.0e-06
+  - 0.001
