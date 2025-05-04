@@ -1,4 +1,3 @@
-
 ## Setup
 
 ### Local Setup (for development/testing)
@@ -62,7 +61,7 @@ Experiments are designed to run on the `plgrid-gpu-a100` partition of the Athena
         *   Optuna: `4.2.1`
         *   Weights & Biases: `0.19.8`
         *   pynvml: `12.0.0`
-        *(Confirm versions using `pip list` inside the activated `venv`)*
+        *   CodeCarbon: `3.0.1`
 
 ## Running Experiments
 
@@ -82,13 +81,13 @@ All commands below assume you are in the project's root directory (`$SCRATCH/<yo
         # Example: Running a BP baseline
         sbatch --job-name="BP_CNN_C10_final" scripts/slurm_scripts/run_single_experiment.slurm configs/bp_baselines/cifar10_cnn_3block_bp.yaml
         ```
-    4.  Slurm output logs go to `slurm_logs/`. Experiment results go to `results/`. Wandb offline logs are in `wandb/`.
+    4.  Slurm output logs go to `slurm_logs/`. Experiment results go to `results/`. Wandb offline logs are in `wandb/`. CodeCarbon offline logs are in `results/carbon/`.
     5.  **Syncing Offline Wandb:** After completion, sync using `wandb sync --sync-all` from the login node.
 
 ### Running Hyperparameter Optimization (Optuna)
 
 *   **On Athena (using Slurm):**
-    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and modules match. Wandb is typically disabled for Optuna trials (`use_wandb: false` in the `tuning:` section of the config).
+    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and modules match. Wandb is typically disabled for Optuna trials (`use_wandb: false` in the `tuning:` section of the config). CodeCarbon is also disabled by default in base Optuna configs.
     2.  Submit the job using `sbatch`, passing the **tuning configuration file path** (from `configs/tuning/` for FF/CaFo/MF, or `configs/bp_baselines/` for BP) and optionally the number of trials.
         ```bash
         # Example: Tuning CaFo-DFA for CIFAR-100 CNN with 50 trials
@@ -114,7 +113,7 @@ The `scripts/slurm_scripts/run_array.slurm` script provides an example for submi
     *   Set the correct account: `-A <your_grant_name>-gpu-a100`.
     *   Update the `CONFIG_FILES` array with desired *final* config paths (from `configs/ff/`, `configs/cafo/`, `configs/mf/`, `configs/bp_baselines/`).
     *   Adjust the `--array=1-N` range (where N is the *exact* number of configs listed).
-    *   Ensure loaded modules match the setup. (Wandb will run offline per task).
+    *   Ensure loaded modules match the setup. (Wandb and CodeCarbon will run offline per task).
 2.  Submit the job array:
     ```bash
     sbatch scripts/slurm_scripts/run_array.slurm
@@ -126,9 +125,15 @@ The `scripts/slurm_scripts/run_array.slurm` script provides an example for submi
 *   **Weights & Biases (WandB):** Experiments log to WandB. When running on Athena compute nodes, logs are saved offline to the `wandb/` directory. Sync them later using `wandb sync --sync-all` from the login node. Project: `BeyondBackpropagation`, Entity: `przspyra11` (can be changed in `configs/base.yaml`).
 *   **Local Logs:** Python logs are saved to `results/<experiment_name>/<experiment_name>_run.log`. Optuna logs are saved to `results/optuna/<study_name>.log`.
 *   **Slurm Logs:** Standard output/error from Slurm jobs are saved to `slurm_logs/`. Check these first for submission/environment errors.
-*   **Energy Monitoring:** GPU energy consumption is monitored using `pynvml` during training and logged to WandB (`total_gpu_energy_joules`, `total_gpu_energy_wh`) in the final summary. Requires NVML to be functional.
-*   **Memory Monitoring:** Peak GPU memory usage during the training loop is sampled using `pynvml` and logged to WandB (`final/peak_gpu_mem_used_mib`). Requires NVML.
-*   **Profiling:** FLOPs and parameter counts are estimated using `torch.profiler` (for FLOPs) and standard PyTorch parameter counting at the start of the run and logged to WandB.
+*   **Energy Monitoring (NVML):** GPU energy consumption is monitored using `pynvml` during training and logged to WandB (`total_gpu_energy_joules`, `total_gpu_energy_wh`) in the final summary. Requires NVML to be functional.
+*   **Memory Monitoring (NVML):** Peak GPU memory usage during the training loop is sampled using `pynvml` and logged to WandB (`final/peak_gpu_mem_used_mib`). Requires NVML.
+*   **Carbon Tracking (CodeCarbon):**
+    *   Tracks estimated carbon footprint (CO2 emissions equivalent).
+    *   Enabled/disabled via the `carbon_tracker:` section in `configs/base.yaml`.
+    *   Runs in **offline mode** on Athena, saving detailed results to a CSV file in `results/carbon/<experiment_name>_carbon.csv`.
+    *   Uses the `country_iso_code` specified in the config (e.g., "POL" for Poland) to estimate grid intensity.
+    *   The final estimated emissions (`final/codecarbon_emissions_gCO2e`) are logged to the console output and WandB summary at the end of the run.
+*   **Profiling (torch.profiler):** FLOPs and parameter counts are estimated using `torch.profiler` (for FLOPs) and standard PyTorch parameter counting at the start of the run and logged to WandB.
 
 ## Citation
 
@@ -145,4 +150,8 @@ If you use this code or methodology, please cite the relevant papers for the alg
 *   **Module/Environment Conflicts:** Always `module purge` before loading your specific required modules (`Python/3.10.4`, `CUDA/12.4.0`). Ensure you activate the correct virtual environment (`source venv/bin/activate`). Check Slurm log files (`slurm_logs/`) for errors related to module loading or environment activation.
 *   **Wandb Errors:** If you see network errors related to Wandb in `.err` files, ensure your Slurm script sets `export WANDB_MODE=offline`. Remember to sync runs later using `wandb sync --sync-all`. If syncing fails, check your `WANDB_API_KEY` and internet connection.
 *   **NVML Errors:** Errors like `NVML_ERROR_LIBRARY_NOT_FOUND` or `NVML_ERROR_DRIVER_NOT_LOADED` usually indicate issues with the NVIDIA driver or the node environment. Report persistent NVML errors on compute nodes to Cyfronet support. Warnings about missing version info are generally harmless.
+*   **CodeCarbon Errors:**
+    *   If you see "CodeCarbon library not found", ensure it's installed (`pip install codecarbon` or check `requirements.txt`).
+    *   Errors related to country detection might occur if `country_iso_code` is not set and auto-detection fails. Specify it in `configs/base.yaml`.
+    *   Errors writing the CSV file could be due to permissions in the `results/carbon/` directory.
 *   **Optuna Config Update Errors:** Check the Slurm log for the `run_optuna.slurm` job. Common issues include incorrect database path (`--db-path`), target config path (`--config-path`), or study name (`--study-name`), or file permission errors. Ensure the `.db` file exists and the update script (now located in `scripts/tuning_utils/`) has write permission for the target `.yaml` file in `configs/<algo>/` or `configs/bp_baselines/`.
