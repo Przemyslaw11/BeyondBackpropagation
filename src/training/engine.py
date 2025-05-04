@@ -1,5 +1,6 @@
+# File: ./src/training/engine.py
 # --------------------------------------------------------------------------------
-# File: ./src/training/engine.py (MODIFIED - Pass val_loader to CaFo)
+# File: ./src/training/engine.py (MODIFIED - Pass val_loader to MF)
 # --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
@@ -125,7 +126,7 @@ def get_model_and_adapter(
     return model, input_adapter
 
 
-# --- run_training function (MODIFIED - Pass val_loader to CaFo) ---
+# --- run_training function (MODIFIED - Pass val_loader to MF) ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {}
     nvml_active = False
@@ -236,10 +237,12 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 "model": model, "train_loader": train_loader, "config": config, "device": device,
                 "wandb_run": wandb_run, "step_ref": step_ref, "gpu_handle": gpu_handle, "nvml_active": nvml_active
             }
-            # <<< MODIFICATION: Add val_loader for CaFo >>>
-            if algorithm_name in ["bp", "ff", "cafo"]: training_args["val_loader"] = val_loader
-            if algorithm_name in ["bp", "mf"]: training_args["input_adapter"] = input_adapter
+            # <<< MODIFICATION: Add val_loader for MF, BP, FF, CaFo >>>
+            if algorithm_name in ["bp", "ff", "cafo", "mf"]:
+                training_args["val_loader"] = val_loader
             # <<< END MODIFICATION >>>
+            if algorithm_name in ["bp", "mf"]: # BP/MF use input adapter
+                training_args["input_adapter"] = input_adapter
 
             train_output = training_fn(**training_args)
 

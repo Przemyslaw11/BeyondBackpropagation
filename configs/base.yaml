@@ -11,11 +11,11 @@ training:
   epochs: 100 # Default total epochs for BP and equivalent budget reference
   criterion: "CrossEntropyLoss" # Default loss for BP
   log_interval: 100 # Default logging frequency
-  early_stopping_enabled: true         # Enable/disable early stopping
+  early_stopping_enabled: true         # Enable/disable early stopping (FOR BP)
   early_stopping_metric: "bp_val_loss" # Metric to monitor ('bp_val_loss', 'bp_val_accuracy', 'FF_Hinton/Val_Acc_Epoch')
-  early_stopping_patience: 20          # Epochs to wait for improvement before stopping
-  early_stopping_mode: "min"           # 'min' for loss, 'max' for accuracy
-  early_stopping_min_delta: 0.0        # Minimum change to qualify as improvement
+  early_stopping_patience: 20          # Epochs to wait for improvement before stopping (FOR BP)
+  early_stopping_mode: "min"           # 'min' for loss, 'max' for accuracy (FOR BP)
+  early_stopping_min_delta: 0.0        # Minimum change to qualify as improvement (FOR BP)
 
 # Default Data Loader parameters
 data_loader:
@@ -35,6 +35,16 @@ optimizer:
   lr: 0.001 # Default LR (likely overridden by tuning for baselines)
   weight_decay: 0.0001 # Default WD (likely overridden by tuning for baselines)
 
+# <<< ADDED: MF Algorithm Specific Parameters (Defaults) >>>
+algorithm_params:
+  # MF defaults (can be overridden in specific MF configs)
+  mf_early_stopping_enabled: false       # Default to disabled for MF
+  mf_early_stopping_patience: 10         # Default patience for MF layers
+  mf_early_stopping_min_delta: 0.0001    # Default min improvement for MF local loss
+  # mf_early_stopping_metric is always 'val_local_loss'
+  # mf_early_stopping_mode is always 'min'
+  # Note: Other algo params (FF, CaFo) should be in their respective configs
+
 # Logging Defaults
 logging:
   level: "INFO" # Default logging level
@@ -49,17 +59,12 @@ monitoring:
   energy_enabled: true       # Enable background power sampling if available
   energy_interval_sec: 0.2   # Sampling interval (e.g., 200ms = 5 Hz)
 
-# <<< ADDED: Carbon Tracking Configuration >>>
+# Carbon Tracking Configuration
 carbon_tracker:
   enabled: true             # Enable/disable tracking globally
   mode: "offline"           # <<< CRUCIAL: Use "offline" for HPC >>>
   output_dir: "results/carbon" # Directory to save the CSV report
-  # --- IMPORTANT: Set the correct ISO code for the cluster location ---
   country_iso_code: "POL"   # 3-letter ISO code for Poland (Athena location)
-  # Optional: Specify region if known and supported by CodeCarbon's offline data
-  # region: "malopolskie" # Example for Małopolska Voivodeship
-  # Optional: Provide a fixed emission rate (gCO2e/kWh) as fallback or override
-  # offline_mode_fixed_emission_rate_gCO2e_per_kWh: 350.0 # Example: Research avg for Poland grid
 
 # Profiling Defaults
 profiling:

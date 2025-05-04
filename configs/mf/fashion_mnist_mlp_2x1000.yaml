@@ -40,6 +40,10 @@ algorithm_params:
   # epochs_output_layer: 10 # Optional: Can be same or different for the final layer
   log_interval: 9999
 
+  mf_early_stopping_enabled: true       # Enable early stopping for MF layers
+  mf_early_stopping_patience: 10        # Patience for FMNIST
+  mf_early_stopping_min_delta: 0.0001   # Minimum improvement
+
 # Logging Configuration
 logging:
   level: "INFO"

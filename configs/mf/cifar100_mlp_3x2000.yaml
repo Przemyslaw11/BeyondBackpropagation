@@ -39,6 +39,10 @@ algorithm_params:
   epochs_per_layer: 30   # Placeholder - overridden by Optuna
   log_interval: 9999     # Reduce logging noise during trials
 
+  mf_early_stopping_enabled: true         # Enable early stopping for MF layers
+  mf_early_stopping_patience: 15          # Patience (adjust for C100)
+  mf_early_stopping_min_delta: 0.0001     # Minimum improvement in local val loss
+
 # Logging Configuration
 logging:
   level: "INFO"
