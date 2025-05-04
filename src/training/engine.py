@@ -1,11 +1,11 @@
 # --------------------------------------------------------------------------------
-# File: ./src/training/engine.py (MODIFIED - Added Debugging)
+# File: ./src/training/engine.py (MODIFIED - Added Seed Override from Env Var)
 # --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import logging
 import time
-import os
+import os # <<< Added os import >>>
 import contextlib
 import pynvml
 import pandas as pd
@@ -36,7 +36,7 @@ from src.algorithms import (
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function (MODIFIED with Debugging) ---
+# --- get_model_and_adapter function (Previous state - No changes needed here) ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[ nn.Module, Optional[Callable[[torch.Tensor], torch.Tensor]] ]:
@@ -164,8 +164,7 @@ def get_model_and_adapter(
     logger.info(f"Model '{arch_name.upper()}' (Algo: {algorithm_name.upper()}) created.")
     return model, input_adapter
 
-
-# --- run_training function (No changes needed here, ensure it calls the modified get_model_and_adapter) ---
+# --- run_training function (MODIFIED with Seed Handling) ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {}
     nvml_active = False
@@ -181,8 +180,22 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
     try:
         # Setup (Seed, Device, W&B, Monitoring)
         general_config = config.get("general", {})
-        seed = general_config.get("seed", 42)
-        set_seed(seed); logger.info(f"Using random seed: {seed}")
+        # --- MODIFICATION START: Seed Handling ---
+        seed = general_config.get("seed", 42) # Get seed from config first
+        env_seed_str = os.environ.get('EXPERIMENT_SEED') # Check environment variable
+        if env_seed_str is not None:
+            try:
+                env_seed = int(env_seed_str)
+                logger.info(f"Found EXPERIMENT_SEED environment variable: {env_seed}. Overriding config seed ({seed}).")
+                seed = env_seed # Override seed with value from environment
+                general_config['seed'] = seed # Update config dict as well for consistency downstream
+            except ValueError:
+                logger.warning(f"EXPERIMENT_SEED environment variable ('{env_seed_str}') is not a valid integer. Using config seed ({seed}).")
+        # --- MODIFICATION END ---
+
+        set_seed(seed) # Call set_seed with the potentially overridden seed value
+        logger.info(f"Using random seed: {seed}") # Log the *actual* seed being used
+
         device_preference = general_config.get("device", "auto").lower()
         if device_preference == "cuda" and torch.cuda.is_available(): device = torch.device("cuda")
         elif device_preference == "cpu": device = torch.device("cpu")
@@ -225,7 +238,8 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         train_loader, val_loader, test_loader = get_dataloaders(
             dataset_name=data_config.get("name", "FashionMNIST"), batch_size=loader_config.get("batch_size", 64),
             data_root=data_config.get("root", "./data"), val_split=data_config.get("val_split", 0.1),
-            seed=seed, num_workers=loader_config.get("num_workers", 4),
+            seed=seed, # Pass the potentially overridden seed here too
+            num_workers=loader_config.get("num_workers", 4),
             pin_memory=(loader_config.get("pin_memory", True) and device.type == "cuda"), download=data_config.get("download", True),
         )
         logger.info("Dataloaders created.")
