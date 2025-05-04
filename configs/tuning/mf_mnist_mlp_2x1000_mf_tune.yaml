@@ -39,7 +39,7 @@ profiling:
   enabled: false
 tuning:
   enabled: true
-  n_trials: 5
+  n_trials: 1
   direction: maximize
   metric: val_accuracy
   sampler: TPE

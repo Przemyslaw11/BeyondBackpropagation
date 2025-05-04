@@ -55,8 +55,6 @@ def get_architecture(
         logger.debug(f"Arch {name} requires input flattening adapter.")
         if name == 'ff_mlp':
             if is_bp_baseline:
-                # BP Baseline from FF_MLP spec (remains Sequential MLP)
-                # ... (existing FF BP baseline creation logic) ...
                 logger.info("Adapting modified FF_MLP structure for BP baseline -> Standard nn.Sequential MLP.")
                 bp_input_dim = arch_params["input_dim"]
                 hidden_dims = arch_params.get("hidden_dims", [])

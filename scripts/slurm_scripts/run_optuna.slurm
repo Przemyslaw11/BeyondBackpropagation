@@ -5,9 +5,9 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000M
-#SBATCH --time=48:00:00      # Optuna might take longer, allocate more time (e.g., 12 hours)
+#SBATCH --time=01:00:00      # Optuna might take longer, allocate more time (e.g., 12 hours)
 #SBATCH -A plgoncotherapy-gpu-a100 # !!! YOUR GRANT ACCOUNT !!! - IMPORTANT: SET THIS!
-#SBATCH -p plgrid-gpu-a100        # PARTITION name for A100 nodes
+#SBATCH -p plgrid-now        # PARTITION name for A100 nodes
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file
 #SBATCH --error=slurm_logs/%x-%j.err  # Standard error log file
 
@@ -173,7 +173,7 @@ if [ $OPTUNA_EXIT_CODE -eq 0 ]; then
             # Derive path for FF, CaFo, MF final configs
             SUBDIR_NAME=$(echo "$ALGORITHM_NAME" | tr '[:upper:]' '[:lower:]') # mf, ff, cafo
             BASE_TUNE_NAME=$(basename "$CONFIG_FILE" "_tune.yaml") # e.g., mf_mnist_mlp_2x1000_mf
-            BASE_FINAL_NAME=$(echo "$BASE_TUNE_NAME" | sed "s/_${SUBDIR_NAME}$//") # e.g., mf_mnist_mlp_2x1000
+            BASE_FINAL_NAME=$(echo "$BASE_TUNE_NAME" | sed -e "s/_${SUBDIR_NAME}$//" -e "s/^${SUBDIR_NAME}_//")
             TARGET_CONFIG_FILE="configs/${SUBDIR_NAME}/${BASE_FINAL_NAME}.yaml"
             echo "Derived target FINAL config path (for FF/MF/CaFo): $TARGET_CONFIG_FILE"
         elif [[ "$CONFIG_FILE" == *"configs/bp_baselines/"* ]]; then
