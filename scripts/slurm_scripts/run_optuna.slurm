@@ -46,65 +46,81 @@ if command -v yq &> /dev/null; then
     # Using yq (more robust YAML parsing) - assumes v4+ syntax
     DETECTED_NAME=$(yq eval '.algorithm.name' "$CONFIG_FILE" 2>/dev/null | tr '[:lower:]' '[:upper:]')
     YQ_EXIT_CODE=$?
-    if [ $YQ_EXIT_CODE -eq 0 ] && [ -n "$DETECTED_NAME" ]; then
+    if [ $YQ_EXIT_CODE -eq 0 ] && [ -n "$DETECTED_NAME" ] && [[ "$DETECTED_NAME" == "BP" || "$DETECTED_NAME" == "MF" || "$DETECTED_NAME" == "CAFO" || "$DETECTED_NAME" == "FF" ]]; then
         ALGORITHM_NAME="$DETECTED_NAME"
         echo "Detected algorithm using yq: $ALGORITHM_NAME"
     else
-        echo "yq failed (Code: $YQ_EXIT_CODE) or returned empty. Falling back to awk."
+        echo "yq failed (Code: $YQ_EXIT_CODE), returned empty, or returned unsupported name '$DETECTED_NAME'. Falling back to awk."
     fi
 else
     echo "yq command not found. Falling back to awk."
 fi
 
 # --- Fallback: Use awk if yq failed ---
-# Improved awk logic to handle different indentations and quotes
+# REVISED awk logic for better detection under 'algorithm:' block
 if [ "$ALGORITHM_NAME" = "UNKNOWN" ]; then
     echo "Attempting to determine algorithm using awk..."
     DETECTED_NAME=$(awk '
-        /^[[:space:]]*algorithm:[[:space:]]*$/ { in_algo_block=1; next }
-        in_algo_block && /^[[:space:]]*name:[[:space:]]*/ {
-            # Extract value after "name:", removing leading/trailing whitespace and quotes
+        BEGIN { found_algo_key=0; algo_name="UNKNOWN"; }
+
+        # Match the start of the algorithm block
+        /^[[:space:]]*algorithm:[[:space:]]*$/ {
+            found_algo_key=1;
+            next; # Move to the next line immediately
+        }
+
+        # If we are inside the algorithm block, look for the name line
+        found_algo_key == 1 && /^[[:space:]]+name:[[:space:]]*/ {
             val = $0;
-            sub(/^[[:space:]]*name:[[:space:]]*/, "", val); # Remove key and leading space
-            sub(/^[[:space:]]*["'"'"']/, "", val);          # Remove leading quote
-            sub(/["'"'"'][[:space:]]*$/, "", val);          # Remove trailing quote and space
-            sub(/[[:space:]]*$/, "", val);                 # Remove trailing space if no quote
-            print toupper(val);                            # Convert to uppercase
-            exit; # Found it, stop processing
+            # Extract value: remove "name:", leading/trailing spaces, quotes, comments
+            sub(/^[[:space:]]*name:[[:space:]]*/, "", val);
+            sub(/^[[:space:]]*/, "", val);
+            sub(/^"/, "", val); sub(/"$/, "", val);
+            sub(/^'"'"'/, "", val); sub(/'"'"'$/, "", val);
+            sub(/[[:space:]]*#.*$/, "", val);
+            sub(/[[:space:]]*$/, "", val);
+
+            algo_name_extracted = toupper(val);
+
+            # Validate immediately
+            if (algo_name_extracted == "BP" || algo_name_extracted == "MF" || algo_name_extracted == "CAFO" || algo_name_extracted == "FF") {
+                algo_name = algo_name_extracted;
+                # print "AWK_DEBUG: Found valid name: " algo_name # Optional debug
+                exit; # Exit awk successfully after finding the valid name
+            } else {
+                # print "AWK_DEBUG: Found potentially invalid name: " algo_name_extracted # Optional debug
+                found_algo_key = 0; # Reset flag if invalid name found under algorithm
+            }
         }
-        # Reset flag if indentation decreases or another top-level key is found
-        in_algo_block && !/^[[:space:]]+/ { in_algo_block=0 }
-        # Handle case where name is on the same line as algorithm: { name: XX }
-        /^[[:space:]]*algorithm:[[:space:]]*{.*name:[[:space:]]*/ {
-             val = $0;
-             sub(/.*name:[[:space:]]*/, "", val);
-             sub(/^[[:space:]]*["'"'"']/, "", val);
-             sub(/["'"'"'][[:space:]}].*/, "", val); # Remove trailing quote/brace/space
-             sub(/[[:space:]}].*/, "", val);       # Remove trailing brace/space if no quote
-             print toupper(val);
-             exit;
+
+        # Reset flag if we hit another top-level key OR leave the indentation level
+        found_algo_key == 1 && (!/^[[:space:]]+/ || /^[a-zA-Z0-9_]+:/) {
+            # print "AWK_DEBUG: Resetting flag on line: " $0 # Optional debug
+            found_algo_key = 0;
         }
+
+        END { print algo_name } # Print the final result (will be UNKNOWN if not found/validated)
+
     ' "$CONFIG_FILE")
 
-
-    if [ -n "$DETECTED_NAME" ]; then
-        # Validate against known algorithms
-        if [[ "$DETECTED_NAME" == "BP" || "$DETECTED_NAME" == "MF" || "$DETECTED_NAME" == "CAFO" || "$DETECTED_NAME" == "FF" ]]; then
-            ALGORITHM_NAME="$DETECTED_NAME"
-            echo "Detected algorithm using awk: $ALGORITHM_NAME"
-        else
-            echo "awk detected name '$DETECTED_NAME', but it's not supported (BP/MF/CAFO/FF)."
-        fi
+    # Post-awk check
+    if [[ "$DETECTED_NAME" == "BP" || "$DETECTED_NAME" == "MF" || "$DETECTED_NAME" == "CAFO" || "$DETECTED_NAME" == "FF" ]]; then
+        ALGORITHM_NAME="$DETECTED_NAME"
+        echo "Detected algorithm using awk: $ALGORITHM_NAME"
+    elif [ "$DETECTED_NAME" != "UNKNOWN" ]; then
+        echo "awk detected name '$DETECTED_NAME', but it's not supported (BP/MF/CAFO/FF) or extraction failed."
     else
-        echo "awk could not find algorithm name under 'algorithm:' block."
+        echo "awk could not find a valid algorithm name under 'algorithm:' block."
     fi
 fi
+# --- End Algorithm Detection ---
 
 echo "Final Detected Algorithm: $ALGORITHM_NAME"
 if [ "$ALGORITHM_NAME" = "UNKNOWN" ]; then
     echo "Error: Could not determine algorithm (BP/MF/CAFO/FF) from config file: $CONFIG_FILE using yq or awk." >&2
     echo "--- Relevant config section ---"
-    grep -A 2 -B 1 "algorithm:" "$CONFIG_FILE" || echo "Could not grep algorithm section."
+    # Show lines around 'algorithm:' to help debug the config file itself
+    grep -A 3 -B 1 "algorithm:" "$CONFIG_FILE" || echo "Could not grep algorithm section."
     echo "-----------------------------"
     exit 1
 fi
@@ -112,6 +128,7 @@ fi
 # --- Prepare Optuna Arguments ---
 CONFIG_BASENAME=$(basename "$CONFIG_FILE" .yaml)
 echo "Derived Config Basename: $CONFIG_BASENAME"
+# Construct study name including algorithm for clarity
 STUDY_NAME="optuna_${CONFIG_BASENAME}_${ALGORITHM_NAME}"
 echo "Using Study Name: $STUDY_NAME"
 OPTUNA_OUTPUT_DIR="${SLURM_SUBMIT_DIR}/results/optuna"
@@ -145,40 +162,64 @@ OPTUNA_EXIT_CODE=$?
 if [ $OPTUNA_EXIT_CODE -eq 0 ]; then
     echo "---------------------------------------------------------------------"
     echo "Optuna search successful (Exit Code: 0). Attempting config update..."
-    echo "Config file: $CONFIG_FILE"
+    echo "Config file: $CONFIG_FILE" # This is the *tuning* config
     echo "Optuna DB: $DB_PATH"
     echo "Study Name: $STUDY_NAME"
 
     if [ -f "$DB_PATH" ]; then
-        UPDATE_SCRIPT_ARGS="--db-path $DB_PATH --config-path $CONFIG_FILE --study-name $STUDY_NAME"
-        UPDATE_SCRIPT="" # Initialize empty
-        # Select the correct update script based on the detected algorithm
-        if [ "$ALGORITHM_NAME" = "BP" ]; then
-            UPDATE_SCRIPT="scripts/tuning_utils/update_bp_configs.py"
-        elif [ "$ALGORITHM_NAME" = "MF" ]; then
-            UPDATE_SCRIPT="scripts/tuning_utils/update_mf_configs.py"
-        elif [ "$ALGORITHM_NAME" = "CAFO" ]; then
-            UPDATE_SCRIPT="scripts/tuning_utils/update_cafo_configs.py"
-        elif [ "$ALGORITHM_NAME" = "FF" ]; then
-            UPDATE_SCRIPT="scripts/tuning_utils/update_ff_configs.py" # <<< ADDED FF
+        # --- Determine the TARGET FINAL config file ---
+        TARGET_CONFIG_FILE=""
+        if [[ "$CONFIG_FILE" == *"configs/tuning/"* ]]; then
+            # Derive path for FF, CaFo, MF final configs
+            SUBDIR_NAME=$(echo "$ALGORITHM_NAME" | tr '[:upper:]' '[:lower:]') # mf, ff, cafo
+            BASE_TUNE_NAME=$(basename "$CONFIG_FILE" "_tune.yaml") # e.g., mf_mnist_mlp_2x1000_mf
+            BASE_FINAL_NAME=$(echo "$BASE_TUNE_NAME" | sed "s/_${SUBDIR_NAME}$//") # e.g., mf_mnist_mlp_2x1000
+            TARGET_CONFIG_FILE="configs/${SUBDIR_NAME}/${BASE_FINAL_NAME}.yaml"
+            echo "Derived target FINAL config path (for FF/MF/CaFo): $TARGET_CONFIG_FILE"
+        elif [[ "$CONFIG_FILE" == *"configs/bp_baselines/"* ]]; then
+             # For BP baselines, update the *same file* that was used for tuning
+             TARGET_CONFIG_FILE="$CONFIG_FILE"
+             echo "Target config path (for BP): $TARGET_CONFIG_FILE (updating tuning file)"
         else
-            echo "ERROR: Cannot determine update script for algorithm $ALGORITHM_NAME."
+            echo "WARNING: Could not determine target FINAL config path structure from tuning path '$CONFIG_FILE'. Update script will target the tuning file."
+            TARGET_CONFIG_FILE="$CONFIG_FILE"
         fi
 
-        # Check if the selected script exists and execute it
-        if [ -n "$UPDATE_SCRIPT" ] && [ -f "$UPDATE_SCRIPT" ]; then
-            echo "Using Update Script: $UPDATE_SCRIPT"
-            echo "Command: srun python $UPDATE_SCRIPT $UPDATE_SCRIPT_ARGS"
-            srun python $UPDATE_SCRIPT $UPDATE_SCRIPT_ARGS
-            UPDATE_EXIT_CODE=$?
-            if [ $UPDATE_EXIT_CODE -eq 0 ]; then
-                echo "SUCCESS: Config '$CONFIG_FILE' updated by $UPDATE_SCRIPT."
+        if [ ! -f "$TARGET_CONFIG_FILE" ]; then
+             echo "!!!!!!!!!!!!!!!! ERROR: Target config file '$TARGET_CONFIG_FILE' not found. Cannot update. !!!!!!!!!!!!!!!!"
+        else
+            # --- Select and Run Update Script ---
+            UPDATE_SCRIPT_ARGS="--db-path $DB_PATH --config-path $TARGET_CONFIG_FILE --study-name $STUDY_NAME"
+            UPDATE_SCRIPT="" # Initialize empty
+            # Select the correct update script based on the detected algorithm
+            if [ "$ALGORITHM_NAME" = "BP" ]; then
+                UPDATE_SCRIPT="scripts/tuning_utils/update_bp_configs.py"
+            elif [ "$ALGORITHM_NAME" = "MF" ]; then
+                UPDATE_SCRIPT="scripts/tuning_utils/update_mf_configs.py"
+            elif [ "$ALGORITHM_NAME" = "CAFO" ]; then
+                UPDATE_SCRIPT="scripts/tuning_utils/update_cafo_configs.py"
+            elif [ "$ALGORITHM_NAME" = "FF" ]; then
+                UPDATE_SCRIPT="scripts/tuning_utils/update_ff_configs.py"
             else
-                echo "!!!!!!!!!!!!!!!! ERROR: Update FAILED using $UPDATE_SCRIPT (Exit Code: $UPDATE_EXIT_CODE). Check logs. !!!!!!!!!!!!!!!!"
+                echo "ERROR: Cannot determine update script for algorithm $ALGORITHM_NAME."
             fi
-        elif [ -n "$UPDATE_SCRIPT" ]; then
-            echo "!!!!!!!!!!!!!!!! ERROR: Update script '$UPDATE_SCRIPT' not found. Config not updated. !!!!!!!!!!!!!!!!"
-        fi
+
+            # Check if the selected script exists and execute it
+            if [ -n "$UPDATE_SCRIPT" ] && [ -f "$UPDATE_SCRIPT" ]; then
+                echo "Using Update Script: $UPDATE_SCRIPT"
+                echo "Targeting config: $TARGET_CONFIG_FILE"
+                echo "Command: srun python $UPDATE_SCRIPT $UPDATE_SCRIPT_ARGS"
+                srun python $UPDATE_SCRIPT $UPDATE_SCRIPT_ARGS
+                UPDATE_EXIT_CODE=$?
+                if [ $UPDATE_EXIT_CODE -eq 0 ]; then
+                    echo "SUCCESS: Config '$TARGET_CONFIG_FILE' updated by $UPDATE_SCRIPT."
+                else
+                    echo "!!!!!!!!!!!!!!!! ERROR: Update FAILED using $UPDATE_SCRIPT (Exit Code: $UPDATE_EXIT_CODE). Check logs. !!!!!!!!!!!!!!!!"
+                fi
+            elif [ -n "$UPDATE_SCRIPT" ]; then
+                echo "!!!!!!!!!!!!!!!! ERROR: Update script '$UPDATE_SCRIPT' not found. Config not updated. !!!!!!!!!!!!!!!!"
+            fi
+        fi # End check for target config file existence
     else
         echo "!!!!!!!!!!!!!!!! ERROR: Optuna DB file not found: $DB_PATH. Cannot update config. !!!!!!!!!!!!!!!!"
     fi

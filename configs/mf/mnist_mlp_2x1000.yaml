@@ -1,0 +1,70 @@
+# File: configs/mf/mnist_mlp_2x1000.yaml
+# Configuration for FINAL RUN of Mono-Forward (MF) on MNIST with 2x1000 MLP
+# <<< UPDATE 'lr' and 'epochs_per_layer' below with best values from Optuna >>>
+
+# Inherit from base config (Handled by config_parser)
+experiment_name: "mf_mnist_mlp_2x1000" # Final experiment name
+algorithm:
+  name: "MF"
+
+# Dataset Configuration
+data:
+  name: "MNIST" # <<< CHANGED from FashionMNIST >>>
+  root: "./data"
+  val_split: 0.1 # Fixed 50k/10k split used by dataloader logic
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+# Data Loader Configuration
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+# Model Architecture Configuration (Matches F-MNIST MF)
+model:
+  name: "MF_MLP"
+  params:
+    # input_dim: 784 # Calculated
+    hidden_dims: [1000, 1000] # MF specific architecture
+    activation: "ReLU"
+    bias: true
+    # num_classes: 10 # Calculated
+
+# Algorithm Specific Configuration (Mono-Forward)
+# <<< UPDATE THESE VALUES FROM OPTUNA RESULTS >>>
+algorithm_params:
+  optimizer_type: Adam
+  lr: 0.0001329291894316216
+  weight_decay: 0.0
+  epochs_per_layer: 20
+  log_interval: 9999
+
+  # Optional: Enable MF layer early stopping in final run based on validation loss
+  mf_early_stopping_enabled: true       # Enable early stopping for MF layers
+  mf_early_stopping_patience: 5        # Patience (adjust if needed for MNIST)
+  mf_early_stopping_min_delta: 0.0001   # Minimum improvement
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true # Enable W&B logging for final run
+
+# Checkpointing
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_mnist_mlp_2x1000" # Specific directory
+
+# Monitoring/Profiling
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
+
+# Tuning Section (Should be disabled for final run)
+tuning:
+  enabled: false

@@ -29,7 +29,7 @@ from src.data_utils.datasets import get_dataloaders
 # <<< MODIFIED: Import MF_CNN >>>
 from src.architectures import (
     FF_MLP, CaFo_CNN, MF_MLP, MF_CNN, # Import all architecture classes
-    get_architecture # We are modifying this logic directly below, but keep import if needed elsewhere
+    # get_architecture # We are modifying this logic directly below, but keep import if needed elsewhere
 )
 from src.algorithms import (
     get_training_function,
@@ -103,10 +103,12 @@ def get_model_and_adapter(
                 # Pass full config and device to the constructor
                 model = FF_MLP(config=config, device=device, **arch_params)
                 logger.debug("Using native modified FF_MLP structure.")
-        elif name == 'mf_mlp': # Corrected variable name 'name' to 'arch_name'
+        # <<< FIX: Use arch_name here >>>
+        elif arch_name == 'mf_mlp': # Corrected variable name 'name' to 'arch_name'
             model = MF_MLP(**arch_params)
             if is_bp_baseline: logger.info("Using standard forward pass of MF_MLP for BP baseline.")
             else: logger.debug("Using native MF_MLP structure.")
+        # <<< END FIX >>>
 
     elif arch_name in ['cafo_cnn', 'mf_cnn']:
         logger.debug(f"'{arch_name}' matched CNN block.") # <<< DEBUG >>>
