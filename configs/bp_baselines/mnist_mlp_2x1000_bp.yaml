@@ -1,77 +1,59 @@
-# File: configs/bp_baselines/mnist_mlp_2x1000_bp.yaml
-# Configuration for BP Baseline on MNIST with 2x1000 MLP (Fair comparison to MF)
-
-# Inherit from base config (Handled by config_parser)
-experiment_name: "bp_baseline_mnist_mlp_2x1000" # Descriptive name
+experiment_name: bp_baseline_mnist_mlp_2x1000
 algorithm:
-  name: "BP"
-
-# Dataset Configuration
+  name: BP
 data:
-  name: "MNIST"
-  root: "./data"
-  val_split: 0.1 # Fixed 50k/10k split used by dataloader logic
+  name: MNIST
+  root: ./data
+  val_split: 0.1
   num_classes: 10
   input_channels: 1
   image_size: 28
-
-# Data Loader Configuration
 data_loader:
   batch_size: 128
   num_workers: 4
   pin_memory: true
-
-# Model Architecture Configuration (Identical structure to MF)
 model:
-  name: "MF_MLP" # Use the MF_MLP base structure (get_architecture handles BP adaptation)
+  name: MF_MLP
   params:
-    hidden_dims: [1000, 1000]
-    activation: "ReLU"
+    hidden_dims:
+    - 1000
+    - 1000
+    activation: ReLU
     bias: true
-    # input_dim and num_classes calculated automatically
-
-# Optimizer Configuration (Placeholder values, Optuna will update these)
 optimizer:
-  type: "AdamW"
-  lr: 0.0001       # Placeholder - Updated by Optuna
-  weight_decay: 0.00001 # Placeholder - Updated by Optuna
-
-# Training Configuration
+  type: AdamW
+  lr: 0.00019762189340280086
+  weight_decay: 7.4763120622522945e-06
 training:
   epochs: 100
-  criterion: "CrossEntropyLoss"
+  criterion: CrossEntropyLoss
   log_interval: 100
-  # Standard BP early stopping based on validation loss
   early_stopping_enabled: true
-  early_stopping_metric: "bp_val_loss"
-  early_stopping_patience: 10 # Adjust if needed
-  early_stopping_mode: "min"
+  early_stopping_metric: bp_val_loss
+  early_stopping_patience: 10
+  early_stopping_mode: min
   early_stopping_min_delta: 0.0
-
-# --- Optuna Tuning Configuration (For BP Baseline) ---
 tuning:
-  enabled: true # <<< Enable Optuna running for this baseline config >>>
-  n_trials: 5  # Number of Optuna trials for the baseline (adjust as needed)
-  num_epochs: 10 # Epochs per Optuna trial (for faster tuning)
-  direction: "maximize"
-  metric: "val_accuracy" # Optuna objective metric (often maximize val accuracy)
-  sampler: "TPE"
-  pruner: "Median" # Pruner suitable for BP
-  lr_range: [1.0e-5, 1.0e-2] # Tuning range for BP LR
-  wd_range: [1.0e-6, 1.0e-3] # Tuning range for BP WD
-
-# Checkpointing
+  enabled: true
+  n_trials: 5
+  num_epochs: 10
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: Median
+  lr_range:
+  - 1.0e-05
+  - 0.01
+  wd_range:
+  - 1.0e-06
+  - 0.001
 checkpointing:
-  checkpoint_dir: "checkpoints/bp_baseline_mnist_mlp_2x1000" # Specific directory
-  save_best_metric: "bp_val_accuracy" # Save based on validation accuracy
-
-# Logging
+  checkpoint_dir: checkpoints/bp_baseline_mnist_mlp_2x1000
+  save_best_metric: bp_val_accuracy
 logging:
-  level: "INFO"
+  level: INFO
   wandb:
-    use_wandb: true # Enable W&B logging
-
-# Monitoring/Profiling
+    use_wandb: true
 monitoring:
   enabled: true
   energy_enabled: true
