@@ -44,6 +44,12 @@ algorithm_params:
   num_epochs_per_block: 500 # Epochs for predictor training on CIFAR-10
   log_interval: 200
 
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
+  predictor_early_stopping_patience: 30       # Patience (e.g., 30 epochs for CIFAR10)
+  predictor_early_stopping_mode: "min"        # Minimize loss
+  predictor_early_stopping_min_delta: 0.001   # Minimum improvement required
+
 # Logging Configuration
 logging:
   level: "INFO"

@@ -50,6 +50,14 @@ algorithm_params:
   log_interval: 9999
   aggregation_method: sum
 
+  # --- Predictor Early Stopping --- # <<< ADDED >>>
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
+  predictor_early_stopping_patience: 5       # Patience (e.g., 20 epochs for MNIST)
+  predictor_early_stopping_mode: "min"        # Minimize loss
+  predictor_early_stopping_min_delta: 0.0005  # Minimum improvement required (smaller for MNIST?)
+
+
 # Logging Configuration
 logging:
   level: "INFO"

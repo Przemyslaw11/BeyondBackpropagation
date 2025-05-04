@@ -53,6 +53,13 @@ algorithm_params:
   log_interval: 9999                 # Reduced log interval
   aggregation_method: "sum"           # Explicitly state aggregation
 
+
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
+  predictor_early_stopping_patience: 30       # Patience (e.g., 30 epochs for CIFAR10)
+  predictor_early_stopping_mode: "min"        # Minimize loss
+  predictor_early_stopping_min_delta: 0.001   # Minimum improvement required
+
 # Logging Configuration
 logging:
   level: "INFO"

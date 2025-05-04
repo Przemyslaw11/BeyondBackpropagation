@@ -1,4 +1,6 @@
-# File: src/algorithms/cafo.py
+# --------------------------------------------------------------------------------
+# File: ./src/algorithms/cafo.py (MODIFIED - Added Early Stopping)
+# --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -20,7 +22,7 @@ from src.utils.monitoring import get_gpu_memory_usage # Import memory usage func
 
 logger = logging.getLogger(__name__)
 
-# --- NEW: Function to train blocks using DFA ---
+# --- Function to train blocks using DFA (Remains the same) ---
 def train_cafo_dfa_blocks(
     model: CaFo_CNN,
     train_loader: DataLoader,
@@ -55,8 +57,6 @@ def train_cafo_dfa_blocks(
         last_block_idx = len(model.blocks) - 1
         last_block_flat_dim = model.get_predictor_input_dim(last_block_idx)
         aux_layer = nn.Linear(last_block_flat_dim, num_classes).to(device)
-        # Initialize auxiliary layer (optional, default is fine)
-        # <<< FIXED: Now 'math' is defined >>>
         nn.init.kaiming_uniform_(aux_layer.weight, a=math.sqrt(5))
         if aux_layer.bias is not None: nn.init.zeros_(aux_layer.bias)
         logger.info(f"Created auxiliary layer for DFA block training: Linear({last_block_flat_dim}, {num_classes})")
@@ -69,12 +69,9 @@ def train_cafo_dfa_blocks(
     error_dim = num_classes # Global error dimension
     for i in range(len(model.blocks)): # Need B_0 to B_{L-1}
         block_output_flat_dim = model.get_predictor_input_dim(i)
-        # Shape: (Output Dim of Block i, Global Error Dim) -> Projects error to block's output space
-        # Stored transposed for easier matmul later: (Error Dim, Output Dim)
         b_matrix = torch.randn(error_dim, block_output_flat_dim, device=device)
         if dfa_feedback_matrix_type == "uniform":
              b_matrix.uniform_(-1.0, 1.0)
-        # Normalize? Optional, common practice.
         with torch.no_grad():
              b_matrix /= torch.norm(b_matrix, dim=1, keepdim=True) + 1e-8 # Normalize rows
         b_matrix.requires_grad_(False) # Ensure they are fixed
@@ -117,8 +114,6 @@ def train_cafo_dfa_blocks(
             activations = [images] # h_0 = input
             current_h = images
             for i, block in enumerate(model.blocks):
-                # <<< IMPORTANT: Ensure BN uses batch stats during training >>>
-                # block.train() # Ensure block (esp BN) is in train mode
                 current_h = block(current_h)
                 activations.append(current_h) # Store h_1, h_2, ..., h_L
 
@@ -131,75 +126,31 @@ def train_cafo_dfa_blocks(
 
             # --- Gradient Calculation & DFA Update ---
             optimizer.zero_grad()
-
-            # Calculate gradients for Aux Layer and Last Block using standard BP
             loss.backward()
 
-            # --- DFA Gradient Calculation for Hidden Blocks (using approximation) ---
-            # Calculate global error signal (detaching from graph)
+            # --- DFA Gradient Calculation ---
             with torch.no_grad():
-                 # Error signal e = (softmax(logits) - target_one_hot)
-                 global_error = (F.softmax(aux_output_logits, dim=1) - labels_one_hot).detach() # Shape: (batch, num_classes)
+                 global_error = (F.softmax(aux_output_logits, dim=1) - labels_one_hot).detach()
 
-            # Iterate backwards through hidden blocks (excluding the last one)
-            for i in range(len(model.blocks) - 1): # Iterate block index 0 to L-1
+            for i in range(len(model.blocks) - 1):
                 block_index = i
-                h_i = activations[block_index + 1] # Output of block i (h_1 to h_L)
-                h_i_flat = h_i.view(batch_size, -1) # Flatten for matmul and FC grad approx
-
-                # Project global error back using feedback matrix B_i
-                # B_i shape: (error_dim, block_output_dim), Error shape: (batch, error_dim)
-                # delta_h_i = Error @ B_i  -> shape: (batch, block_output_dim)
-                delta_h_i_flat = torch.matmul(global_error, feedback_matrices[block_index]) # Use B_i
-
-                # --- Approximate Conv Gradient using FC rule (Eq. 6) ---
-                # grad_W_fc = delta_h.T @ h_prev
-                # Need input to the block: h_{i-1}
-                h_prev = activations[block_index] # Input to block i
-
-                # --- Direct Gradient Assignment (Simpler DFA variant often used in practice) ---
-                # Calculate gradients using the DFA signal via autograd.grad
-                target_block = model.blocks[block_index]
-                target_output = h_i # Output of the block i
-
-                # Reshape delta_h_i_flat back to spatial dims of h_i for backward()
+                h_i = activations[block_index + 1]
+                delta_h_i_flat = torch.matmul(global_error, feedback_matrices[block_index])
                 delta_h_i_spatial = delta_h_i_flat.view_as(h_i)
-
+                target_block = model.blocks[block_index]
+                h_prev = activations[block_index]
                 try:
-                   # Ensure target block is in train mode for this grad calculation
                    original_mode = target_block.training
                    target_block.train()
-                   # Ensure parameters require grad (they should from outer loop)
-                   # for p in target_block.parameters(): p.requires_grad_(True) # Should be redundant
-
-                   # Recompute h_i with graph attached to target_block params
-                   # Need to ensure h_prev doesn't bring grads from loss.backward()
                    h_i_recompute = target_block(h_prev.detach())
-
-                   # Calculate gradients using the DFA signal
-                   grads = torch.autograd.grad(outputs=h_i_recompute,
-                                               inputs=target_block.parameters(),
-                                               grad_outputs=delta_h_i_spatial,
-                                               allow_unused=True,
-                                               # Retain graph NOT needed if we compute grads for each block sequentially backward
-                                               retain_graph=False)
-
-                   # Assign the computed gradients to the .grad field
+                   grads = torch.autograd.grad(outputs=h_i_recompute, inputs=target_block.parameters(),
+                                               grad_outputs=delta_h_i_spatial, allow_unused=True, retain_graph=False)
                    for param, grad in zip(target_block.parameters(), grads):
-                       if grad is not None:
-                           # Overwrite the gradient from the earlier loss.backward() call
-                           param.grad = grad
-                       #else: logger.warning(f"Got None DFA gradient for param in block {block_index}") # Can be noisy
-
-                   # Restore original training mode
+                       if grad is not None: param.grad = grad
                    target_block.train(original_mode)
-
                 except Exception as e_dfa_grad:
                     logger.error(f"Error computing/assigning DFA gradient for block {block_index}: {e_dfa_grad}", exc_info=True)
-                    # Consider how to handle this? Skip update?
 
-            # --- Optimizer Step ---
-            # Updates aux_layer, last_block (BP grads), and earlier blocks (DFA grads)
             optimizer.step()
 
             # --- Logging & Metrics ---
@@ -248,41 +199,80 @@ def train_cafo_dfa_blocks(
     block_train_duration = time.time() - block_train_start_time
     logger.info(f"--- Finished CaFo Block Training (DFA) Phase. Duration: {format_time(block_train_duration)} ---")
 
-    # Final memory sample
     if nvml_active and gpu_handle:
         mem_info = get_gpu_memory_usage(gpu_handle)
         if mem_info: peak_mem_block_train = max(peak_mem_block_train, mem_info[0])
 
-    # Ensure blocks are frozen and in eval mode for subsequent predictor training
     model.eval()
-    for param in model.parameters():
-        param.requires_grad_(False)
-
-    # Delete auxiliary layer and feedback matrices to save memory? Optional.
+    for param in model.parameters(): param.requires_grad_(False)
     del aux_layer, feedback_matrices
 
     return peak_mem_block_train
 
 
-# --- train_cafo_predictor_only (Remains the same as previous correction) ---
+# --- NEW: Function to evaluate a single predictor ---
+@torch.no_grad()
+def evaluate_cafo_predictor(
+    block: CaFoBlock,
+    predictor: CaFoPredictor,
+    val_loader: DataLoader,
+    device: torch.device,
+    get_block_input_fn: Callable[[torch.Tensor], torch.Tensor],
+    criterion: Optional[nn.Module] = None,
+) -> Tuple[float, float]:
+    """Evaluates a single predictor on a validation set."""
+    block.eval()
+    predictor.eval()
+    block.to(device)
+    predictor.to(device)
+
+    total_loss = 0.0
+    total_correct = 0
+    total_samples = 0
+
+    for images, labels in val_loader:
+        images, labels = images.to(device), labels.to(device)
+        block_input = get_block_input_fn(images)
+        block_output = block(block_input)
+        predictions = predictor(block_output)
+
+        if criterion:
+            loss = criterion(predictions, labels)
+            total_loss += loss.item() * images.size(0)
+
+        pred_labels = torch.argmax(predictions, dim=1)
+        total_correct += (pred_labels == labels).sum().item()
+        total_samples += images.size(0)
+
+    avg_loss = total_loss / total_samples if criterion and total_samples > 0 else float('nan')
+    avg_accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
+
+    return avg_loss, avg_accuracy
+
+
+# --- train_cafo_predictor_only (MODIFIED - Added Early Stopping Logic) ---
 def train_cafo_predictor_only(
     block: CaFoBlock,
     predictor: CaFoPredictor,
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     train_loader: DataLoader,
+    val_loader: Optional[DataLoader], # <<< ADDED >>>
     epochs: int,
     device: torch.device,
     get_block_input_fn: Callable[[torch.Tensor], torch.Tensor],
+    early_stopping_config: Dict[str, Any], # <<< ADDED >>>
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     block_index: int = 0,  # For logging
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
-) -> Tuple[float, float, float]: # Return avg loss, avg accuracy, peak memory
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
+) -> Tuple[float, float, float, int]: # <<< MODIFIED Return type >>>
     """
     Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
+    <<< MODIFIED: Added early stopping based on validation performance. >>>
+    Returns: Avg Train Loss, Avg Train Accuracy, Peak Memory, Num Epochs Trained
     """
     block.eval()
     predictor.train()
@@ -293,114 +283,143 @@ def train_cafo_predictor_only(
         f"Starting CaFo training for {log_prefix} (Block {block_index+1} frozen)"
     )
 
-    peak_mem_predictor_train = 0.0 # Track peak memory for this predictor's training
+    peak_mem_predictor_train = 0.0
     final_avg_epoch_loss = float('nan')
     final_avg_epoch_accuracy = float('nan')
+    epochs_trained = 0
+
+    # <<< Early Stopping Setup >>>
+    es_enabled = early_stopping_config.get("enabled", False)
+    es_metric_name = early_stopping_config.get("metric", "val_loss").lower()
+    es_patience = early_stopping_config.get("patience", 10)
+    es_mode = early_stopping_config.get("mode", "min").lower()
+    es_min_delta = early_stopping_config.get("min_delta", 0.0)
+    epochs_no_improve = 0
+    best_es_metric_value = float('inf') if es_mode == 'min' else -float('inf')
+
+    if es_enabled:
+        if val_loader is None:
+            logger.warning(f"{log_prefix}: Early stopping enabled but no val_loader provided. Disabling.")
+            es_enabled = False
+        else:
+            # Validate metric compatibility
+            if (es_mode == "min" and "accuracy" in es_metric_name) or \
+               (es_mode == "max" and "loss" in es_metric_name):
+                logger.error(f"{log_prefix}: Early stopping mode '{es_mode}' incompatible with metric '{es_metric_name}'. Disabling.")
+                es_enabled = False
+            else:
+                logger.info(f"{log_prefix}: Early Stopping Enabled - Metric: '{es_metric_name}', Patience: {es_patience}, Mode: '{es_mode}', MinDelta: {es_min_delta}")
+    else:
+        logger.info(f"{log_prefix}: Early Stopping Disabled.")
+    # <<< End Early Stopping Setup >>>
 
     for epoch in range(epochs):
+        epochs_trained = epoch + 1 # Track how many epochs actually ran
+        predictor.train() # Ensure predictor is in train mode
         epoch_loss = 0.0
         epoch_correct = 0
         epoch_samples = 0
-        peak_mem_predictor_epoch = 0.0 # Track peak memory for this specific epoch
+        peak_mem_predictor_epoch = 0.0
         pbar = tqdm(
-            train_loader,
-            desc=f"{log_prefix} Epoch {epoch+1}/{epochs}", # Use prefix in tqdm
-            leave=False,
+            train_loader, desc=f"{log_prefix} Epoch {epoch+1}/{epochs}", leave=False
         )
         for batch_idx, (images, labels) in enumerate(pbar):
             step_ref[0] += 1
             current_global_step = step_ref[0]
-
             images, labels = images.to(device), labels.to(device)
 
-            with torch.no_grad():
-                block_input = get_block_input_fn(images)
-                block_output = block(block_input)
-
-            predictions = predictor(block_output.detach()) # Use detached block output
+            with torch.no_grad(): block_input = get_block_input_fn(images); block_output = block(block_input)
+            predictions = predictor(block_output.detach())
             loss = criterion(predictions, labels)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(); loss.backward(); optimizer.step()
 
-            # Calculate accuracy for the batch
-            batch_size = labels.size(0)
-            with torch.no_grad():
-                 pred_labels = torch.argmax(predictions, dim=1)
-                 batch_correct = (pred_labels == labels).sum().item()
-            batch_accuracy = (batch_correct / batch_size) * 100.0 if batch_size > 0 else 0.0
+            with torch.no_grad(): pred_labels = torch.argmax(predictions, dim=1); batch_correct = (pred_labels == labels).sum().item()
+            batch_accuracy = (batch_correct / labels.size(0)) * 100.0 if labels.size(0) > 0 else 0.0
+            epoch_loss += loss.item() * labels.size(0); epoch_correct += batch_correct; epoch_samples += labels.size(0)
 
-            epoch_loss += loss.item() * batch_size # Weighted by batch size for avg calc
-            epoch_correct += batch_correct
-            epoch_samples += batch_size
-
-            # --- Sample memory usage periodically or at end of batch ---
             current_mem_used = float('nan')
-            if nvml_active and gpu_handle and ((batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1):
+            if nvml_active and gpu_handle:
                  mem_info = get_gpu_memory_usage(gpu_handle)
-                 if mem_info:
-                     current_mem_used = mem_info[0]
-                     peak_mem_predictor_epoch = max(peak_mem_predictor_epoch, current_mem_used)
-            # --- End memory sampling ---
+                 if mem_info: current_mem_used = mem_info[0]; peak_mem_predictor_epoch = max(peak_mem_predictor_epoch, current_mem_used)
 
             if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
                 avg_loss_batch = loss.item()
-                pbar.set_postfix(
-                    loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%"
-                )
-                metrics_to_log = {
-                    "global_step": current_global_step,
-                    f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
-                    f"{log_prefix}/Train_Acc_Batch": batch_accuracy,
-                }
-                if not torch.isnan(torch.tensor(current_mem_used)):
-                     metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
+                pbar.set_postfix(loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%")
+                metrics_to_log = {"global_step": current_global_step, f"{log_prefix}/Train_Loss_Batch": avg_loss_batch, f"{log_prefix}/Train_Acc_Batch": batch_accuracy,}
+                if not torch.isnan(torch.tensor(current_mem_used)): metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
         # Calculate averages for the epoch
-        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else 0.0
-        final_avg_epoch_accuracy = (epoch_correct / epoch_samples) * 100.0 if epoch_samples > 0 else 0.0
-        peak_mem_predictor_train = max(peak_mem_predictor_train, peak_mem_predictor_epoch) # Update peak for the predictor
+        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float('nan')
+        final_avg_epoch_accuracy = (epoch_correct / epoch_samples) * 100.0 if epoch_samples > 0 else float('nan')
+        peak_mem_predictor_train = max(peak_mem_predictor_train, peak_mem_predictor_epoch)
 
-        logger.info(
-            f"{log_prefix} Epoch {epoch+1}/{epochs} - Avg Loss: {final_avg_epoch_loss:.4f}, Avg Acc: {final_avg_epoch_accuracy:.2f}%, Peak Mem Epoch: {peak_mem_predictor_epoch:.1f} MiB"
-        )
-        # Log epoch summary metrics (optional)
-        epoch_summary_metrics = {
-            "global_step": current_global_step, # Use last step
-            f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss,
-            f"{log_prefix}/Train_Acc_EpochAvg": final_avg_epoch_accuracy,
-            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_predictor_epoch,
-        }
+        logger.info(f"{log_prefix} Epoch {epoch+1}/{epochs} - Train Loss: {final_avg_epoch_loss:.4f}, Train Acc: {final_avg_epoch_accuracy:.2f}%, Peak Mem Epoch: {peak_mem_predictor_epoch:.1f} MiB")
+        epoch_summary_metrics = {"global_step": step_ref[0], f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss, f"{log_prefix}/Train_Acc_EpochAvg": final_avg_epoch_accuracy, f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_predictor_epoch,}
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
+
+        # --- Early Stopping Check ---
+        if es_enabled:
+            val_loss, val_acc = evaluate_cafo_predictor( block, predictor, val_loader, device, get_block_input_fn, criterion)
+            logger.info(f"{log_prefix} Epoch {epoch+1}/{epochs} - Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+            # Log validation metrics
+            val_metrics = { "global_step": step_ref[0], f"{log_prefix}/Val_Loss_Epoch": val_loss, f"{log_prefix}/Val_Acc_Epoch": val_acc,}
+            log_metrics(val_metrics, wandb_run=wandb_run, commit=True)
+
+            current_es_metric_value = val_acc if "acc" in es_metric_name else val_loss
+
+            if torch.isnan(torch.tensor(current_es_metric_value)):
+                 logger.warning(f"{log_prefix} Epoch {epoch+1}: Early stopping metric '{es_metric_name}' is NaN. Treating as no improvement.")
+                 epochs_no_improve += 1
+            else:
+                improved = False
+                if es_mode == "min": improved = current_es_metric_value < best_es_metric_value - es_min_delta
+                else: improved = current_es_metric_value > best_es_metric_value + es_min_delta
+
+                if improved:
+                    best_es_metric_value = current_es_metric_value
+                    epochs_no_improve = 0
+                    logger.debug(f"{log_prefix} Epoch {epoch+1}: Early stopping metric improved to {best_es_metric_value:.4f}. Reset patience.")
+                    # Optionally save the best predictor state here
+                    # save_checkpoint(...)
+                else:
+                    epochs_no_improve += 1
+                    logger.debug(f"{log_prefix} Epoch {epoch+1}: Early stopping metric did not improve. Patience: {epochs_no_improve}/{es_patience}.")
+
+            if epochs_no_improve >= es_patience:
+                logger.info(f"{log_prefix}: Early Stopping Triggered at Epoch {epoch+1}!")
+                logger.info(f"  Metric '{es_metric_name}' did not improve for {es_patience} epochs (Best: {best_es_metric_value:.4f}).")
+                break # Exit the training loop for this predictor
+        # --- End Early Stopping Check ---
 
     # Sample memory one last time
     if nvml_active and gpu_handle:
         mem_info = get_gpu_memory_usage(gpu_handle)
-        if mem_info:
-            peak_mem_predictor_train = max(peak_mem_predictor_train, mem_info[0])
+        if mem_info: peak_mem_predictor_train = max(peak_mem_predictor_train, mem_info[0])
 
-    logger.info(f"Finished CaFo training for {log_prefix}. Overall Peak Mem: {peak_mem_predictor_train:.1f} MiB")
+    logger.info(f"Finished CaFo training for {log_prefix} after {epochs_trained} epochs. Overall Peak Mem Predictor: {peak_mem_predictor_train:.1f} MiB")
     predictor.eval()
-    return final_avg_epoch_loss, final_avg_epoch_accuracy, peak_mem_predictor_train
+    return final_avg_epoch_loss, final_avg_epoch_accuracy, peak_mem_predictor_train, epochs_trained # <<< Return epochs_trained >>>
 
 
-# --- train_cafo_model (MODIFIED - Orchestrates block and predictor training) ---
+# --- train_cafo_model (MODIFIED - Orchestrates block and predictor training, passes val_loader) ---
 def train_cafo_model(
     model: CaFo_CNN,  # Contains only blocks
     train_loader: DataLoader,
+    val_loader: Optional[DataLoader], # <<< ADDED >>>
     config: Dict[str, Any],
     device: torch.device,
     wandb_run: Optional[Any] = None,
     input_adapter: Optional[Callable] = None, # Added for signature consistency, not used
     step_ref: List[int] = [-1],
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, # ADDED
-    nvml_active: bool = False, # ADDED
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
 ) -> float: # Returns overall peak memory
     """
     Orchestrates the training of CaFo_CNN.
     Optionally trains blocks using DFA first, then trains predictors layer-wise.
+    <<< MODIFIED: Passes val_loader and early stopping config to predictor training. >>>
     Returns the overall peak GPU memory observed across all training phases.
     """
     model.to(device)
@@ -412,27 +431,17 @@ def train_cafo_model(
     # --- Optional: Block Training Phase (DFA) ---
     if train_blocks_flag:
         peak_mem_block_phase = train_cafo_dfa_blocks(
-            model=model,
-            train_loader=train_loader,
-            config=config,
-            device=device,
-            wandb_run=wandb_run,
-            step_ref=step_ref,
-            gpu_handle=gpu_handle,
-            nvml_active=nvml_active,
+            model=model, train_loader=train_loader, config=config, device=device,
+            wandb_run=wandb_run, step_ref=step_ref, gpu_handle=gpu_handle, nvml_active=nvml_active,
         )
         peak_mem_train = max(peak_mem_train, peak_mem_block_phase)
     else:
-        logger.info("Skipping block training phase (train_blocks is false or missing). Blocks remain frozen.")
-        # Ensure blocks are frozen if not trained
-        model.eval()
-        for param in model.blocks.parameters():
-            param.requires_grad_(False)
+        logger.info("Skipping block training phase. Blocks remain frozen.")
+        model.eval(); [p.requires_grad_(False) for p in model.blocks.parameters()]
 
     # --- Predictor Training Phase ---
     logger.info(f"--- Starting CaFo Predictor Training Phase for {num_blocks} blocks ---")
-    if input_adapter is not None:
-        logger.warning("CaFo Training: 'input_adapter' provided but typically unused for CNNs.")
+    if input_adapter: logger.warning("CaFo Training: 'input_adapter' ignored for CNNs.")
 
     # Predictor training specific configs
     predictor_optimizer_name = algo_config.get("predictor_optimizer_type", "Adam")
@@ -441,16 +450,21 @@ def train_cafo_model(
     criterion_name = algo_config.get("loss_type", "CrossEntropyLoss")
     epochs_per_block = algo_config.get("num_epochs_per_block", 10)
     log_interval = algo_config.get("log_interval", 100)
-    # Use optimizer_params from algo_config if exists, else empty
     optimizer_params_extra = algo_config.get("optimizer_params", {})
     checkpoint_dir = config.get("checkpointing", {}).get("checkpoint_dir", None)
 
-    if criterion_name.lower() == "crossentropyloss":
-        criterion = nn.CrossEntropyLoss()
-    else:
-        raise ValueError(f"Unsupported criterion for CaFo Predictors: {criterion_name}")
+    # <<< Predictor Early Stopping Config >>>
+    predictor_es_config = {
+        "enabled": algo_config.get("predictor_early_stopping_enabled", True),
+        "metric": algo_config.get("predictor_early_stopping_metric", "val_loss"),
+        "patience": algo_config.get("predictor_early_stopping_patience", 10),
+        "mode": algo_config.get("predictor_early_stopping_mode", "min"),
+        "min_delta": algo_config.get("predictor_early_stopping_min_delta", 0.0),
+    }
 
-    # --- Create Predictors Externally ---
+    if criterion_name.lower() == "crossentropyloss": criterion = nn.CrossEntropyLoss()
+    else: raise ValueError(f"Unsupported criterion for CaFo Predictors: {criterion_name}")
+
     predictors = nn.ModuleList()
     for i in range(num_blocks):
         try:
@@ -462,206 +476,120 @@ def train_cafo_model(
             logger.error(f"Failed to create predictor for block {i}: {e}", exc_info=True)
             raise RuntimeError("Predictor creation failed.") from e
 
-    # --- Train Predictor by Predictor ---
-    # Initial input is the raw image batch
     current_block_input_fn = lambda img: img.to(device)
     peak_mem_predictor_phase_overall = 0.0
+    total_epochs_trained_all_predictors = 0
 
     for i in range(num_blocks):
         predictor_log_idx = i + 1
         log_prefix = f"Predictor_{predictor_log_idx}"
         logger.info(f"--- Training {log_prefix} ---")
-        block = model.blocks[i]
-        block.eval() # Ensure corresponding block is frozen
-        predictor = predictors[i]
-        # Ensure predictor params require grad for this phase
-        for param in predictor.parameters(): param.requires_grad_(True)
+        block = model.blocks[i]; block.eval()
+        predictor = predictors[i]; [p.requires_grad_(True) for p in predictor.parameters()]
         params_to_optimize = list(predictor.parameters())
 
         predictor_peak_mem_this = 0.0
         final_avg_loss = float('nan')
         final_avg_acc = float('nan')
+        epochs_trained_this_predictor = 0
 
-        if not params_to_optimize: # Check if list is empty
+        if not params_to_optimize:
             logger.warning(f"{log_prefix} has no parameters requiring gradients. Skipping training.")
         else:
             optimizer_kwargs = {"lr": predictor_lr, "weight_decay": predictor_weight_decay, **optimizer_params_extra}
             optimizer = getattr(optim, predictor_optimizer_name)(params_to_optimize, **optimizer_kwargs)
 
-            final_avg_loss, final_avg_acc, predictor_peak_mem_this = train_cafo_predictor_only(
+            # <<< Pass val_loader and early stopping config >>>
+            final_avg_loss, final_avg_acc, predictor_peak_mem_this, epochs_trained_this_predictor = train_cafo_predictor_only(
                 block=block, predictor=predictor, optimizer=optimizer, criterion=criterion,
-                train_loader=train_loader, epochs=epochs_per_block, device=device,
-                get_block_input_fn=current_block_input_fn, wandb_run=wandb_run,
-                log_interval=log_interval, block_index=i, step_ref=step_ref,
-                gpu_handle=gpu_handle, nvml_active=nvml_active
+                train_loader=train_loader, val_loader=val_loader, # Pass val_loader
+                epochs=epochs_per_block, device=device,
+                get_block_input_fn=current_block_input_fn,
+                early_stopping_config=predictor_es_config, # Pass ES config
+                wandb_run=wandb_run, log_interval=log_interval, block_index=i,
+                step_ref=step_ref, gpu_handle=gpu_handle, nvml_active=nvml_active
             )
-            peak_mem_predictor_phase_overall = max(peak_mem_predictor_phase_overall, predictor_peak_mem_this) # Track peak across predictors
+            total_epochs_trained_all_predictors += epochs_trained_this_predictor
+            peak_mem_predictor_phase_overall = max(peak_mem_predictor_phase_overall, predictor_peak_mem_this)
+            [p.requires_grad_(False) for p in predictor.parameters()]; predictor.eval()
 
-            # Freeze predictor after training
-            for param in predictor.parameters(): param.requires_grad = False
-            predictor.eval()
-
-        # Log predictor summary after training completes
+        # Log summary after training predictor i
         current_global_step = step_ref[0]
         predictor_summary_metrics = {
             "global_step": current_global_step,
             f"{log_prefix}/Train_Loss_LayerAvg": final_avg_loss,
             f"{log_prefix}/Train_Acc_LayerAvg": final_avg_acc,
-            f"{log_prefix}/Peak_GPU_Mem_Layer_MiB": predictor_peak_mem_this, # Log this specific predictor's peak
+            f"{log_prefix}/Peak_GPU_Mem_Layer_MiB": predictor_peak_mem_this,
+            f"{log_prefix}/Epochs_Trained": epochs_trained_this_predictor, # Log epochs trained
         }
         log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.debug(f"Logged CaFo {log_prefix} summary at global_step {current_global_step}")
 
-        # Only save if training happened (params_to_optimize was not empty)
         if checkpoint_dir and params_to_optimize:
             create_directory_if_not_exists(checkpoint_dir)
-            save_checkpoint(
-                state={"state_dict": predictor.state_dict(), "predictor_index": i},
-                is_best=False, filename=f"cafo_predictor_{i}_complete.pth", checkpoint_dir=checkpoint_dir,
-            )
+            save_checkpoint( state={"state_dict": predictor.state_dict(), "predictor_index": i, "epochs_trained": epochs_trained_this_predictor},
+                is_best=False, filename=f"cafo_predictor_{i}_complete.pth", checkpoint_dir=checkpoint_dir,)
 
-        # Prepare the input function for the *next* predictor training stage
-        # Closure to capture the correct block index 'i'
+        # Prepare input function for next predictor
         def create_next_input_fn(trained_block_idx: int, previous_input_fn: Callable):
-            # Use the already trained block from the main model instance
-            block_k = model.blocks[trained_block_idx]
-            block_k.eval() # Ensure block is in eval mode
-            block_k.to(device) # Ensure block is on device
+            block_k = model.blocks[trained_block_idx]; block_k.eval(); block_k.to(device)
             @torch.no_grad()
             def next_input_fn(img_batch: torch.Tensor) -> torch.Tensor:
-                # Ensure input from previous step is on device
-                block_input = previous_input_fn(img_batch).to(device)
-                block_output = block_k(block_input)
-                return block_output.detach() # Detach output
+                block_input = previous_input_fn(img_batch).to(device); block_output = block_k(block_input); return block_output.detach()
             return next_input_fn
-
-        # Update the input function for the next iteration
         current_block_input_fn = create_next_input_fn(i, current_block_input_fn)
 
-    logger.info("Finished all layer-wise CaFo predictor training.")
-    # Store trained predictors on the model instance for evaluation
-    model.trained_predictors = predictors
-
-    # Final overall peak memory is the max of block phase (if any) and predictor phase
+    logger.info(f"Finished all layer-wise CaFo predictor training. Total Epochs Trained (Sum): {total_epochs_trained_all_predictors}")
+    model.trained_predictors = predictors # Attach predictors for evaluation
     peak_mem_train = max(peak_mem_train, peak_mem_predictor_phase_overall)
 
-    return peak_mem_train # Return overall peak memory
+    return peak_mem_train
 
 
-# --- evaluate_cafo_model (Remains the same as previous correction) ---
+# --- evaluate_cafo_model (Remains the same) ---
 def evaluate_cafo_model(
-    model: CaFo_CNN,
-    data_loader: DataLoader,
-    device: torch.device,
-    criterion: Optional[nn.Module] = None,
-    predictors: Optional[nn.ModuleList] = None,
-    aggregation_method: str = "sum",
-    input_adapter: Optional[Callable] = None, # Keep signature consistent
+    model: CaFo_CNN, data_loader: DataLoader, device: torch.device,
+    criterion: Optional[nn.Module] = None, predictors: Optional[nn.ModuleList] = None,
+    aggregation_method: str = "sum", input_adapter: Optional[Callable] = None,
 ) -> Dict[str, float]:
-    """
-    Evaluates the CaFo model by aggregating predictor outputs.
-    """
-    model.eval()
-    model.to(device)
-
+    """Evaluates the CaFo model by aggregating predictor outputs."""
+    model.eval(); model.to(device)
     if predictors is None:
-        if hasattr(model, "trained_predictors") and isinstance(
-            model.trained_predictors, nn.ModuleList
-        ):
-            predictors = model.trained_predictors
-        else:
-            logger.warning("Predictors not explicitly provided and not found attached to model. Evaluation will fail.")
-            raise ValueError("Trained predictors are required for CaFo evaluation.")
-
-    if not predictors:
-        raise ValueError("Predictor list is empty or None.")
-
-    predictors.to(device)
-    predictors.eval()
-
-    num_predictors = len(predictors)
-    num_blocks = len(model.blocks)
-    if num_predictors != num_blocks:
-        logger.warning(f"Number of predictors ({num_predictors}) does not match number of blocks ({num_blocks}). Evaluation might be incomplete.")
-
+        if hasattr(model, "trained_predictors") and isinstance(model.trained_predictors, nn.ModuleList): predictors = model.trained_predictors
+        else: raise ValueError("Trained predictors are required for CaFo evaluation.")
+    if not predictors: raise ValueError("Predictor list is empty or None.")
+    predictors.to(device); predictors.eval()
+    num_predictors = len(predictors); num_blocks = len(model.blocks)
+    if num_predictors != num_blocks: logger.warning(f"Num predictors ({num_predictors}) != num blocks ({num_blocks}).")
     total_loss, total_correct, total_samples = 0.0, 0, 0
-    aggregation_method = aggregation_method.lower() # Standardize
-    logger.info(
-        f"Evaluating CaFo model using {num_predictors} predictors with '{aggregation_method}' aggregation."
-    )
-
+    aggregation_method = aggregation_method.lower()
+    logger.info(f"Evaluating CaFo model using {num_predictors} predictors ('{aggregation_method}' aggregation).")
     with torch.no_grad():
-        pbar = tqdm(
-            data_loader, desc=f"Evaluating CaFo ({aggregation_method})", leave=False
-        )
+        pbar = tqdm(data_loader, desc=f"Evaluating CaFo ({aggregation_method})", leave=False)
         for images, labels in pbar:
-            images, labels = images.to(device), labels.to(device)
-            adapted_images = images # input_adapter is ignored for CNN
-
-            # Get intermediate block outputs from the main model
-            block_outputs = model.forward(adapted_images)
-            predictor_outputs = []
-
-            # Optimization for "last" aggregation
+            images, labels = images.to(device), labels.to(device); adapted_images = images
+            block_outputs = model.forward(adapted_images); predictor_outputs = []
             if aggregation_method == "last":
                 if num_blocks > 0 and len(block_outputs) == num_blocks and num_predictors == num_blocks:
                     last_block_idx = num_blocks - 1
-                    try:
-                        pred_out = predictors[last_block_idx](block_outputs[last_block_idx])
-                        predictor_outputs.append(pred_out)
-                    except Exception as e_pred:
-                        logger.error(f"Error during LAST predictor ({last_block_idx}) forward pass: {e_pred}", exc_info=True)
-                        return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
-                else:
-                     logger.error(f"Cannot evaluate with 'last' method: mismatch in block/predictor counts or block outputs.")
-                     return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
-            else: # Original logic for "sum" or other methods
+                    try: pred_out = predictors[last_block_idx](block_outputs[last_block_idx]); predictor_outputs.append(pred_out)
+                    except Exception as e_pred: logger.error(f"Error LAST predictor ({last_block_idx}): {e_pred}", exc_info=True); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+                else: logger.error(f"Cannot eval 'last': mismatch counts/outputs."); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+            else:
                 for i, block_out in enumerate(block_outputs):
                     if i < len(predictors):
-                        try:
-                            pred_out = predictors[i](block_out)
-                            predictor_outputs.append(pred_out)
-                        except Exception as e_pred:
-                            logger.error(f"Error during predictor {i} forward pass: {e_pred}", exc_info=True)
-                            return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
-
-            if not predictor_outputs:
-                logger.error("No predictor outputs generated for aggregation.")
-                return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
-
+                        try: pred_out = predictors[i](block_out); predictor_outputs.append(pred_out)
+                        except Exception as e_pred: logger.error(f"Error predictor {i}: {e_pred}", exc_info=True); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+            if not predictor_outputs: logger.error("No predictor outputs."); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
             try:
-                # Aggregate predictions based on the method
-                if aggregation_method == "sum":
-                    final_prediction_logits = torch.stack(predictor_outputs, dim=0).sum(dim=0)
-                elif aggregation_method == "last":
-                    final_prediction_logits = predictor_outputs[0]
-                elif aggregation_method == "average":
-                     final_prediction_logits = torch.stack(predictor_outputs, dim=0).mean(dim=0)
-                else:
-                    raise ValueError(f"Unsupported aggregation method: {aggregation_method}")
-
-                # Calculate loss if criterion is provided
-                if criterion:
-                    loss = criterion(final_prediction_logits, labels)
-                    total_loss += loss.item() * adapted_images.size(0)
-
-                # Calculate accuracy
-                predicted_labels = torch.argmax(final_prediction_logits, dim=1)
-                total_correct += (predicted_labels == labels).sum().item()
-                total_samples += labels.size(0)
-
-            except Exception as e_agg:
-                 logger.error(f"Error during prediction aggregation or loss calculation: {e_agg}", exc_info=True)
-                 return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
-
+                if aggregation_method == "sum": final_prediction_logits = torch.stack(predictor_outputs, dim=0).sum(dim=0)
+                elif aggregation_method == "last": final_prediction_logits = predictor_outputs[0]
+                elif aggregation_method == "average": final_prediction_logits = torch.stack(predictor_outputs, dim=0).mean(dim=0)
+                else: raise ValueError(f"Unsupported aggregation method: {aggregation_method}")
+                if criterion: loss = criterion(final_prediction_logits, labels); total_loss += loss.item() * adapted_images.size(0)
+                predicted_labels = torch.argmax(final_prediction_logits, dim=1); total_correct += (predicted_labels == labels).sum().item(); total_samples += labels.size(0)
+            except Exception as e_agg: logger.error(f"Error during aggregation/loss: {e_agg}", exc_info=True); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
     avg_loss = total_loss / total_samples if criterion and total_samples > 0 else float('nan')
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
-    logger.info(
-        f"Evaluation Results (Aggregation: {aggregation_method}): Accuracy: {accuracy:.2f}%"
-        + (f", Loss: {avg_loss:.4f}" if criterion and not torch.isnan(torch.tensor(avg_loss)) else "")
-    )
-
-    results = {"eval_accuracy": accuracy}
-    results["eval_loss"] = avg_loss
-
-    return results
+    logger.info(f"Eval Results (Agg: {aggregation_method}): Accuracy: {accuracy:.2f}%" + (f", Loss: {avg_loss:.4f}" if criterion and not torch.isnan(torch.tensor(avg_loss)) else ""))
+    return {"eval_accuracy": accuracy, "eval_loss": avg_loss}

@@ -44,6 +44,12 @@ algorithm_params:
   epochs_per_block: 500 # Re-using FMNIST value, adjust if needed for MNIST convergence
   log_interval: 200
 
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
+  predictor_early_stopping_patience: 20       # Patience (e.g., 20 epochs for MNIST)
+  predictor_early_stopping_mode: "min"        # Minimize loss
+  predictor_early_stopping_min_delta: 0.0005  # Minimum improvement required (smaller for MNIST?)
+
 # Logging Configuration
 logging:
   level: "INFO"

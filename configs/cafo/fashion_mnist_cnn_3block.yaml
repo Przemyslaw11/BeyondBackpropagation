@@ -44,6 +44,13 @@ algorithm_params:
   epochs_per_block: 5000 # Epochs for predictor training
   log_interval: 200
 
+predictor_early_stopping_enabled: true
+predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
+predictor_early_stopping_patience: 20       # Patience (e.g., 20 epochs for FMNIST)
+predictor_early_stopping_mode: "min"        # Minimize loss
+predictor_early_stopping_min_delta: 0.001   # Minimum improvement required
+
+
 # Logging Configuration
 logging:
   level: "INFO"
