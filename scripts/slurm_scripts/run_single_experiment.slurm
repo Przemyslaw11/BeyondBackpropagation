@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:1              # Request 1 GPU
 #SBATCH --cpus-per-task=16        # Allocate 16 CPUs (proportional for 1 A100)
 #SBATCH --mem=128000M             # Allocate 128GB RAM (proportional for 1 A100)
-#SBATCH --time=8:00:00           # Max walltime (8 hours, adjust as needed)
+#SBATCH --time=2:00:00           # Max walltime (8 hours, adjust as needed)
 #SBATCH -A plgoncotherapy-gpu-a100 # !!! YOUR GRANT ACCOUNT !!!
 #SBATCH -p plgrid-gpu-a100     # PARTITION name for A100 nodes
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file (%x=jobname, %j=jobid)
