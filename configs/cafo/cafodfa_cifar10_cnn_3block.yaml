@@ -56,7 +56,7 @@ algorithm_params:
 
   predictor_early_stopping_enabled: true
   predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
-  predictor_early_stopping_patience: 30       # Patience (e.g., 30 epochs for CIFAR10)
+  predictor_early_stopping_patience: 8       # Patience (e.g., 30 epochs for CIFAR10)
   predictor_early_stopping_mode: "min"        # Minimize loss
   predictor_early_stopping_min_delta: 0.001   # Minimum improvement required
 

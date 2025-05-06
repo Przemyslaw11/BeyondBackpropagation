@@ -55,7 +55,7 @@ algorithm_params:
 
   predictor_early_stopping_enabled: true
   predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
-  predictor_early_stopping_patience: 20       # Patience (e.g., 20 epochs for FMNIST)
+  predictor_early_stopping_patience: 6       # Patience (e.g., 20 epochs for FMNIST)
   predictor_early_stopping_mode: "min"        # Minimize loss
   predictor_early_stopping_min_delta: 0.001   # Minimum improvement required
 
