@@ -38,10 +38,6 @@ algorithm_params:
   mf_early_stopping_patience: 15
   mf_early_stopping_min_delta: 0.0001
 
-  # MF Early Stopping (Optional)
-  mf_early_stopping_enabled: true
-  mf_early_stopping_patience: 15 # <<< TUNE THIS >>>
-  mf_early_stopping_min_delta: 0.0001
 
 logging: { level: "INFO", wandb: { use_wandb: true } }
 checkpointing: { checkpoint_dir: "checkpoints/mf_cifar10_cnn_4layer" }
