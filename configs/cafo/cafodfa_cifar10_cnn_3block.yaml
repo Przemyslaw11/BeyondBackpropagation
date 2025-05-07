@@ -17,7 +17,7 @@ data:
 
 # Data Loader Configuration
 data_loader:
-  batch_size': 128
+  batch_size: 128
   num_workers: 4
   pin_memory: true
 

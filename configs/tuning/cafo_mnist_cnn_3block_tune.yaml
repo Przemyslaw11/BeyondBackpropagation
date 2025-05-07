@@ -1,8 +1,10 @@
-# File: configs/cafo/mnist_cnn_3block_tune.yaml
+# File: configs/tuning/cafo_mnist_cnn_3block_tune.yaml
 # Configuration for Optuna TUNING of CaFo (Random Blocks) on MNIST
+# UPDATED: Added predictor early stopping parameters
 
 experiment_name: "tune_cafo_mnist_cnn_3block"
-algorithm: { name: "CaFo" }
+algorithm: 
+  name: CaFo
 
 # Dataset / Loader / Model Config (Same as MNIST/FMNIST CaFo)
 data: { name: "MNIST", root: "./data", val_split: 0.1, num_classes: 10, input_channels: 1, image_size: 28 }
@@ -11,7 +13,7 @@ model:
   name: "CaFo_CNN"
   params: { block_channels: [32, 128, 512], activation: "ReLU", use_batchnorm: true, kernel_size: 3, pool_kernel_size: 2, pool_stride: 2 }
 
-# Algorithm Specific Configuration (Placeholders)
+# Algorithm Specific Configuration (Placeholders for Optuna, plus ES config)
 algorithm_params:
   train_blocks: false                # Random blocks - no block training
   predictor_optimizer_type: "Adam"   # Fixed predictor optimizer type
@@ -22,18 +24,25 @@ algorithm_params:
   log_interval: 9999                 # Reduce logging noise during trials
   aggregation_method: "sum"          # Fixed aggregation method
 
+  # --- Predictor Early Stopping Configuration --- # <<< ADDED >>>
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss"   # Monitor validation loss
+  predictor_early_stopping_patience: 8          # Patience for MNIST (potentially shorter than CIFAR)
+  predictor_early_stopping_mode: "min"          # Minimize validation loss
+  predictor_early_stopping_min_delta: 0.0005    # Smaller delta for MNIST convergence
+
 # Logging / Checkpointing / Monitoring / Profiling (Disabled for tuning trials)
-logging: { level: "INFO", wandb: { use_wandb: false } }
-checkpointing: { checkpoint_dir: null }
-monitoring: { enabled: false, energy_enabled: false }
-profiling: { enabled: false }
+logging: { level: "INFO", wandb: { use_wandb: false } } # Disable W&B for Optuna trials
+checkpointing: { checkpoint_dir: null } # Disable checkpoints for Optuna trials
+monitoring: { enabled: false, energy_enabled: false } # Disable monitoring for speed
+profiling: { enabled: false } # Disable profiling for speed
 
 # --- Optuna Tuning Configuration ---
 tuning:
   enabled: true # <<< Enable Optuna >>>
   n_trials: 50  # Number of trials to run (adjust as needed)
   direction: "maximize"
-  metric: "val_accuracy" # Objective: maximize validation accuracy
+  metric: "val_accuracy" # Optuna objective: maximize final validation accuracy
   sampler: "TPE"         # Default sampler
   pruner: "None"         # Recommended for CaFo/MF style training
   # --- Ranges informed by best non-tuned run (Acc≈98.43%) ---

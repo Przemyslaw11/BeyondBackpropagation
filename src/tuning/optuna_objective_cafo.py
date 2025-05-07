@@ -92,14 +92,14 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
 
     model = None
     train_loader = None
-    val_loader = None
+    val_loader = None # Initialize here
 
     try:
         # --- Data Loading ---
         data_config = cfg.get("data", {})
         loader_config = cfg.get("data_loader", {})
         logger.info(f"Trial {trial.number}: Loading data...")
-        train_loader, val_loader, _ = get_dataloaders(
+        train_loader, val_loader, _ = get_dataloaders( # Assign to val_loader here
             dataset_name=data_config.get("name", "CIFAR10"),
             batch_size=loader_config.get("batch_size", 64),
             data_root=data_config.get("root", "./data"),
@@ -109,7 +109,7 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             pin_memory=False,
             download=data_config.get("download", True),
         )
-        if not val_loader:
+        if not val_loader: # Check if val_loader was successfully created
             raise ValueError("Validation loader is required for Optuna tuning.")
         logger.info(f"Trial {trial.number}: Data loaded.")
 
@@ -138,10 +138,11 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
 
         step_ref = [-1] # Optional step tracking
 
-        # Call the main CaFo training function
+        # <<< CORRECTED: Pass val_loader to train_cafo_model >>>
         _ = train_cafo_model(
             model=model, # This model instance will have predictors attached after training
             train_loader=train_loader,
+            val_loader=val_loader, # <<< ADDED THIS ARGUMENT >>>
             config=minimal_cfg_for_train, # Pass the modified config
             device=device,
             wandb_run=None,
@@ -150,6 +151,8 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             gpu_handle=None,
             nvml_active=False,
         )
+        # <<< END CORRECTION >>>
+
         trial_train_duration = time.time() - trial_train_start_time
         logger.info(f"Trial {trial.number}: CaFo training completed in {format_time(trial_train_duration)}.")
 
@@ -158,7 +161,7 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         # Use the same model instance - train_cafo_model attaches predictors to it
         eval_results = evaluate_cafo_model(
             model=model, # Contains blocks + trained_predictors attribute
-            data_loader=val_loader,
+            data_loader=val_loader, # Use val_loader here for objective score
             device=device,
             # Pass aggregation method from config
             aggregation_method=cfg.get("algorithm_params",{}).get("aggregation_method", "sum"),
