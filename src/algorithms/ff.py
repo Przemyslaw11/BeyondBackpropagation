@@ -27,9 +27,9 @@ def generate_ff_hinton_inputs(
     base_labels: torch.Tensor,
     num_classes: int,
     device: torch.device,
-    replace_value_on: float = 1.0, # Reference uses 1.0
-    replace_value_off: float = 0.0, # Reference uses 0.0
-    neutral_value: float = 0.1, # Reference uses 0.1 for neutral
+    replace_value_on: float = 1.0,
+    replace_value_off: float = 0.0,
+    neutral_value: float = 0.1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Generates positive, negative, and neutral flattened image tensors for FF training
@@ -61,8 +61,6 @@ def generate_ff_hinton_inputs(
     neutral_flattened = base_flat_view.clone(); neutral_flattened[:, :num_classes] = neutral_patch
     return pos_flattened.detach(), neg_flattened.detach(), neutral_flattened.detach()
 
-# <<< LR Cooldown function from reference utils.py >>>
-# (No changes to this function)
 def get_linear_cooldown_lr(initial_lr: float, epoch: int, total_epochs: int):
     current_epoch_num = epoch + 1
     if current_epoch_num > (total_epochs // 2):
@@ -70,7 +68,6 @@ def get_linear_cooldown_lr(initial_lr: float, epoch: int, total_epochs: int):
         return max(new_lr, 1e-9)
     else: return initial_lr
 
-# --- train_ff_model (MODIFIED - Added Early Stopping Logic) ---
 def train_ff_model(
     model: FF_MLP, train_loader: DataLoader, val_loader: Optional[DataLoader], config: Dict[str, Any], device: torch.device,
     wandb_run: Optional[Any] = None, input_adapter: Optional[Callable] = None, step_ref: List[int] = [-1],

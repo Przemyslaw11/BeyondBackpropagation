@@ -5,9 +5,9 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000M
-#SBATCH --time=01:00:00      # Optuna might take longer, allocate more time (e.g., 12 hours)
+#SBATCH --time=08:00:00      # Optuna might take longer, allocate more time (e.g., 12 hours)
 #SBATCH -A plgoncotherapy-gpu-a100 # !!! YOUR GRANT ACCOUNT !!! - IMPORTANT: SET THIS!
-#SBATCH -p plgrid-now        # PARTITION name for A100 nodes
+#SBATCH -p plgrid-gpu-a100        # PARTITION name for A100 nodes
 #SBATCH --output=slurm_logs/%x-%j.out # Standard output log file
 #SBATCH --error=slurm_logs/%x-%j.err  # Standard error log file
 
