@@ -1,4 +1,4 @@
-# File: ./src/algorithms/mf.py (MODIFIED for MLP only)
+# File: ./src/algorithms/mf.py (CORRECTED ARGUMENT ORDER)
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,11 +7,11 @@ import torch.nn.functional as F
 import logging
 from tqdm import tqdm
 import pynvml # Import for type hint
-from typing import Dict, Any, Optional, Callable, List, Tuple # Removed Union
+from typing import Dict, Any, Optional, Callable, List, Tuple
 import os
 import time
 
-from src.architectures.mf_mlp import MF_MLP # MF_CNN import removed
+from src.architectures.mf_mlp import MF_MLP
 from src.utils.metrics import calculate_accuracy
 from src.utils.logging_utils import log_metrics
 from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists
@@ -33,15 +33,15 @@ def mf_local_loss_fn(
     loss = criterion(goodness_scores_i, targets)
     return loss
 
-# --- evaluate_mf_local_loss (MODIFIED for MLP) ---
+# --- evaluate_mf_local_loss (Argument order already correct) ---
 @torch.no_grad()
 def evaluate_mf_local_loss(
-    model: MF_MLP, # <<< MODIFIED >>> Model is MF_MLP
+    model: MF_MLP,
     matrix_index: int,
     criterion: nn.Module,
     val_loader: DataLoader,
     device: torch.device,
-    input_adapter: Callable[[torch.Tensor], torch.Tensor], # <<< MODIFIED: No longer Optional for MLP
+    input_adapter: Callable[[torch.Tensor], torch.Tensor],
     log_prefix: str = "Layer",
 ) -> float:
     """
@@ -62,7 +62,7 @@ def evaluate_mf_local_loss(
         images, labels = images.to(device), labels.to(device)
         batch_size = images.size(0)
 
-        adapted_input = input_adapter(images) # Apply adapter for MLP
+        adapted_input = input_adapter(images)
         all_activations_flat = model.forward_with_intermediate_activations(adapted_input)
         if len(all_activations_flat) <= matrix_index:
             logger.error(f"{log_prefix} Eval: Activation list too short ({len(all_activations_flat)}) for index {matrix_index}.")
@@ -77,18 +77,18 @@ def evaluate_mf_local_loss(
     return avg_loss
 
 
-# --- train_mf_matrix_only (MODIFIED for MLP) ---
+# --- train_mf_matrix_only (CORRECTED ARGUMENT ORDER) ---
 def train_mf_matrix_only(
-    model: MF_MLP, # <<< MODIFIED >>>
+    model: MF_MLP,
     matrix_index: int,
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     train_loader: DataLoader,
-    val_loader: Optional[DataLoader],
     epochs: int,
     device: torch.device,
-    input_adapter: Callable[[torch.Tensor], torch.Tensor], # <<< MODIFIED: No longer Optional for MLP
+    input_adapter: Callable[[torch.Tensor], torch.Tensor],
     early_stopping_config: Dict[str, Any],
+    val_loader: Optional[DataLoader] = None, # Default args start here
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     step_ref: List[int] = [-1],
@@ -157,7 +157,7 @@ def train_mf_matrix_only(
         epoch_summary_metrics = {"global_step": step_ref[0], f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss, f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_matrix_epoch}
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
 
-        if es_enabled:
+        if es_enabled and val_loader is not None: # Ensure val_loader exists for ES
             projection_matrix.requires_grad_(False)
             val_loss = evaluate_mf_local_loss(
                 model=model, matrix_index=matrix_index, criterion=criterion,
@@ -179,15 +179,15 @@ def train_mf_matrix_only(
     return final_avg_epoch_loss, peak_mem_matrix_train, epochs_trained
 
 
-# --- train_mf_model (MODIFIED - Orchestrates MLP) ---
+# --- train_mf_model (CORRECTED ARGUMENT ORDER) ---
 def train_mf_model(
-    model: MF_MLP, # <<< MODIFIED >>>
+    model: MF_MLP,
     train_loader: DataLoader,
-    val_loader: Optional[DataLoader],
     config: Dict[str, Any],
     device: torch.device,
+    input_adapter: Callable[[torch.Tensor], torch.Tensor],
+    val_loader: Optional[DataLoader] = None, # Default args start here
     wandb_run: Optional[Any] = None,
-    input_adapter: Callable[[torch.Tensor], torch.Tensor], # <<< MODIFIED: No longer Optional for MLP
     step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
@@ -222,22 +222,24 @@ def train_mf_model(
 
     logger.debug("Freezing all model parameters initially."); [p.requires_grad_(False) for p in model.parameters()]; model.eval()
 
-    m0_peak_mem, epochs_trained_m0 = 0.0, 0
+    m0_peak_mem = 0.0; epochs_trained_m0 = 0; final_avg_loss_m0 = float('nan')
     if num_matrices_M > 0:
         m0_params = [model.get_projection_matrix(0)]
         model.get_projection_matrix(0).requires_grad_(True)
         m0_optimizer = getattr(optim, optimizer_name)(m0_params, lr=lr, weight_decay=weight_decay, **optimizer_extra_kwargs)
-        _, m0_peak_mem, epochs_trained_m0 = train_mf_matrix_only(
+        final_avg_loss_m0, m0_peak_mem, epochs_trained_m0 = train_mf_matrix_only(
             model=model, matrix_index=0, optimizer=m0_optimizer,
-            criterion=mf_criterion, train_loader=train_loader, val_loader=val_loader, epochs=epochs_per_layer, device=device,
-            input_adapter=input_adapter,
-            early_stopping_config=mf_early_stopping_config, wandb_run=wandb_run, log_interval=log_interval, step_ref=step_ref,
+            criterion=mf_criterion, train_loader=train_loader,
+            epochs=epochs_per_layer, device=device, input_adapter=input_adapter,
+            early_stopping_config=mf_early_stopping_config, val_loader=val_loader,
+            wandb_run=wandb_run, log_interval=log_interval, step_ref=step_ref,
             gpu_handle=gpu_handle, nvml_active=nvml_active
         )
         total_epochs_trained_all_layers += epochs_trained_m0
         peak_mem_train = max(peak_mem_train, m0_peak_mem)
         model.get_projection_matrix(0).requires_grad_(False)
-        if checkpoint_dir: save_checkpoint(state={"state_dict": model.state_dict(), "layer_trained_index": -1, "epochs_trained": epochs_trained_m0}, is_best=False, filename="mf_matrix_M0_complete.pth", checkpoint_dir=checkpoint_dir,)
+        if checkpoint_dir: save_checkpoint(state={"state_dict": model.state_dict(), "layer_trained_index": -1, "epochs_trained": epochs_trained_m0, "final_avg_loss": final_avg_loss_m0}, is_best=False, filename="mf_matrix_M0_complete.pth", checkpoint_dir=checkpoint_dir,)
+
 
     for i in range(num_layers_W):
         w_layer_log_idx = i + 1; m_matrix_log_idx = i + 1
@@ -245,21 +247,19 @@ def train_mf_model(
         logger.info(f"--- Starting MF training for {log_prefix} ---")
 
         params_to_optimize = []
-        # MLP case
-        if i*2 < len(model.layers): # Linear layer W_{i+1}
+        if i*2 < len(model.layers):
             linear_layer = model.layers[i*2]
             linear_params = list(linear_layer.parameters())
             for p in linear_params: p.requires_grad_(True)
             params_to_optimize.extend(linear_params)
             linear_layer.train()
-            model.layers[i*2+1].train() # Corresponding activation function
+            model.layers[i*2+1].train()
         else: logger.error(f"{log_prefix}: Linear layer index {i*2} out of range."); continue
 
-        if m_matrix_log_idx < len(model.projection_matrices): # Projection matrix M_{i+1}
-            projection_matrix = model.get_projection_matrix(m_matrix_log_idx)
-            projection_matrix.requires_grad_(True)
-            params_to_optimize.append(projection_matrix)
-        else: logger.error(f"{log_prefix}: Projection matrix index {m_matrix_log_idx} out of range."); continue
+        projection_matrix = model.get_projection_matrix(m_matrix_log_idx) # Should be i+1
+        if projection_matrix is None : logger.error(f"{log_prefix}: Projection matrix index {m_matrix_log_idx} is None."); continue
+        projection_matrix.requires_grad_(True)
+        params_to_optimize.append(projection_matrix)
 
         if not params_to_optimize: logger.error(f"{log_prefix}: No parameters to optimize."); continue
         optimizer = getattr(optim, optimizer_name)(params_to_optimize, lr=lr, weight_decay=weight_decay, **optimizer_extra_kwargs)
@@ -275,8 +275,8 @@ def train_mf_model(
         for epoch in range(epochs_per_layer):
             epochs_trained_layer_i = epoch + 1
             epoch_loss = 0.0; epoch_samples = 0; peak_mem_layer_epoch = 0.0
-            model.layers[i*2].train(); model.layers[i*2+1].train() # W_{i+1} and activation
-            projection_matrix.requires_grad_(True) # M_{i+1}
+            model.layers[i*2].train(); model.layers[i*2+1].train()
+            projection_matrix.requires_grad_(True)
 
             pbar = tqdm(train_loader, desc=f"{log_prefix} Epoch {epoch+1}/{epochs_per_layer}", leave=False)
             for batch_idx, (images, labels) in enumerate(pbar):
@@ -285,13 +285,22 @@ def train_mf_model(
 
                 with torch.no_grad():
                     adapted_input = input_adapter(images)
-                    all_activations_flat_prev = model.forward_with_intermediate_activations(adapted_input)
-                    if len(all_activations_flat_prev) <= i: logger.error(f"{log_prefix} Batch {batch_idx}: Prev Act list too short."); continue
-                    prev_activation = all_activations_flat_prev[i] # This is a_i (flattened)
+                    # Get a_i: output of previous layer (or input if i=0 for W1,M1 train)
+                    # all_activations_flat_prev = model.forward_with_intermediate_activations(adapted_input)
+                    # Need a_i, which is input to W_{i+1}
+                    # if i=0, a_i is a_0 (adapted_input).
+                    # if i>0, a_i is output of layer i (index i in all_activations_flat_prev)
+                    if i == 0: # Training W1, M1. Input is a0.
+                        prev_activation = adapted_input
+                    else: # Training W_{i+1}, M_{i+1}. Input is a_i.
+                          # We need to recompute up to a_i without grads on those earlier layers
+                        temp_act = adapted_input
+                        for k in range(i): # Iterate through layers 0 to i-1
+                            temp_act = model.layers[k*2+1](model.layers[k*2](temp_act))
+                        prev_activation = temp_act.detach()
 
-                # Forward through W_{i+1} and activation (MLP specific)
-                pre_activation_z_next = model.layers[i*2](prev_activation) # W_{i+1}(a_i)
-                activation_a_next_flat = model.layers[i*2+1](pre_activation_z_next) # sigma(z_{i+1}), already flat
+                pre_activation_z_next = model.layers[i*2](prev_activation)
+                activation_a_next_flat = model.layers[i*2+1](pre_activation_z_next)
 
                 loss = mf_local_loss_fn(activation_a_next_flat, projection_matrix, labels, mf_criterion)
                 if torch.isnan(loss) or torch.isinf(loss): logger.error(f"NaN/Inf loss {log_prefix}, Epoch {epoch+1}, Batch {batch_idx}."); break
@@ -316,12 +325,17 @@ def train_mf_model(
             epoch_summary_metrics = {"global_step": step_ref[0], f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss, f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_layer_epoch}
             log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
 
-            if es_enabled_layer:
-                 model.layers[i*2].eval(); model.layers[i*2+1].eval()
-                 projection_matrix.requires_grad_(False)
+            if es_enabled_layer and val_loader is not None:
+                 model.layers[i*2].eval(); model.layers[i*2+1].eval() # Eval for W_{i+1}
+                 projection_matrix.requires_grad_(False) # Eval for M_{i+1}
+                 # For val loss of M_{i+1}, we need a_{i+1}
+                 # This means we need to pass adapted_input through W_0...W_{i+1}
+                 # evaluate_mf_local_loss expects the index of the matrix, and the input_adapter will give a_0
+                 # then forward_with_intermediate_activations will give all 'a's
+                 # So, for M_{i+1}, we need a_{i+1}, which is all_activations_flat[i+1]
                  val_loss = evaluate_mf_local_loss(model, m_matrix_log_idx, mf_criterion, val_loader, device, input_adapter, log_prefix)
-                 logger.info(f"{log_prefix} Epoch {epoch+1}/{epochs_per_layer} - Val Local Loss: {val_loss:.6f}")
-                 val_metrics = {"global_step": step_ref[0], f"{log_prefix}/Val_LocalLoss_Epoch": val_loss}
+                 logger.info(f"{log_prefix} Epoch {epoch+1}/{epochs_per_layer} - Val Local Loss (for M{m_matrix_log_idx}): {val_loss:.6f}")
+                 val_metrics = {"global_step": step_ref[0], f"{log_prefix}/Val_LocalLoss_M{m_matrix_log_idx}_Epoch": val_loss}
                  log_metrics(val_metrics, wandb_run=wandb_run, commit=True)
                  if torch.isnan(torch.tensor(val_loss)): epochs_no_improve_layer += 1
                  else:
@@ -331,7 +345,7 @@ def train_mf_model(
 
         total_epochs_trained_all_layers += epochs_trained_layer_i
         peak_mem_train = max(peak_mem_train, peak_mem_layer_train)
-        for p in params_to_optimize: p.requires_grad_(False)
+        for p_opt in params_to_optimize: p_opt.requires_grad_(False)
         model.layers[i*2].eval(); model.layers[i*2+1].eval()
 
         layer_summary_metrics = {
@@ -343,20 +357,21 @@ def train_mf_model(
 
         if checkpoint_dir:
             create_directory_if_not_exists(checkpoint_dir); chkpt_filename = f"mf_layer_{w_layer_log_idx}_complete.pth"
-            save_checkpoint(state={"state_dict": model.state_dict(), "layer_trained_index": i, "epochs_trained": epochs_trained_layer_i}, is_best=False, filename=chkpt_filename, checkpoint_dir=checkpoint_dir,)
+            save_checkpoint(state={"state_dict": model.state_dict(), "layer_trained_index": i, "epochs_trained": epochs_trained_layer_i, "final_avg_loss": final_avg_epoch_loss}, is_best=False, filename=chkpt_filename, checkpoint_dir=checkpoint_dir,)
+
 
     logger.info(f"Finished all layer-wise MF training. Total Epochs Trained (Sum): {total_epochs_trained_all_layers}")
     model.eval()
     return peak_mem_train
 
 
-# --- evaluate_mf_model (MODIFIED for MLP) ---
+# --- evaluate_mf_model (Argument order already correct) ---
 def evaluate_mf_model(
-    model: MF_MLP, # <<< MODIFIED >>>
+    model: MF_MLP,
     data_loader: DataLoader,
     device: torch.device,
-    criterion: Optional[nn.Module] = None,
-    input_adapter: Callable[[torch.Tensor], torch.Tensor], # <<< MODIFIED: No longer Optional for MLP
+    input_adapter: Callable[[torch.Tensor], torch.Tensor],
+    criterion: Optional[nn.Module] = None, # Keep Optional for signature consistency if other algos use it
 ) -> Dict[str, float]:
     """
     Evaluates the trained MF_MLP model using the paper's "BP-style" approach.
@@ -378,7 +393,7 @@ def evaluate_mf_model(
         pbar = tqdm(data_loader, desc=f"Evaluating MF MLP (BP-style)", leave=False)
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
-            eval_input = input_adapter(images) # Apply adapter for MLP
+            eval_input = input_adapter(images)
             all_activations_flat = model.forward_with_intermediate_activations(eval_input)
             if len(all_activations_flat) <= last_activation_index: logger.error(f"Activation list len ({len(all_activations_flat)}) too short for a_{last_activation_index}."); continue
             last_activation_flat = all_activations_flat[last_activation_index].to(device)
@@ -387,5 +402,5 @@ def evaluate_mf_model(
             predicted_labels = torch.argmax(goodness_scores, dim=1)
             total_correct += (predicted_labels == labels).sum().item(); total_samples += labels.size(0)
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
-    logger.info(f"MF Evaluation Results (MLP, BP-style): Accuracy: {accuracy:.2f}%"); results = {"eval_accuracy": accuracy, "eval_loss": float("nan")} # Criterion not used for loss here
+    logger.info(f"MF Evaluation Results (MLP, BP-style): Accuracy: {accuracy:.2f}%"); results = {"eval_accuracy": accuracy, "eval_loss": float("nan")}
     return results
