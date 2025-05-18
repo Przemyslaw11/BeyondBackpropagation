@@ -10,23 +10,24 @@
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out # Output file (%A=jobid, %a=taskid)
 #SBATCH --error=slurm_logs/%x-%A_%a.err  # Error file
-#SBATCH --array=1-33 # <<< UPDATED: Total number of config files listed below is 33 >>>
+#SBATCH --array=1-25 # <<< UPDATED: Total number of config files listed below is 25 >>>
 
 # --- Configuration ---
 # Define an array of FINAL configuration files (relative to project root)
 # Ensure the --array range above matches the number of files listed!
 CONFIG_FILES=(
-    # --- BP Baselines (10 files - Original) ---
-    "configs/bp_baselines/cifar100_cnn_3block_bp.yaml"
-    "configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml"
-    "configs/bp_baselines/cifar10_cnn_3block_bp.yaml"
-    "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml"
-    "configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml"
-    "configs/bp_baselines/fashion_mnist_mlp_2x1000_bp.yaml"
-    "configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml"
-    "configs/bp_baselines/mnist_cnn_3block_bp.yaml"
-    "configs/bp_baselines/mnist_mlp_3x1000_bp.yaml"
-    "configs/bp_baselines/mnist_mlp_4x2000_bp.yaml"
+    # --- BP Baselines (10 files - Original for FF MLP, CaFo CNN, MF MLP) ---
+    "configs/bp_baselines/cifar100_cnn_3block_bp.yaml"      # For CaFo
+    "configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml"     # For MF (MLP)
+    "configs/bp_baselines/cifar10_cnn_3block_bp.yaml"       # For CaFo
+    "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml"      # For MF (MLP)
+    "configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml" # For CaFo
+    "configs/bp_baselines/fashion_mnist_mlp_2x1000_bp.yaml" # For MF (MLP)
+    "configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml" # For FF
+    "configs/bp_baselines/mnist_cnn_3block_bp.yaml"         # For CaFo
+    "configs/bp_baselines/mnist_mlp_3x1000_bp.yaml"        # For FF
+    "configs/bp_baselines/mnist_mlp_4x2000_bp.yaml"        # For FF
+    "configs/bp_baselines/mnist_mlp_2x1000_bp.yaml"        # For MF (MLP) - Ensure this was intended if MNIST MLP 3x1000 for FF and 2x1000 for MF are distinct BP targets
 
     # --- CaFo Final/Tuned (8 files - Original) ---
     "configs/cafo/cafodfa_cifar100_cnn_3block.yaml"
@@ -48,22 +49,8 @@ CONFIG_FILES=(
     "configs/mf/cifar100_mlp_3x2000.yaml"
     "configs/mf/cifar10_mlp_3x2000.yaml"
     "configs/mf/fashion_mnist_mlp_2x1000.yaml"
-    "configs/mf/mnist_mlp_2x1000.yaml" # Added MNIST MLP
-
-    # --- MF Final/Tuned (CNN) (4 files - ADDED) ---
-    "configs/mf/mnist_cnn_4layer.yaml"
-    "configs/mf/fashion_mnist_cnn_4layer.yaml"
-    "configs/mf/cifar10_cnn_4layer.yaml"
-    "configs/mf/cifar100_cnn_4layer.yaml"
-
-    # --- BP Baselines for MF CNN (4 files - ADDED) ---
-    "configs/bp_baselines/mnist_cnn_4layer_bp.yaml"
-    "configs/bp_baselines/fashion_mnist_cnn_4layer_bp.yaml"
-    "configs/bp_baselines/cifar10_cnn_4layer_bp.yaml"
-    "configs/bp_baselines/cifar100_cnn_4layer_bp.yaml"
+    "configs/mf/mnist_mlp_2x1000.yaml"
 )
-# <<< IMPORTANT: Ensure the --array=1-33 range above matches the 33 files listed! >>>
-
 
 # Get number of configs (for verification, range is set manually above)
 NUM_CONFIGS=${#CONFIG_FILES[@]}
@@ -71,7 +58,7 @@ echo "INFO: Number of config files listed: ${NUM_CONFIGS}. Slurm array range set
 if [ "${SLURM_ARRAY_TASK_MAX}" -ne "${NUM_CONFIGS}" ]; then
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     echo "!! WARNING: Slurm --array range (1-${SLURM_ARRAY_TASK_MAX}) DOES NOT MATCH the number   !!"
-    echo "!!          of config files listed below (${NUM_CONFIGS}). Check the script!            !!"
+    echo "!!          of config files listed in this script (${NUM_CONFIGS}). Check the script!            !!"
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     # Optionally exit here if the mismatch is critical: exit 1
 fi
