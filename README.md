@@ -63,17 +63,14 @@
 │       ├── cafo_cifar100_cnn_3block_tune.yaml
 │       ├── cafo_cifar10_cnn_3block_tune.yaml
 │       ├── cafo_fashion_mnist_cnn_3block_tune.yaml
-│       ├── cafo_fashion_mnist_cnn_3block_tuning.yaml
 │       ├── cafo_mnist_cnn_3block_tune.yaml
 │       ├── ff_fashion_mnist_mlp_4x2000_tune.yaml
 │       ├── ff_mnist_mlp_3x1000_ADAMW_tune.yaml
 │       ├── ff_mnist_mlp_3x1000_SGD_tune.yaml
 │       ├── ff_mnist_mlp_4x2000_tune.yaml
-│       ├── ff_mnist_mlp_4x2000_tuning.yaml
 │       ├── mf_cifar100_mlp_3x2000_mf_tune.yaml
 │       ├── mf_cifar10_mlp_3x2000_mf_tune.yaml
 │       ├── mf_fashion_mnist_mlp_2x1000_mf_tune.yaml
-│       ├── mf_fashion_mnist_mlp_2x1000_tuning.yaml
 │       └── mf_mnist_mlp_2x1000_mf_tune.yaml
 ├── data
 ├── requirements.txt
@@ -104,7 +101,6 @@
 │   ├── architectures
 │   │   ├── __init__.py
 │   │   ├── cafo_cnn.py
-│   │   ├── ff_hinton.py
 │   │   ├── ff_mlp.py
 │   │   └── mf_mlp.py
 │   ├── baselines

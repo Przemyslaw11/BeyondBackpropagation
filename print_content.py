@@ -29,7 +29,7 @@ def should_ignore(file_path, ignore_patterns, script_path):
         return True
 
     # Always ignore a.txt
-    if os.path.basename(file_path) == "a.txt":
+    if os.path.basename(file_path) in ["a.txt", "find_slurm.sh"]:
         return True
 
     relative_path = os.path.normpath(file_path)
