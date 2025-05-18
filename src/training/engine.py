@@ -1,6 +1,3 @@
-# --------------------------------------------------------------------------------
-# File: ./src/training/engine.py (MODIFIED - Removed MF_CNN references)
-# --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import logging
@@ -26,8 +23,7 @@ from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.profiling import profile_model_flops
 from src.data_utils.datasets import get_dataloaders
 from src.architectures import (
-    FF_MLP, CaFo_CNN, MF_MLP, # MF_CNN Removed
-    # get_architecture # We are modifying this logic directly below
+    FF_MLP, CaFo_CNN, MF_MLP
 )
 from src.algorithms import (
     get_training_function,
@@ -63,7 +59,7 @@ def get_model_and_adapter(
              logger.debug(f"Calculated input_dim={arch_params['input_dim']} for {arch_name}")
          input_adapter = lambda x: x.view(x.shape[0], -1)
          logger.debug(f"Arch {arch_name} requires input flattening adapter.")
-    elif arch_name == 'cafo_cnn': # MODIFIED: Was ['cafo_cnn', 'mf_cnn']
+    elif arch_name == 'cafo_cnn':
          if 'input_channels' not in arch_params: arch_params['input_channels'] = input_channels
          if 'image_size' not in arch_params: arch_params['image_size'] = image_size
          input_adapter = None
@@ -102,16 +98,9 @@ def get_model_and_adapter(
             if is_bp_baseline: logger.info("Using standard forward pass of MF_MLP for BP baseline.")
             else: logger.debug("Using native MF_MLP structure.")
 
-    elif arch_name == 'cafo_cnn': # MODIFIED: Was ['cafo_cnn', 'mf_cnn']
+    elif arch_name == 'cafo_cnn':
         logger.debug(f"'{arch_name}' matched CNN block.")
-        # cnn_base = None # Not needed as we only have one case now
-        # if arch_name == 'cafo_cnn': # This is the only case
         cnn_base = CaFo_CNN(**arch_params)
-        # elif arch_name == 'mf_cnn': # REMOVED MF_CNN case
-            # cnn_base = MF_CNN(**arch_params)
-
-        # if cnn_base is None: # This check is now redundant for cafo_cnn only
-             # raise RuntimeError(f"Internal error: Failed to select CNN base for {arch_name}")
 
         if is_bp_baseline:
             logger.info(f"Creating BP baseline model from {arch_name.upper()} blocks + final Linear layer.")
@@ -148,7 +137,6 @@ def get_model_and_adapter(
     logger.info(f"Model '{arch_name.upper()}' (Algo: {algorithm_name.upper()}) created.")
     return model, input_adapter
 
-# --- run_training function (MODIFIED with Seed Handling) ---
 def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> Dict[str, Any]:
     results = {}
     nvml_active = False
@@ -157,7 +145,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
     tracker = None
     carbon_csv_path = None
     run_start_time = time.time()
-    step_ref = [-1] # Use a list to pass by reference
+    step_ref = [-1]
     peak_gpu_mem_during_training = float('nan')
     algorithm_name = config.get("algorithm", {}).get("name", "").lower()
 
@@ -258,7 +246,6 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         logger.info("Starting training phase...")
         training_fn = get_training_function(algorithm_name)
         train_loop_start_time = time.time()
-        # total_energy_joules = None # Already defined above as None
 
         with monitor if monitor else contextlib.nullcontext() as active_monitor:
             training_args = {
@@ -268,7 +255,6 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
             if algorithm_name in ["bp", "ff", "cafo", "mf"]:
                 training_args["val_loader"] = val_loader
 
-            # MODIFIED: Add input_adapter for BP (if not CaFo_CNN) or MF (which is always MLP now)
             if (algorithm_name == "bp" and not isinstance(model, CaFo_CNN)) or \
                (algorithm_name == "mf"):
                  training_args["input_adapter"] = input_adapter
@@ -280,7 +266,6 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
 
         train_loop_duration = time.time() - train_loop_start_time
         results["training_duration_sec"] = train_loop_duration
-        # final_summary_step = step_ref[0] + 1 if step_ref[0] >= 0 else 0 # Defined in finally
         logger.debug(f"Training loop complete. Final global_step: {step_ref[0]}.")
         results["peak_gpu_mem_used_mib"] = peak_gpu_mem_during_training
 
@@ -292,7 +277,6 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         eval_args = { "model": model, "data_loader": test_loader, "device": device }
         if algorithm_name in ["bp", "cafo", "mf"]: eval_args["criterion"] = eval_criterion
 
-        # MODIFIED: Add input_adapter for BP (if not CaFo_CNN) or MF (which is always MLP now)
         if (algorithm_name == "bp" and not isinstance(model, CaFo_CNN)) or \
            (algorithm_name == "mf"):
              eval_args["input_adapter"] = input_adapter
@@ -315,10 +299,10 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
     finally:
         total_run_time = time.time() - run_start_time
         results["total_run_duration_sec"] = total_run_time
-        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0 # Ensure it's at least 0
+        final_summary_step = step_ref[0] + 1 if step_ref[0] >= -1 else 0
         logger.debug(f"Final summary logging step: {final_summary_step}")
         codecarbon_emissions_kg = float('nan'); codecarbon_emissions_g = float('nan')
-        total_energy_joules = results.get("total_gpu_energy_joules") # retrieve if already set by monitor
+        total_energy_joules = results.get("total_gpu_energy_joules")
         if tracker:
             logger.info("Stopping CodeCarbon tracker...")
             try:
@@ -351,8 +335,8 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
                 else: logger.warning("CodeCarbon CSV path not set.")
             except Exception as e_tracker: logger.error(f"Error stopping/reading CodeCarbon tracker: {e_tracker}", exc_info=True)
         results["codecarbon_emissions_kgCO2e"] = codecarbon_emissions_kg; results["codecarbon_emissions_gCO2e"] = codecarbon_emissions_g
-        if monitor and total_energy_joules is None : # If monitor ran but total_energy_joules wasn't set from its context
-            total_energy_joules = monitor.stop() # Call stop again, it should be idempotent or return stored value
+        if monitor and total_energy_joules is None :
+            total_energy_joules = monitor.stop()
         if total_energy_joules is not None:
             results["total_gpu_energy_joules"] = total_energy_joules
             results["total_gpu_energy_wh"] = total_energy_joules / 3600.0

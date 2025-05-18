@@ -1,11 +1,8 @@
-# File: ./src/architectures/__init__.py (MODIFIED)
-# Import the architecture classes
 from .ff_mlp import FF_MLP
 from .cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
 from .mf_mlp import MF_MLP
 
-# --- Factory Function (Ensure BP baseline creation is correct) ---
-from typing import Dict, Any, Optional, Callable # Added Optional, Callable
+from typing import Dict, Any, Optional, Callable
 import torch
 import torch.nn as nn
 import logging
@@ -39,21 +36,18 @@ def get_architecture(
          if 'input_dim' not in arch_params:
              arch_params['input_dim'] = input_channels * image_size * image_size
              logger.debug(f"Calculated input_dim={arch_params['input_dim']} for {name}")
-    # <<< MODIFIED: Removed 'mf_cnn' >>>
-    elif name == 'cafo_cnn': # Was: name in ['cafo_cnn', 'mf_cnn']
+    elif name == 'cafo_cnn':
          if 'input_channels' not in arch_params: arch_params['input_channels'] = input_channels
          if 'image_size' not in arch_params: arch_params['image_size'] = image_size
     else:
-        # This check might need to be more specific if only ff_mlp, mf_mlp, cafo_cnn are valid
         if name not in ['ff_mlp', 'mf_mlp', 'cafo_cnn']:
             raise ValueError(f"Unknown architecture base name: {name}")
 
 
     # --- Instantiate Architecture ---
     model: Optional[nn.Module] = None
-    input_adapter: Optional[Callable] = None # Initialize input_adapter
+    input_adapter: Optional[Callable] = None
 
-    # <<< MODIFIED: Consolidate MLP logic >>>
     if name in ['ff_mlp', 'mf_mlp']:
         input_adapter = lambda x: x.view(x.shape[0], -1) # Flatten input
         logger.debug(f"Arch {name} requires input flattening adapter.")
@@ -83,12 +77,10 @@ def get_architecture(
             if is_bp_baseline: logger.info("Using standard forward pass of MF_MLP for BP baseline.")
             else: logger.debug("Using native MF_MLP structure.")
 
-    # <<< MODIFIED: Consolidate CNN logic - now only for CaFo_CNN >>>
-    elif name == 'cafo_cnn': # Was: name in ['cafo_cnn', 'mf_cnn']
-        input_adapter = None # CNNs don't need flattening adapter
+    elif name == 'cafo_cnn':
+        input_adapter = None
         logger.debug(f"Arch {name} does not require standard input adapter.")
         
-        # Instantiate CaFo base
         cnn_base = CaFo_CNN(**arch_params)
 
         if is_bp_baseline:
@@ -116,25 +108,23 @@ def get_architecture(
             )
             logger.debug(f"Created BP baseline Sequential model from {name.upper()} spec.")
         else:
-            model = cnn_base # Use the native CaFo_CNN structure
+            model = cnn_base
             logger.debug(f"Using native {name.upper()} structure.")
 
     else: # Should not be reachable if initial checks are correct and all valid names are handled
-        if name not in ['ff_mlp', 'mf_mlp', 'cafo_cnn']: # Make this more robust
+        if name not in ['ff_mlp', 'mf_mlp', 'cafo_cnn']:
              raise ValueError(f"Unknown or unhandled architecture name: {name}")
 
     if model is None: raise RuntimeError(f"Model instantiation failed for architecture: {name}")
     logger.info(f"Model '{name.upper()}' (Algo: {algorithm_name.upper()}) created.")
-    # <<< RETURN MODIFIED >>> Return adapter as well
     return model, input_adapter
 
 
-# <<< MODIFIED >>> Update __all__
 __all__ = [
     "FF_MLP",
     "CaFo_CNN",
     "CaFoBlock",
     "CaFoPredictor",
     "MF_MLP",
-    "get_architecture" # Keep factory
+    "get_architecture"
 ]
