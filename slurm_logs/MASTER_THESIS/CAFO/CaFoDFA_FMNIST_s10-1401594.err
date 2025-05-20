@@ -30,14 +30,11 @@ wandb: Syncing run cafodfa_fashion_mnist_cnn_3block
 wandb: ⭐️ View project at https://wandb.ai/przspyra11/BeyondBackpropagation
 wandb: 🚀 View run at https://wandb.ai/przspyra11/BeyondBackpropagation/runs/52g16vej
 [codecarbon INFO @ 03:23:23] offline tracker init
-[codecarbon WARNING @ 03:23:23] Multiple instances of codecarbon are allowed to run at the same time.
 [codecarbon INFO @ 03:23:23] [setup] RAM Tracking...
 [codecarbon INFO @ 03:23:23] [setup] CPU Tracking...
-[codecarbon WARNING @ 03:23:23] No CPU tracking mode found. Falling back on estimation based on TDP for CPU. 
  Linux OS detected: Please ensure RAPL files exist at /sys/class/powercap/intel-rapl/subsystem to measure CPU
 
 [codecarbon INFO @ 03:23:23] CPU Model on constant consumption mode: AMD EPYC 7742 64-Core Processor
-[codecarbon WARNING @ 03:23:23] No CPU tracking mode found. Falling back on CPU load mode.
 [codecarbon INFO @ 03:23:23] [setup] GPU Tracking...
 [codecarbon INFO @ 03:23:23] Tracking Nvidia GPU via pynvml
 [codecarbon INFO @ 03:23:23] The below tracking methods have been set up:
