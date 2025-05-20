@@ -78,7 +78,6 @@ Configuration loaded and merged successfully:
 2025-05-04 23:48:45,182 - src.utils.helpers - INFO - Set random seed to 44 (including CUDA)
 2025-05-04 23:48:45,182 - src.utils.logging_utils - INFO - Using random seed: 44
 2025-05-04 23:48:45,182 - src.utils.logging_utils - INFO - Using device: cuda (Preference: 'auto')
-2025-05-04 23:48:45,182 - src.utils.logging_utils - WARNING - WANDB_API_KEY environment variable not set. W&B logging might fail or prompt.
 2025-05-04 23:48:46,342 - src.utils.logging_utils - INFO - Weights & Biases run initialized: https://wandb.ai/przspyra11/BeyondBackpropagation/runs/adw7lqq0
 2025-05-04 23:48:46,348 - src.utils.monitoring - INFO - NVML initialized successfully.
 2025-05-04 23:48:46,348 - src.utils.monitoring - INFO - NVIDIA Driver Version: 570.86.15
@@ -126,7 +125,6 @@ Files already downloaded and verified
 2025-05-04 23:48:49,323 - src.baselines.bp - INFO - BP Training using optimizer config: {'type': 'AdamW', 'lr': 0.00010362161015212055, 'weight_decay': 9.105881789069153e-06}
 2025-05-04 23:48:49,323 - src.baselines.bp - INFO - Early stopping enabled: Metric='bp_val_loss', Patience=5, Mode='min', MinDelta=0.0
 2025-05-04 23:48:49,324 - src.baselines.bp - INFO - Using optimizer: AdamW with params: {'lr': 0.00010362161015212055, 'weight_decay': 9.105881789069153e-06}
-2025-05-04 23:48:49,324 - src.baselines.bp - WARNING - BP Baseline Optimizer - WARNING: 'projection_matrices' found.
 2025-05-04 23:48:50,657 - src.utils.logging_utils - INFO - 
 2025-05-04 23:48:50,658 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 100) ---
 2025-05-04 23:48:50,658 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.8158
