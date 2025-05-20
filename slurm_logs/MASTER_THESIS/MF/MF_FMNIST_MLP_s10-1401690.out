@@ -121,7 +121,6 @@ Configuration loaded and merged successfully:
 2025-05-08 04:08:42,033 - src.utils.logging_utils - INFO - Starting training phase...
 2025-05-08 04:08:42,033 - src.utils.monitoring - INFO - Started energy monitoring for GPU 0 (interval: 0.2s).
 2025-05-08 04:08:42,034 - src.algorithms.mf - INFO - Starting layer-wise MF training for MLP with 2 W-layers and 3 M-matrices.
-2025-05-08 04:08:42,034 - src.algorithms.mf - ERROR - Layer_M0 requires_grad is False.
 2025-05-08 04:08:42,049 - src.algorithms.mf - INFO - --- Starting MF training for Layer_W1_M1 ---
 2025-05-08 04:08:44,132 - src.utils.logging_utils - INFO - 
 2025-05-08 04:08:44,133 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 421) ---

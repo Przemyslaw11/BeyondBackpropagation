@@ -123,7 +123,6 @@ Files already downloaded and verified
 2025-05-07 20:53:22,435 - src.utils.logging_utils - INFO - Starting training phase...
 2025-05-07 20:53:22,435 - src.utils.monitoring - INFO - Started energy monitoring for GPU 0 (interval: 0.2s).
 2025-05-07 20:53:22,435 - src.algorithms.mf - INFO - Starting layer-wise MF training for MLP with 3 W-layers and 4 M-matrices.
-2025-05-07 20:53:22,436 - src.algorithms.mf - ERROR - Layer_M0 requires_grad is False.
 2025-05-07 20:53:22,800 - src.algorithms.mf - INFO - --- Starting MF training for Layer_W1_M1 ---
 2025-05-07 20:53:27,254 - src.utils.logging_utils - INFO - 
 2025-05-07 20:53:27,255 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 351) ---
