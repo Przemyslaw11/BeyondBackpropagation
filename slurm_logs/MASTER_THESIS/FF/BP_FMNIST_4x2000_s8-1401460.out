@@ -78,7 +78,6 @@ Configuration loaded and merged successfully:
 2025-05-08 02:27:30,757 - src.utils.helpers - INFO - Set random seed to 49 (including CUDA)
 2025-05-08 02:27:30,757 - src.utils.logging_utils - INFO - Using random seed: 49
 2025-05-08 02:27:30,757 - src.utils.logging_utils - INFO - Using device: cuda (Preference: 'auto')
-2025-05-08 02:27:30,757 - src.utils.logging_utils - WARNING - WANDB_API_KEY environment variable not set. W&B logging might fail or prompt.
 2025-05-08 02:27:32,005 - src.utils.logging_utils - INFO - Weights & Biases run initialized: https://wandb.ai/przspyra11/BeyondBackpropagation/runs/wek04nho
 2025-05-08 02:27:32,011 - src.utils.monitoring - INFO - NVML initialized successfully.
 2025-05-08 02:27:32,011 - src.utils.monitoring - INFO - NVIDIA Driver Version: 570.86.15
@@ -939,20 +938,6 @@ Configuration loaded and merged successfully:
 2025-05-08 02:28:17,071 - src.baselines.bp - INFO - Stopping training at epoch 17.
 2025-05-08 02:28:17,071 - src.baselines.bp - INFO - Finished standard Backpropagation training. Total time: 00:00:43
 2025-05-08 02:28:17,072 - src.baselines.bp - INFO - Loading best model state from: checkpoints/bp_fashion_mnist_mlp_4x2000/bp_bp_fashion_mnist_mlp_4x2000_best.pth
-2025-05-08 02:28:17,176 - src.baselines.bp - ERROR - Failed to load best checkpoint from checkpoints/bp_fashion_mnist_mlp_4x2000/bp_bp_fashion_mnist_mlp_4x2000_best.pth: PytorchStreamReader failed reading file data/6: file read failed
-Traceback (most recent call last):
-  File "/net/tscratch/people/plgspyra/BeyondBackpropagation/src/baselines/bp.py", line 365, in train_bp_model
-    best_state_dict = torch.load(best_checkpoint_path, map_location=device)
-  File "/net/tscratch/people/plgspyra/BeyondBackpropagation/venv/lib/python3.10/site-packages/torch/serialization.py", line 1097, in load
-    return _load(
-  File "/net/tscratch/people/plgspyra/BeyondBackpropagation/venv/lib/python3.10/site-packages/torch/serialization.py", line 1525, in _load
-    result = unpickler.load()
-  File "/net/tscratch/people/plgspyra/BeyondBackpropagation/venv/lib/python3.10/site-packages/torch/serialization.py", line 1492, in persistent_load
-    typed_storage = load_tensor(dtype, nbytes, key, _maybe_decode_ascii(location))
-  File "/net/tscratch/people/plgspyra/BeyondBackpropagation/venv/lib/python3.10/site-packages/torch/serialization.py", line 1457, in load_tensor
-    storage = zip_file.get_storage_from_record(name, numel, torch.UntypedStorage)._typed_storage()._untyped_storage
-RuntimeError: PytorchStreamReader failed reading file data/6: file read failed
-2025-05-08 02:28:17,178 - src.baselines.bp - WARNING - Proceeding with model state from the last epoch.
 2025-05-08 02:28:17,178 - src.utils.logging_utils - INFO - Received Peak GPU Memory (sampled during training): 1168.00 MiB
 2025-05-08 02:28:17,179 - src.utils.monitoring - INFO - Stopped energy monitoring for GPU 0.
 2025-05-08 02:28:17,179 - src.utils.logging_utils - INFO - Starting evaluation phase on test set...

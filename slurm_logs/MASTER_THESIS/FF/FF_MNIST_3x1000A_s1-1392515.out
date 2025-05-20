@@ -85,7 +85,6 @@ Configuration loaded and merged successfully:
 2025-05-05 09:48:56,716 - src.utils.helpers - INFO - Set random seed to 42 (including CUDA)
 2025-05-05 09:48:56,716 - src.utils.logging_utils - INFO - Using random seed: 42
 2025-05-05 09:48:56,717 - src.utils.logging_utils - INFO - Using device: cuda (Preference: 'auto')
-2025-05-05 09:48:56,717 - src.utils.logging_utils - WARNING - WANDB_API_KEY environment variable not set. W&B logging might fail or prompt.
 2025-05-05 09:48:57,892 - src.utils.logging_utils - INFO - Weights & Biases run initialized: https://wandb.ai/przspyra11/BeyondBackpropagation/runs/ajtgx6mr
 2025-05-05 09:48:57,898 - src.utils.monitoring - INFO - NVML initialized successfully.
 2025-05-05 09:48:57,898 - src.utils.monitoring - INFO - NVIDIA Driver Version: 570.86.15
