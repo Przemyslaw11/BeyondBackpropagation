@@ -31,7 +31,7 @@ training:
   log_interval: 100
   early_stopping_enabled: true
   early_stopping_metric: "bp_val_loss"
-  early_stopping_patience: 40
+  early_stopping_patience: 20
   early_stopping_mode: "min"
   early_stopping_min_delta: 0.0 
 tuning:
