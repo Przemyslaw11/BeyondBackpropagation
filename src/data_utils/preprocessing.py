@@ -1,34 +1,29 @@
-# File: src/data_utils/preprocessing.py
 import torch
-import torchvision.transforms as T  # Use T alias for brevity
+import torchvision.transforms as T
 import torchvision.transforms.functional as TF
-from typing import Tuple, Dict, List  # Add List
+from typing import Tuple, Dict, List
 import logging
 
 logger = logging.getLogger(__name__)
 
 # --- Normalization Constants ---
-# Use more descriptive names and store in a dictionary for easier access
 DATASET_STATS = {
     "fashionmnist": {
-        # Values calculated on the standard training set (60k images)
         "mean": (0.2860,),
         "std": (0.3530,),
     },
-    "mnist": { # <<< ADDED MNIST STATS >>>
-        # Standard values for MNIST
+    "mnist": {
         "mean": (0.1307,),
         "std": (0.3081,),
     },
     "cifar10": {
-        "mean": (0.4914, 0.4822, 0.4465),  # Standard values
-        "std": (0.2023, 0.1994, 0.2010),  # Standard values (alt: 0.247, 0.243, 0.261)
+        "mean": (0.4914, 0.4822, 0.4465),
+        "std": (0.2023, 0.1994, 0.2010),
     },
     "cifar100": {
-        "mean": (0.5071, 0.4867, 0.4408),  # Standard values
-        "std": (0.2675, 0.2565, 0.2761),  # Standard values
+        "mean": (0.5071, 0.4867, 0.4408),
+        "std": (0.2675, 0.2565, 0.2761),
     },
-    # Add other datasets if needed
 }
 
 
@@ -60,23 +55,19 @@ def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
 
     transform_list = []
 
-    # --- Training specific transforms ---
     if train:
         if dataset_key in ["cifar10", "cifar100"]:
             transform_list.extend(
                 [
-                    T.RandomCrop(32, padding=4, padding_mode="reflect"),  # Pad and crop
+                    T.RandomCrop(32, padding=4, padding_mode="reflect"),
                     T.RandomHorizontalFlip(),
-                    # Add more augmentations if needed (e.g., T.RandAugment(), T.AutoAugment())
                 ]
             )
-        # No standard augmentation for MNIST/FashionMNIST in this setup
-
-    # --- Common transforms (applied after training-specific ones) ---
+-
     transform_list.append(
         T.ToTensor()
-    )  # Converts PIL Image or numpy.ndarray to tensor and scales to [0, 1]
-    transform_list.append(T.Normalize(mean, std))  # Normalize using dataset stats
+    )
+    transform_list.append(T.Normalize(mean, std))
 
     logger.debug(
         f"Transforms for dataset '{dataset_name}' (train={train}): {transform_list}"

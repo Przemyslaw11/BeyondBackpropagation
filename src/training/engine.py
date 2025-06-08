@@ -30,7 +30,6 @@ from src.algorithms import (
     get_evaluation_function,
 )
 
-# --- get_model_and_adapter function ---
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
 ) -> Tuple[ nn.Module, Optional[Callable[[torch.Tensor], torch.Tensor]] ]:
