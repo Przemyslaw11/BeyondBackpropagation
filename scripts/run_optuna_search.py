@@ -1,5 +1,3 @@
-# File: scripts/run_optuna_search.py
-#!/usr/bin/env python
 import argparse
 import logging
 import optuna
@@ -9,25 +7,23 @@ from datetime import datetime
 import sys
 import pprint
 
-# Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from src.utils.config_parser import load_config
 from src.utils.logging_utils import setup_logging, logger
-# <<< MODIFICATION: Import all objectives >>>
+
 from src.tuning.optuna_objective import objective as objective_bp
 from src.tuning.optuna_objective_mf import objective_mf
 from src.tuning.optuna_objective_cafo import objective_cafo
-from src.tuning.optuna_objective_ff import objective_ff # ADDED FF objective
-# <<< END MODIFICATION >>>
+from src.tuning.optuna_objective_ff import objective_ff
 from src.utils.helpers import create_directory_if_not_exists
 
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run Optuna hyperparameter search for BP, MF, CaFo, or FF algorithms." # Modified description
+        description="Run Optuna hyperparameter search for BP, MF, CaFo, or FF algorithms."
     )
     parser.add_argument("--config",type=str,required=True,help="Path to the tuning configuration YAML file.")
     parser.add_argument("--output-dir",type=str,default="results/optuna",help="Directory to save Optuna study results.")
@@ -40,7 +36,6 @@ def main():
     """Main function to set up and run the Optuna study."""
     args = parse_args()
 
-    # --- Configuration Loading ---
     try:
         config = load_config(args.config)
         logger.info(f"Loaded configuration from: {args.config}")
@@ -48,17 +43,14 @@ def main():
         for line in config_str.split("\n"): logger.info(line)
     except Exception as e: logging.error(f"Error loading configuration: {e}", exc_info=True); return
 
-    # --- <<< MODIFICATION: Determine Algorithm and Select Objective >>> ---
     algorithm_name = config.get("algorithm", {}).get("name", "").upper()
     if algorithm_name == "MF": objective_func = objective_mf; logger.info("Selected Mono-Forward (MF) Optuna objective.")
     elif algorithm_name == "BP": objective_func = objective_bp; logger.info("Selected Backpropagation (BP) Optuna objective.")
     elif algorithm_name == "CAFO": objective_func = objective_cafo; logger.info("Selected Cascaded Forward (CaFo) Optuna objective.")
     elif algorithm_name == "FF": objective_func = objective_ff; logger.info("Selected Forward-Forward (FF) Optuna objective.") # ADDED FF case
     else: logger.error(f"Unsupported algorithm '{algorithm_name}' for Optuna tuning. Supported: BP, MF, CaFo, FF."); return
-    # --- <<< END MODIFICATION >>> ---
 
 
-    # --- Output Directory and Study Name ---
     create_directory_if_not_exists(args.output_dir)
     if args.study_name is None:
         config_filename = os.path.splitext(os.path.basename(args.config))[0]
@@ -67,12 +59,10 @@ def main():
     else: study_name = args.study_name
     log_file = os.path.join(args.output_dir, f"{study_name}.log")
 
-    # --- Logging Setup ---
     log_level_str = config.get("logging", {}).get("level", "INFO")
     setup_logging(log_level=log_level_str, log_file=log_file)
     logger.info(f"Optuna study name: {study_name}"); logger.info(f"Saving logs and study database to: {args.output_dir}")
 
-    # --- Optuna Study Setup ---
     tuning_config = config.get("tuning", {});
     if not tuning_config or not tuning_config.get("enabled", False): logger.error("Config file must contain 'tuning' section with 'enabled: true'."); return
     n_trials = args.n_trials if args.n_trials is not None else tuning_config.get("n_trials", 20)
@@ -93,13 +83,11 @@ def main():
         logger.info(f"Starting Optuna optimization ({algorithm_name}) with {n_trials} trials...")
         study.optimize(lambda trial: objective_func(trial, config), n_trials=n_trials)
 
-        # --- Results ---
         logger.info("Optimization finished."); logger.info(f"Number of finished trials: {len(study.trials)}"); best_trial = study.best_trial
         logger.info("=" * 30); logger.info(f"           Best {algorithm_name} Trial           "); logger.info("=" * 30)
         logger.info(f"  Trial Number: {best_trial.number}"); metric_name = tuning_config.get("metric", "validation_metric"); logger.info(f"  Value ({metric_name}): {best_trial.value:.6f}")
         logger.info("  Params (Use these to update config): ")
 
-        # --- <<< MODIFICATION: Prepare update snippet based on Algorithm >>> ---
         update_section_name = "UNKNOWN"; best_config_update = {}; params_to_log = {}
         for key, value in best_trial.params.items(): params_to_log[key] = value
 
@@ -123,7 +111,7 @@ def main():
                 else: best_config_update["algorithm_params"][key] = value
             best_config_update["algorithm_params"]["predictor_optimizer_type"] = config.get("algorithm_params", {}).get("predictor_optimizer_type", "Adam")
             if config.get("algorithm_params", {}).get("train_blocks", False): best_config_update["algorithm_params"]["block_optimizer_type"] = config.get("algorithm_params", {}).get("block_optimizer_type", "Adam")
-        elif algorithm_name == "FF": # ADDED FF case
+        elif algorithm_name == "FF":
             best_config_update = {"algorithm_params": {}}; update_section_name = "algorithm_params"
             for key, value in params_to_log.items():
                 logger.info(f"    {key}: {value}")
@@ -131,15 +119,12 @@ def main():
                 elif key == "ff_wd": best_config_update["algorithm_params"]["ff_weight_decay"] = value
                 elif key == "ds_lr": best_config_update["algorithm_params"]["downstream_learning_rate"] = value
                 elif key == "ds_wd": best_config_update["algorithm_params"]["downstream_weight_decay"] = value
-                else: best_config_update["algorithm_params"][key] = value # Other tuned params like opt_type?
-            # Add back non-tuned params like optimizer type
+                else: best_config_update["algorithm_params"][key] = value
             best_config_update["algorithm_params"]["optimizer_type"] = config.get("algorithm_params", {}).get("optimizer_type", "AdamW")
         else: logger.error("Cannot format best params - unknown algorithm.")
-        # --- <<< END MODIFICATION >>> ---
 
         logger.info("=" * 30); logger.info(f"YAML snippet to update config's '{update_section_name}' section:"); print("\n" + yaml.dump(best_config_update, default_flow_style=False, sort_keys=False) + "\n")
 
-        # --- Save Best Parameters ---
         best_params_file = os.path.join(args.output_dir, f"{study_name}_best_params.yaml")
         study_results_summary = {
             "study_name": study_name, "algorithm": algorithm_name, "best_trial_number": best_trial.number,
