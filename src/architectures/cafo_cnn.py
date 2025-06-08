@@ -1,4 +1,3 @@
-# File: src/architectures/cafo_cnn.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -34,20 +33,15 @@ class CaFoBlock(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
-            bias=not use_batchnorm,  # Disable bias if using BatchNorm
+            bias=not use_batchnorm,
         )
 
-        # <<< MODIFICATION: Explicit Initialization >>>
-        # Explicitly initialize weights using Kaiming uniform for ReLU non-linearity
         nn.init.kaiming_uniform_(self.conv.weight, mode='fan_in', nonlinearity='relu')
-        # Initialize bias to zero if it exists (should be None if use_batchnorm=True)
         if self.conv.bias is not None:
             nn.init.constant_(self.conv.bias, 0)
         logger.debug(f"CaFoBlock Conv ({in_channels}->{out_channels}): Explicitly applied Kaiming Uniform init.")
-        # <<< END MODIFICATION >>>
 
         self.activation = activation_cls()
-        # Ensure pooling doesn't reduce dimension to zero if input is small
         self.pool = (
             nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride)
             if pool_kernel_size > 0
@@ -57,14 +51,10 @@ class CaFoBlock(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # <<< MODIFICATION START: Changed layer order >>>
-        # Original order: Conv -> BN -> Act -> Pool
-        # Corrected order (Paper/Reference): Conv -> Act -> Pool -> BN
         x = self.conv(x)
         x = self.activation(x)
         x = self.pool(x)
         x = self.bn(x)
-        # <<< MODIFICATION END >>>
         return x
 
     def get_output_shape(
@@ -79,14 +69,9 @@ class CaFoBlock(nn.Module):
             )
 
         with torch.no_grad():
-            # Move dummy tensor to the specified device
             dummy_input = torch.zeros(1, *input_shape, device=device)
-            # Ensure block is also on the same device
             self.to(device)
             dummy_output = self.forward(dummy_input)
-            # Note: Applying BN last should not change the output shape C, H, W
-            # Move block back to CPU if it was temporarily moved? Depends on usage.
-            # self.cpu()
             return dummy_output.shape[1:]  # Return C, H, W
 
 
@@ -99,8 +84,6 @@ class CaFoPredictor(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features, num_classes, bias=bias)
-        # Default initialization is used for self.fc, which is standard PyTorch practice
-        # and aligns with the reference's BP predictor ('fc') approach.
         logger.debug(f"CaFoPredictor: In={in_features}, Out={num_classes}, Bias={bias}")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -119,12 +102,12 @@ class CaFo_CNN(nn.Module):
         input_channels: int,
         block_channels: List[int],
         image_size: int,
-        num_classes: int,  # Still needed for shape calculations if predictor dims aren't pre-calculated
+        num_classes: int,
         activation: str = "relu",
         use_batchnorm: bool = True,
-        kernel_size: int = 3,  # Make kernel size configurable
-        pool_kernel_size: int = 2,  # Make pool size configurable
-        pool_stride: int = 2,  # Make pool stride configurable
+        kernel_size: int = 3,
+        pool_kernel_size: int = 2,
+        pool_stride: int = 2,
     ):
         super().__init__()
         self.input_channels = input_channels
@@ -141,7 +124,7 @@ class CaFo_CNN(nn.Module):
 
         self.blocks = nn.ModuleList()
         self._block_output_shapes: List[Tuple[int, int, int]] = []
-        self._block_output_dims_flat: List[int] = [] # Store flattened dims
+        self._block_output_dims_flat: List[int] = []
 
         current_channels = input_channels
         current_feature_map_size = image_size
@@ -151,14 +134,11 @@ class CaFo_CNN(nn.Module):
             current_feature_map_size,
         )
 
-        # Determine device early for shape calculations
         device_to_check = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # A bit hacky, ideally device comes from outside, but needed for shape calc here
         temp_param = nn.Parameter(torch.empty(0))
         try:
              device = temp_param.device
         except: device = device_to_check
-        # Remove temp_param if not needed
         del temp_param
 
         for i, out_channels in enumerate(block_channels):
@@ -180,13 +160,12 @@ class CaFo_CNN(nn.Module):
             self.blocks.append(block)
 
             try:
-                # Calculation depends on the corrected forward pass in CaFoBlock
                 output_shape = block.get_output_shape(
                     current_input_shape, device=device
                 )
                 self._block_output_shapes.append(output_shape)
                 flat_dim = output_shape[0] * output_shape[1] * output_shape[2]
-                self._block_output_dims_flat.append(flat_dim) # Store flattened dim
+                self._block_output_dims_flat.append(flat_dim)
 
                 current_input_shape = output_shape
                 current_channels = output_shape[0]

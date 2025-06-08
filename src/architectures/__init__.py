@@ -30,7 +30,6 @@ def get_architecture(
 
     logger.info(f"Getting architecture: {name} (Algo: {algorithm_name.upper()})")
 
-    # --- Add default/calculated parameters if missing ---
     if 'num_classes' not in arch_params: arch_params['num_classes'] = num_classes
     if name in ['ff_mlp', 'mf_mlp']:
          if 'input_dim' not in arch_params:
@@ -44,12 +43,11 @@ def get_architecture(
             raise ValueError(f"Unknown architecture base name: {name}")
 
 
-    # --- Instantiate Architecture ---
     model: Optional[nn.Module] = None
     input_adapter: Optional[Callable] = None
 
     if name in ['ff_mlp', 'mf_mlp']:
-        input_adapter = lambda x: x.view(x.shape[0], -1) # Flatten input
+        input_adapter = lambda x: x.view(x.shape[0], -1)
         logger.debug(f"Arch {name} requires input flattening adapter.")
         if name == 'ff_mlp':
             if is_bp_baseline:
@@ -61,7 +59,7 @@ def get_architecture(
                 if not hidden_dims: raise ValueError("BP baseline creation failed: hidden_dims missing for FF_MLP.")
                 layers = []
                 current_dim = bp_input_dim
-                act_cls = nn.ReLU if activation_name == 'relu' else nn.Tanh # Use standard activation
+                act_cls = nn.ReLU if activation_name == 'relu' else nn.Tanh
                 for h_dim in hidden_dims:
                     layers.append(nn.Linear(current_dim, h_dim, bias=use_bias))
                     layers.append(act_cls())
@@ -85,10 +83,8 @@ def get_architecture(
 
         if is_bp_baseline:
             logger.info(f"Creating BP baseline model from {name.upper()} blocks + final Linear layer.")
-            # Determine final flattened dimension dynamically
             cnn_base.to(device)
             with torch.no_grad():
-                 # Use a shape that matches the config
                  dummy_input_shape = (1, arch_params['input_channels'], arch_params['image_size'], arch_params['image_size'])
                  dummy_input = torch.randn(dummy_input_shape).to(device)
                  
@@ -96,22 +92,21 @@ def get_architecture(
                  dummy_features = dummy_input
                  for block in model_blocks:
                      dummy_features = block(dummy_features)
-                 num_output_features = dummy_features.numel() # Flattened size
-            cnn_base.cpu() # Move base back if needed
+                 num_output_features = dummy_features.numel()
+            cnn_base.cpu()
             logger.debug(f"Flattened output dimension from {name.upper()} blocks: {num_output_features}")
 
-            # Create the BP baseline as Sequential
             model = nn.Sequential(
-                *cnn_base.blocks, # Unpack the ModuleList of blocks
+                *cnn_base.blocks,
                 nn.Flatten(),
-                nn.Linear(num_output_features, num_classes) # Add the final classifier
+                nn.Linear(num_output_features, num_classes)
             )
             logger.debug(f"Created BP baseline Sequential model from {name.upper()} spec.")
         else:
             model = cnn_base
             logger.debug(f"Using native {name.upper()} structure.")
 
-    else: # Should not be reachable if initial checks are correct and all valid names are handled
+    else:
         if name not in ['ff_mlp', 'mf_mlp', 'cafo_cnn']:
              raise ValueError(f"Unknown or unhandled architecture name: {name}")
 

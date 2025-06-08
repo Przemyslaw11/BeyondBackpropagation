@@ -1,4 +1,3 @@
-# File: src/architectures/mf_mlp.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -49,18 +48,16 @@ class MF_MLP(nn.Module):
         current_dim = input_dim
         for i, h_dim in enumerate(hidden_dims):
             linear_layer = nn.Linear(current_dim, h_dim, bias=bias)  # Layer W_{i+1}
-            # Apply initialization (e.g., Kaiming for ReLU)
             if activation.lower() == "relu":
                 nn.init.kaiming_uniform_(
                     linear_layer.weight, a=math.sqrt(5), nonlinearity="relu"
                 )
             elif activation.lower() == "tanh":
-                # Xavier/Glorot might be better for tanh
                 nn.init.xavier_uniform_(linear_layer.weight)
             else:
                 nn.init.kaiming_uniform_(
                     linear_layer.weight, a=math.sqrt(5)
-                )  # Default Kaiming
+                )
 
             if bias and linear_layer.bias is not None:
                 nn.init.zeros_(linear_layer.bias)
@@ -69,9 +66,8 @@ class MF_MLP(nn.Module):
             self.layers.append(act_cls())  # Index 2*i + 1
             current_dim = h_dim
 
-        # Final classifier layer (W_L+1) - used ONLY for BP baseline evaluation
+        # Final classifier layer (W_L+1)
         self.output_layer = nn.Linear(current_dim, num_classes, bias=bias)
-        # Initialize final layer reasonably (e.g., smaller variance)
         nn.init.normal_(self.output_layer.weight, mean=0.0, std=0.01)
         if bias and self.output_layer.bias is not None:
             nn.init.zeros_(self.output_layer.bias)
@@ -86,7 +82,6 @@ class MF_MLP(nn.Module):
         for i, layer_dim in enumerate(dims_for_M):
             # Matrix shape is [num_classes, layer_dim] so that a_i @ M_i^T works
             m_matrix = nn.Parameter(torch.empty(num_classes, layer_dim))
-            # Initialize projection matrices (e.g., Kaiming Uniform)
             nn.init.kaiming_uniform_(m_matrix, a=math.sqrt(5))
             self.projection_matrices.append(m_matrix)
 
