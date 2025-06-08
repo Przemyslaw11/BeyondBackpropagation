@@ -1,89 +1,69 @@
-# File: configs/base.yaml
-# Base configuration settings shared across experiments
-
-# Reproducibility and General Settings
 general:
   seed: 42
-  device: "auto" # Options: "auto", "cuda", "cpu". Engine will use this preference.
+  device: "auto"
 
-# Default Training parameters (can be overridden)
 training:
-  epochs: 100 # Default total epochs for BP and equivalent budget reference
-  criterion: "CrossEntropyLoss" # Default loss for BP
-  log_interval: 100 # Default logging frequency
-  early_stopping_enabled: true         # Enable/disable early stopping (FOR BP)
-  early_stopping_metric: "bp_val_loss" # Metric to monitor ('bp_val_loss', 'bp_val_accuracy', 'FF_Hinton/Val_Acc_Epoch')
-  early_stopping_patience: 20          # Epochs to wait for improvement before stopping (FOR BP)
-  early_stopping_mode: "min"           # 'min' for loss, 'max' for accuracy (FOR BP)
-  early_stopping_min_delta: 0.0        # Minimum change to qualify as improvement (FOR BP)
+  epochs: 100
+  criterion: "CrossEntropyLoss"
+  log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "bp_val_loss"
+  early_stopping_patience: 20
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.0
 
-# Default Data Loader parameters
 data_loader:
   batch_size: 128
-  num_workers: 4 # Adjust based on system
-  pin_memory: true # Default to true, engine handles logic based on device
+  num_workers: 4
+  pin_memory: true
 
-# Default Dataset parameters (placeholders)
 data:
-  root: "./data" # Relative path to data directory
-  download: true # Default to downloading if not found
-  val_split: 0.1 # Default validation split
+  root: "./data"
+  download: true
+  val_split: 0.1
 
-# Default Optimizer parameters (Placeholders, override in specific configs)
 optimizer:
-  type: "AdamW" # Default optimizer type for baselines
-  lr: 0.001 # Default LR (likely overridden by tuning for baselines)
-  weight_decay: 0.0001 # Default WD (likely overridden by tuning for baselines)
+  type: "AdamW"
+  lr: 0.001
+  weight_decay: 0.0001
 
-# <<< ADDED: MF Algorithm Specific Parameters (Defaults) >>>
 algorithm_params:
-  # MF defaults (can be overridden in specific MF configs)
-  mf_early_stopping_enabled: false       # Default to disabled for MF
-  mf_early_stopping_patience: 10         # Default patience for MF layers
-  mf_early_stopping_min_delta: 0.0001    # Default min improvement for MF local loss
-  # mf_early_stopping_metric is always 'val_local_loss'
-  # mf_early_stopping_mode is always 'min'
-  # Note: Other algo params (FF, CaFo) should be in their respective configs
+  mf_early_stopping_enabled: false
+  mf_early_stopping_patience: 10
+  mf_early_stopping_min_delta: 0.0001
 
-# Logging Defaults
 logging:
-  level: "INFO" # Default logging level
+  level: "INFO"
   wandb:
-    use_wandb: true # Enable W&B by default
+    use_wandb: true
     project: "BeyondBackpropagation"
-    entity: "przspyra11" # <<< Ensure your W&B entity is correct >>>
+    entity: "przspyra11"
 
-# Monitoring Defaults
 monitoring:
-  enabled: true              # Enable NVML memory monitoring if available
-  energy_enabled: true       # Enable background power sampling if available
-  energy_interval_sec: 0.2   # Sampling interval (e.g., 200ms = 5 Hz)
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
 
-# Carbon Tracking Configuration
 carbon_tracker:
-  enabled: true             # Enable/disable tracking globally
-  mode: "offline"           # <<< CRUCIAL: Use "offline" for HPC >>>
-  output_dir: "results/carbon" # Directory to save the CSV report
-  country_iso_code: "POL"   # 3-letter ISO code for Poland (Athena location)
+  enabled: true
+  mode: "offline"
+  output_dir: "results/carbon"
+  country_iso_code: "POL"
 
-# Profiling Defaults
 profiling:
-  enabled: true              # Enable FLOPs profiling by default
+  enabled: true
   verbose: false
 
-# Checkpointing Defaults
 checkpointing:
-  checkpoint_dir: null       # Base directory for checkpoints (set in specific configs)
-  save_best_metric: "bp_val_accuracy" # Default metric to track for saving best BP model
+  checkpoint_dir: null
+  save_best_metric: "bp_val_accuracy"
 
-# Default Tuning parameters (Used by Optuna script if tuning section exists)
 tuning:
-  enabled: false # Default to disabled unless specified in baseline/tuning config
+  enabled: false
   n_trials: 50
-  # num_epochs: 25 # Epochs per Optuna trial (BP uses this, FF/MF/CaFo have different logic)
   direction: "maximize"
-  metric: "val_accuracy" # Metric objective returns (raw name, not W&B key)
+  metric: "val_accuracy"
   sampler: "TPE"
-  pruner: "Median" # Pruner is often set to None for FF/MF/CaFo
-  lr_range: [1.0e-5, 1.0e-2] # Default tuning range for BP LR
-  wd_range: [1.0e-6, 1.0e-3] # Default tuning range for BP WD
+  pruner: "Median"
+  lr_range: [1.0e-5, 1.0e-2]
+  wd_range: [1.0e-6, 1.0e-3]
