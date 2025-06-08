@@ -1,12 +1,7 @@
-# File: configs/mf/cifar10_mlp_3x2000.yaml
-# Configuration for Mono-Forward (MF) on CIFAR-10 with 3x2000 MLP
-
-# Inherit from base config
 experiment_name: "mf_cifar10_mlp_3x2000"
 algorithm:
   name: "MF"
 
-# Dataset Configuration
 data:
   name: "CIFAR10"
   root: "./data"
@@ -15,47 +10,38 @@ data:
   input_channels: 3
   image_size: 32
 
-# Data Loader Configuration
 data_loader:
   batch_size: 128
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration
 model:
   name: "MF_MLP"
   params:
-    # input_dim: 3072 # Calculated (3 * 32 * 32)
-    hidden_dims: [2000, 2000, 2000] # MF specific architecture for CIFAR-10/100
+    hidden_dims: [2000, 2000, 2000]
     activation: "ReLU"
     bias: true
-    # num_classes: 10 # Calculated
 
-# Algorithm Specific Configuration (Mono-Forward)
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.0003241756767272183              # Placeholder - overridden by Optuna
-  weight_decay: 0.0      # Placeholder - currently not tuned, can add wd range if desired
-  epochs_per_layer: 15   # Placeholder - overridden by Optuna
-  log_interval: 9999     # Reduce logging noise during trials
+  lr: 0.0003241756767272183
+  weight_decay: 0.0
+  epochs_per_layer: 15
+  log_interval: 9999
 
-  mf_early_stopping_enabled: true         # Enable early stopping for MF layers
-  mf_early_stopping_patience: 4        # Patience for each layer
-  mf_early_stopping_min_delta: 0.0001     # Minimum improvement in local val loss
+  mf_early_stopping_enabled: true
+  mf_early_stopping_patience: 4
+  mf_early_stopping_min_delta: 0.0001
 
 
-# Logging Configuration
 logging:
   level: "INFO"
-  # log_file: null
   wandb:
     use_wandb: true
 
-# Checkpointing
 checkpointing:
-  checkpoint_dir: "checkpoints/mf_cifar10_mlp_3x2000" # Specific directory
+  checkpoint_dir: "checkpoints/mf_cifar10_mlp_3x2000"
 
-# Monitoring/Profiling
 monitoring:
   enabled: true
   energy_enabled: true

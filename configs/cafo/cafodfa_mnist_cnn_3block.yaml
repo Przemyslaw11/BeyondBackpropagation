@@ -1,47 +1,39 @@
-# File: configs/cafo/mnist_cnn_3block.yaml
-# MODIFIED: Enabled and configured DFA block training
-
-# Inherit from base config
-experiment_name: "cafodfa_mnist_cnn_3block" # Updated name
+experiment_name: "cafodfa_mnist_cnn_3block"
 algorithm:
   name: "CaFo"
 
-# Dataset Configuration
 data:
   name: "MNIST"
   root: "./data"
-  val_split: 0.1 # Note: Fixed 50k/10k split is used by dataloader for MNIST
+  val_split: 0.1
   num_classes: 10
   input_channels': 1
   image_size: 28
 
-# Data Loader Configuration
 data_loader:
   batch_size: 128
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration (Base blocks - Same as FMNIST)
 model:
   name: "CaFo_CNN"
   params:
-    # input_channels: 1 # Calculated
     block_channels: [32, 128, 512]
     activation: "ReLU"
     use_batchnorm: true
     kernel_size: 3
     pool_kernel_size: 2
     pool_stride: 2
-    # image_size: 28 # Calculated
-    # num_classes: 10 # Calculated
 
-# Algorithm Specific Configuration (CaFo-DFA-CE)
 algorithm_params:
+  # --- Block Training (DFA) ---
   train_blocks: true
   block_training_epochs: 5
   block_optimizer_type: Adam
   block_lr: 0.0004977965859721583
   block_weight_decay: 9.594431243311431e-07
+ 
+  # --- Predictor Training (CE) ---
   predictor_optimizer_type: Adam
   predictor_lr: 0.00025391813833013565
   predictor_weight_decay: 2.0840357948896564e-06
@@ -50,26 +42,22 @@ algorithm_params:
   log_interval: 9999
   aggregation_method: sum
 
-  # --- Predictor Early Stopping --- # <<< ADDED >>>
   predictor_early_stopping_enabled: true
-  predictor_early_stopping_metric: "val_loss" # Monitor validation loss of the predictor
-  predictor_early_stopping_patience: 5       # Patience (e.g., 20 epochs for MNIST)
-  predictor_early_stopping_mode: "min"        # Minimize loss
-  predictor_early_stopping_min_delta: 0.0005  # Minimum improvement required (smaller for MNIST?)
+  predictor_early_stopping_metric: "val_loss"
+  predictor_early_stopping_patience: 5
+  predictor_early_stopping_mode: "min"
+  predictor_early_stopping_min_delta: 0.0005
 
 
-# Logging Configuration
 logging:
   level: "INFO"
   wandb:
     use_wandb: true
 
-# Checkpointing (Save predictors after training)
 checkpointing:
-  checkpoint_dir: "checkpoints/cafodfa_mnist_cnn_3block" # Changed dir name
-  save_best_metric: "bp_val_accuracy" # Still here, but less relevant for CaFo final eval
+  checkpoint_dir: "checkpoints/cafodfa_mnist_cnn_3block"
+  save_best_metric: "bp_val_accuracy"
 
-# Monitoring/Profiling
 monitoring:
   enabled: true
   energy_enabled: true

@@ -1,78 +1,57 @@
-# File: ./configs/ff/mnist_mlp_3x1000_SGD_ref.yaml
-# Configuration replicating the reference Forward-Forward setup for MNIST 3x1000 MLP
-
-# Experiment Identification
-experiment_name: "ff_hinton_mnist_mlp_3x1000_SGD_ref" # Clear name for reference run
+experiment_name: "ff_hinton_mnist_mlp_3x1000_SGD"
 algorithm:
   name: "FF"
 
-# Dataset Configuration
 data:
   name: "MNIST"
   root: "./data"
-  val_split: 0.1 # Standard split, FF eval uses multi-pass goodness
+  val_split: 0.1
   num_classes: 10
   input_channels: 1
   image_size: 28
 
-# Data Loader Configuration (Matching Reference Code)
 data_loader:
-  batch_size: 100 # From reference code
+  batch_size: 100
   num_workers: 4
   pin_memory: true
 
-# Model Architecture Configuration
 model:
-  name: "FF_MLP" # <<< NOTE: Use the corrected FF_MLP class name >>>
+  name: "FF_MLP"
   params:
-    # input_dim: 784 # Calculated automatically by engine
-    hidden_dims: [1000, 1000, 1000] # Target Architecture
-    activation: "ReLU" # Will use ReLU_full_grad internally during training
+    hidden_dims: [1000, 1000, 1000]
+    activation: "ReLU"
     bias: true
-    # Use reference code defaults for eps/bias
     norm_eps: 1.0e-8
-    bias_init: 0.0 # <<< NOTE: FF_MLP now forces this to 0.0 for ReLU like reference >>>
+    bias_init: 0.0
 
-# Algorithm Specific Configuration (Matching Reference Code)
 algorithm_params:
-  optimizer_type: "SGD" # <<< NOTE: Confirmed Use SGD >>>
-  # --- Learning Rates & Weight Decay (from reference utils.py setup) ---
-  ff_learning_rate: 0.0019075980272792064 # Original: 1e-3
-  ff_weight_decay: 0.0005229088821652552 # Original: 3e-4
-  ff_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
-  downstream_learning_rate: 0.03234998392840941 # Original: 1e-2
-  downstream_weight_decay: 0.0047668064095875455 # Original: 3e-3
-  downstream_momentum: 0.9 # <<< NOTE: Added SGD momentum >>>
-  # --- FF Specific (Threshold removed, Peer Norm parameters from ref) ---
-  # threshold: 2.0 # <<< CORRECTION: Removed - Now calculated dynamically in model >>>
-  peer_normalization_factor: 0.03 # From reference config
-  peer_momentum: 0.9 # Momentum for PEER NORM running mean (model.momentum in ref)
+  optimizer_type: "SGD"
+  ff_learning_rate: 0.0019075980272792064
+  ff_weight_decay: 0.0005229088821652552
+  ff_momentum: 0.9
+  downstream_learning_rate: 0.03234998392840941
+  downstream_weight_decay: 0.0047668064095875455
+  downstream_momentum: 0.9
+  peer_normalization_factor: 0.03
+  peer_momentum: 0.9
 
-# Training Configuration
 training:
-  epochs: 100 # Max epochs
+  epochs: 100
   log_interval: 100
-  # <<< ADDED: Early Stopping Configuration >>>
   early_stopping_enabled: true
-  early_stopping_metric: "FF_Hinton/Val_Acc_Epoch" # Monitor validation accuracy from FF eval
-  early_stopping_patience: 20                      # Number of epochs to wait for improvement, alternative algorithms need more patience than stable backprop
-  early_stopping_mode: "max"                       # Maximize accuracy
-  early_stopping_min_delta: 0.01                   # Minimum change in accuracy to qualify as improvement
-  # <<< END ADDED >>>
+  early_stopping_metric: "FF_Hinton/Val_Acc_Epoch"
+  early_stopping_patience: 20
+  early_stopping_mode: "max"
+  early_stopping_min_delta: 0.01
 
-# Logging Configuration
 logging:
   level: "INFO"
   wandb:
     use_wandb: true
-    # entity: "przspyra11" # Defined in base.yaml
 
-# Checkpointing
 checkpointing:
-  checkpoint_dir: "checkpoints/ff_hinton_mnist_mlp_3x1000_SGD_ref" # Specific directory
-  # save_best_metric: "ff_val_accuracy" # Engine uses this key for FF eval
+  checkpoint_dir: "checkpoints/ff_hinton_mnist_mlp_3x1000_SGD_ref"
 
-# Monitoring/Profiling
 monitoring:
   enabled: true
   energy_enabled: true
