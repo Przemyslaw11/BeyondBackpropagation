@@ -1,4 +1,3 @@
-# File: ./src/algorithms/ff.py (MODIFIED - Added Early Stopping)
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,21 +6,18 @@ import torch.nn.functional as F
 import numpy as np
 import logging
 from tqdm import tqdm
-import pynvml # Import for type hint
+import pynvml
 from typing import Dict, Any, Optional, Tuple, List, Callable
 import os
 import time
 
-# Import the MODIFIED FF_MLP
-from src.architectures.ff_mlp import FF_MLP # Ensure this path is correct
+from src.architectures.ff_mlp import FF_MLP
 from src.utils.logging_utils import log_metrics
 from src.utils.helpers import format_time, save_checkpoint, create_directory_if_not_exists
 from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
 
-# --- Helper for Pixel Label Embedding (Matches reference logic) ---
-# (No changes to this function)
 def generate_ff_hinton_inputs(
     base_images: torch.Tensor,
     base_labels: torch.Tensor,
@@ -81,7 +77,6 @@ def train_ff_model(
     model.to(device); logger.info(f"Starting Forward-Forward (Hinton style) training using modified FF_MLP.")
     if input_adapter is not None: logger.warning("FF Training: 'input_adapter' provided but FF_MLP uses internal logic. Adapter ignored.")
 
-    # --- Configuration Extraction ---
     train_config = config.get("training", {})
     algo_config = config.get("algorithm_params", {})
     loader_config = config.get("data_loader", {})
@@ -103,19 +98,13 @@ def train_ff_model(
     log_interval = train_config.get("log_interval", 100)
     num_classes = data_config.get("num_classes", 10)
     checkpoint_dir = checkpoint_config.get("checkpoint_dir", None)
-    # Metric for saving best checkpoint (aligned with early stopping)
-    # save_best_metric = checkpoint_config.get("save_best_metric", "ff_val_accuracy").lower()
-    # save_best_metric_mode = "max" if "accuracy" in save_best_metric else "min"
-
-    # <<< Early Stopping Configuration >>>
     es_enabled = train_config.get("early_stopping_enabled", True)
-    es_metric_key = train_config.get("early_stopping_metric", "FF_Hinton/Val_Acc_Epoch").lower() # Use configured key name
+    es_metric_key = train_config.get("early_stopping_metric", "FF_Hinton/Val_Acc_Epoch").lower()
     es_patience = train_config.get("early_stopping_patience", 10)
     es_mode = train_config.get("early_stopping_mode", "max").lower()
     es_min_delta = train_config.get("early_stopping_min_delta", 0.0)
     epochs_no_improve = 0
     best_es_metric_value = -float('inf') if es_mode == 'max' else float('inf')
-    # Variable to store the metric value used for checkpointing the best model
     best_checkpoint_metric_value = best_es_metric_value
 
     if es_enabled:
@@ -123,7 +112,6 @@ def train_ff_model(
             logger.warning("Early stopping enabled but no validation loader provided. Disabling early stopping.")
             es_enabled = False
         else:
-            # Validate compatibility (accuracy should be max, loss min)
             if (es_mode == "min" and "acc" in es_metric_key) or \
                (es_mode == "max" and "loss" in es_metric_key):
                 logger.error(f"Early stopping mode '{es_mode}' incompatible with metric key '{es_metric_key}'. Disabling.")
@@ -132,7 +120,6 @@ def train_ff_model(
                 logger.info(f"Early stopping enabled: Metric Key='{es_metric_key}', Patience={es_patience}, Mode='{es_mode}', MinDelta={es_min_delta}")
     else:
         logger.info("Early stopping disabled.")
-    # <<< End Early Stopping Config >>>
 
     # --- Optimizer Setup ---
     ff_layer_params = [p for layer in model.layers for p in layer.parameters() if p.requires_grad]
@@ -164,7 +151,6 @@ def train_ff_model(
         return 0.0
 
     # --- Training Loop Initialization ---
-    # best_metric_value = -float("inf") # Replaced by best_es_metric_value
     peak_mem_train = 0.0
     run_start_time = time.time()
 
@@ -255,7 +241,6 @@ def train_ff_model(
                 peak_mem_epoch = max(peak_mem_epoch, current_mem_used if not torch.isnan(torch.tensor(current_mem_used)) else 0.0)
 
             if (batch_idx + 1) % log_interval == 0 or batch_idx == len(train_loader) - 1:
-                # Log batch metrics... (existing logging code)
                 metrics_to_log = {
                     "global_step": current_global_step,
                     "FF_Hinton/Train_Loss_Batch": total_batch_loss.item(),
@@ -270,15 +255,13 @@ def train_ff_model(
                     metrics_to_log["FF_Hinton/GPU_Mem_Used_MiB_Batch"] = current_mem_used
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
                 pbar.set_postfix(loss=f"{total_batch_loss.item():.4f}", cls_acc=f"{cls_accuracy:.2f}%")
-        # --- End Batch Loop ---
 
-        peak_mem_train = max(peak_mem_train, peak_mem_epoch) # Update overall peak memory
+        peak_mem_train = max(peak_mem_train, peak_mem_epoch)
 
         if epoch_samples == 0:
             logger.warning(f"Epoch {epoch+1} completed with 0 samples processed. Skipping evaluation and logging.")
             continue
 
-        # --- Calculate Epoch Averages ---
         avg_epoch_loss = epoch_total_loss / epoch_samples
         avg_ff_loss = epoch_ff_loss_total / epoch_samples
         avg_peer_loss = epoch_peer_loss_total / epoch_samples
@@ -287,7 +270,6 @@ def train_ff_model(
         epoch_layer_ff_acc_avg = {f"Layer_{i+1}": epoch_layer_ff_acc_sum[f"Layer_{i+1}"] / epoch_samples for i in range(model.num_layers)}
         epoch_duration = time.time() - epoch_start_time
 
-        # --- Validation ---
         val_results = {"eval_accuracy": float("nan"), "eval_loss": float("nan")} # Default
         if val_loader:
             val_results = evaluate_ff_model(model, val_loader, device)
@@ -295,8 +277,7 @@ def train_ff_model(
         else:
              logger.warning("No validation loader provided. Skipping validation.")
 
-        # --- Log Epoch Summary ---
-        current_global_step = step_ref[0] # Use last step from epoch
+        current_global_step = step_ref[0]
         epoch_summary_metrics = {
             "global_step": current_global_step,
             "FF_Hinton/Train_Loss_Epoch": avg_epoch_loss,
@@ -304,7 +285,7 @@ def train_ff_model(
             "FF_Hinton/PeerNorm_Loss_Epoch": avg_peer_loss,
             "FF_Hinton/Cls_Loss_Epoch": avg_cls_loss,
             "FF_Hinton/Cls_Acc_Epoch": avg_cls_acc,
-            "FF_Hinton/Val_Acc_Epoch": val_results.get("eval_accuracy", float("nan")), # Key to monitor
+            "FF_Hinton/Val_Acc_Epoch": val_results.get("eval_accuracy", float("nan")),
             "FF_Hinton/Epoch_Duration_Sec": epoch_duration,
             "FF_Hinton/LR_FF_Layers": current_lr_ff,
             "FF_Hinton/LR_Downstream": current_lr_ds,
@@ -316,43 +297,38 @@ def train_ff_model(
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.info(f"FF Epoch {epoch+1}/{epochs} | Train Loss: {avg_epoch_loss:.4f}, Cls Acc: {avg_cls_acc:.2f}% | Val Acc: {val_results.get('eval_accuracy', 'N/A'):.2f}% | Peak Mem: {peak_mem_epoch:.1f} MiB | Duration: {format_time(epoch_duration)}")
 
-        # --- Early Stopping Check ---
-        current_metric_value = val_results.get('eval_accuracy', float('nan')) # Get the validation accuracy
+        current_metric_value = val_results.get('eval_accuracy', float('nan'))
         is_best_for_checkpointing = False
 
         if es_enabled:
-            # Handle NaN case first
             if torch.isnan(torch.tensor(current_metric_value)):
                 logger.warning(f"Epoch {epoch+1}: Early stopping metric '{es_metric_key}' is NaN. Treating as no improvement.")
                 epochs_no_improve += 1
             else:
-                # Check for improvement based on mode and min_delta
                 improved = False
                 if es_mode == "max":
                     if current_metric_value > best_es_metric_value + es_min_delta:
                         improved = True
-                else: # mode == "min"
+                else:
                     if current_metric_value < best_es_metric_value - es_min_delta:
                         improved = True
 
                 if improved:
                     best_es_metric_value = current_metric_value
-                    is_best_for_checkpointing = True # Mark as best for checkpointing
-                    best_checkpoint_metric_value = best_es_metric_value # Update the value to save
+                    is_best_for_checkpointing = True
+                    best_checkpoint_metric_value = best_es_metric_value
                     epochs_no_improve = 0
                     logger.info(f"Epoch {epoch+1}: Early stopping metric improved to {best_es_metric_value:.4f}. Reset patience.")
                 else:
                     epochs_no_improve += 1
                     logger.info(f"Epoch {epoch+1}: Early stopping metric did not improve. Patience: {epochs_no_improve}/{es_patience}.")
 
-            # Check if patience is exceeded
             if epochs_no_improve >= es_patience:
                 logger.info(f"--- Early Stopping Triggered ---")
                 logger.info(f"Metric '{es_metric_key}' did not improve for {es_patience} epochs (Best: {best_es_metric_value:.4f}).")
                 logger.info(f"Stopping training at epoch {epoch+1}.")
-                break # Exit the training loop
+                break
         else:
-            # If early stopping is disabled, save best based purely on comparison
             if not torch.isnan(torch.tensor(current_metric_value)):
                 if es_mode == "max" and current_metric_value > best_checkpoint_metric_value:
                      best_checkpoint_metric_value = current_metric_value
@@ -362,9 +338,7 @@ def train_ff_model(
                      is_best_for_checkpointing = True
             if is_best_for_checkpointing:
                  logger.info(f"Epoch {epoch+1}: New best checkpoint metric: {best_checkpoint_metric_value:.4f}")
-        # <<< End Early Stopping Check >>>
 
-        # --- Save Checkpoint ---
         if checkpoint_dir:
             create_directory_if_not_exists(checkpoint_dir)
             save_checkpoint(
@@ -372,36 +346,31 @@ def train_ff_model(
                     "epoch": epoch + 1,
                     "state_dict": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
-                    "best_metric_value": best_checkpoint_metric_value, # Save the best metric value seen
-                    "val_accuracy": current_metric_value, # Save current epoch's accuracy
+                    "best_metric_value": best_checkpoint_metric_value,
+                    "val_accuracy": current_metric_value,
                 },
-                is_best=is_best_for_checkpointing, # Save best checkpoint only if metric improved
+                is_best=is_best_for_checkpointing,
                 checkpoint_dir=checkpoint_dir,
                 filename=f"ff_checkpoint_epoch_{epoch+1}.pth",
-                best_filename=f"ff_{config.get('experiment_name', 'model')}_best.pth" # Consistent best filename
+                best_filename=f"ff_{config.get('experiment_name', 'model')}_best.pth"
             )
-    # --- End Epoch Loop ---
 
     total_training_time = time.time() - run_start_time
     logger.info(f"Finished Forward-Forward (Hinton) training loop. Total time: {format_time(total_training_time)}")
 
-    # <<< Load Best Model State After Training Loop Finishes >>>
     if checkpoint_dir:
         best_checkpoint_filename = f"ff_{config.get('experiment_name', 'model')}_best.pth"
         best_checkpoint_path = os.path.join(checkpoint_dir, best_checkpoint_filename)
         if os.path.exists(best_checkpoint_path):
             try:
                 logger.info(f"Loading best model state from: {best_checkpoint_path}")
-                # Load only the state_dict for evaluation
-                # Map location ensures it loads to the correct device
                 best_state = torch.load(best_checkpoint_path, map_location=device)
-                # Check if the loaded object is the state_dict directly or the full state dictionary
                 if isinstance(best_state, dict) and 'state_dict' in best_state:
                     model.load_state_dict(best_state['state_dict'])
                     loaded_epoch = best_state.get('epoch', 'N/A')
                     loaded_metric = best_state.get('best_metric_value', float('nan'))
                     logger.info(f"Successfully loaded best model weights (Epoch: {loaded_epoch}, Metric: {loaded_metric:.4f}) for final evaluation.")
-                elif isinstance(best_state, dict): # Assume it's the state_dict itself
+                elif isinstance(best_state, dict):
                      model.load_state_dict(best_state)
                      logger.info("Successfully loaded best model weights (state_dict only) for final evaluation.")
                 else:
@@ -414,14 +383,11 @@ def train_ff_model(
             logger.warning(f"Best checkpoint file '{best_checkpoint_filename}' not found in {checkpoint_dir}. Using model state from the last epoch.")
     else:
         logger.warning("Checkpoint directory not specified. Cannot load best model. Using model state from the last epoch.")
-    # <<< End Load Best Model State >>>
 
-    # --- Final Note ---
     logger.info(f"NOTE: Reference implementation used PyTorch 1.11. Your environment uses {torch.__version__}. Small differences in final accuracy might arise from library versions or hardware.")
 
-    return peak_mem_train # Return overall peak memory
+    return peak_mem_train
 
-# --- evaluate_ff_model (Final Corrected Implementation - No changes needed here) ---
 def evaluate_ff_model(
     model: FF_MLP, data_loader: DataLoader, device: torch.device, **kwargs,
 ) -> Dict[str, float]:

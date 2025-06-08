@@ -1,28 +1,24 @@
-# --------------------------------------------------------------------------------
-# File: ./src/algorithms/cafo.py (MODIFIED - Added Early Stopping)
-# --------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import torch.nn.functional as F # Added F
+import torch.nn.functional as F
 import logging
 from tqdm import tqdm
-import pynvml # Import for type hint
+import pynvml
 from typing import Dict, Any, Optional, Callable, List, Type, Tuple
 import os
 import time
-import math # <<< ADDED IMPORT >>>
+import math
 
 from src.architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
 from src.utils.metrics import calculate_accuracy
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, create_directory_if_not_exists, format_time # Added format_time
-from src.utils.monitoring import get_gpu_memory_usage # Import memory usage function
+from src.utils.helpers import save_checkpoint, create_directory_if_not_exists, format_time
+from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
 
-# --- Function to train blocks using DFA (Remains the same) ---
 def train_cafo_dfa_blocks(
     model: CaFo_CNN,
     train_loader: DataLoader,
@@ -32,16 +28,15 @@ def train_cafo_dfa_blocks(
     step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
-) -> float: # Return peak memory
+) -> float:
     """
     Trains the blocks of the CaFo_CNN model using Direct Feedback Alignment (DFA).
     Uses the fully-connected approximation for Conv layer gradient updates.
     """
     logger.info("--- Starting CaFo Block Training (DFA) Phase ---")
     model.to(device)
-    model.train() # Set blocks to train mode
+    model.train()
 
-    # --- Config ---
     algo_config = config.get("algorithm_params", {})
     data_config = config.get("data", {})
     num_classes = data_config.get("num_classes", 10)
@@ -52,7 +47,6 @@ def train_cafo_dfa_blocks(
     log_interval = algo_config.get("log_interval", 100)
     dfa_feedback_matrix_type = algo_config.get("dfa_feedback_matrix_type", "gaussian")
 
-    # --- Setup Auxiliary Layer ---
     try:
         last_block_idx = len(model.blocks) - 1
         last_block_flat_dim = model.get_predictor_input_dim(last_block_idx)
@@ -62,11 +56,11 @@ def train_cafo_dfa_blocks(
         logger.info(f"Created auxiliary layer for DFA block training: Linear({last_block_flat_dim}, {num_classes})")
     except Exception as e:
         logger.error(f"Failed to create auxiliary layer for DFA: {e}", exc_info=True)
-        return float('nan') # Return NaN for peak memory on error
+        return float('nan')
 
     # --- Setup Feedback Matrices (B_i) ---
     feedback_matrices = []
-    error_dim = num_classes # Global error dimension
+    error_dim = num_classes
     for i in range(len(model.blocks)): # Need B_0 to B_{L-1}
         block_output_flat_dim = model.get_predictor_input_dim(i)
         b_matrix = torch.randn(error_dim, block_output_flat_dim, device=device)
@@ -210,7 +204,6 @@ def train_cafo_dfa_blocks(
     return peak_mem_block_train
 
 
-# --- NEW: Function to evaluate a single predictor ---
 @torch.no_grad()
 def evaluate_cafo_predictor(
     block: CaFoBlock,
@@ -250,25 +243,24 @@ def evaluate_cafo_predictor(
     return avg_loss, avg_accuracy
 
 
-# --- train_cafo_predictor_only (MODIFIED - Added Early Stopping Logic) ---
 def train_cafo_predictor_only(
     block: CaFoBlock,
     predictor: CaFoPredictor,
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     train_loader: DataLoader,
-    val_loader: Optional[DataLoader], # <<< ADDED >>>
+    val_loader: Optional[DataLoader],
     epochs: int,
     device: torch.device,
     get_block_input_fn: Callable[[torch.Tensor], torch.Tensor],
-    early_stopping_config: Dict[str, Any], # <<< ADDED >>>
+    early_stopping_config: Dict[str, Any],
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
-    block_index: int = 0,  # For logging
+    block_index: int = 0,
     step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
-) -> Tuple[float, float, float, int]: # <<< MODIFIED Return type >>>
+) -> Tuple[float, float, float, int]:
     """
     Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
     <<< MODIFIED: Added early stopping based on validation performance. >>>
@@ -288,7 +280,6 @@ def train_cafo_predictor_only(
     final_avg_epoch_accuracy = float('nan')
     epochs_trained = 0
 
-    # <<< Early Stopping Setup >>>
     es_enabled = early_stopping_config.get("enabled", False)
     es_metric_name = early_stopping_config.get("metric", "val_loss").lower()
     es_patience = early_stopping_config.get("patience", 10)
@@ -302,7 +293,6 @@ def train_cafo_predictor_only(
             logger.warning(f"{log_prefix}: Early stopping enabled but no val_loader provided. Disabling.")
             es_enabled = False
         else:
-            # Validate metric compatibility
             if (es_mode == "min" and "accuracy" in es_metric_name) or \
                (es_mode == "max" and "loss" in es_metric_name):
                 logger.error(f"{log_prefix}: Early stopping mode '{es_mode}' incompatible with metric '{es_metric_name}'. Disabling.")
@@ -311,11 +301,10 @@ def train_cafo_predictor_only(
                 logger.info(f"{log_prefix}: Early Stopping Enabled - Metric: '{es_metric_name}', Patience: {es_patience}, Mode: '{es_mode}', MinDelta: {es_min_delta}")
     else:
         logger.info(f"{log_prefix}: Early Stopping Disabled.")
-    # <<< End Early Stopping Setup >>>
 
     for epoch in range(epochs):
-        epochs_trained = epoch + 1 # Track how many epochs actually ran
-        predictor.train() # Ensure predictor is in train mode
+        epochs_trained = epoch + 1
+        predictor.train()
         epoch_loss = 0.0
         epoch_correct = 0
         epoch_samples = 0
@@ -350,7 +339,6 @@ def train_cafo_predictor_only(
                 if not torch.isnan(torch.tensor(current_mem_used)): metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = current_mem_used
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
-        # Calculate averages for the epoch
         final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float('nan')
         final_avg_epoch_accuracy = (epoch_correct / epoch_samples) * 100.0 if epoch_samples > 0 else float('nan')
         peak_mem_predictor_train = max(peak_mem_predictor_train, peak_mem_predictor_epoch)
@@ -359,11 +347,9 @@ def train_cafo_predictor_only(
         epoch_summary_metrics = {"global_step": step_ref[0], f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss, f"{log_prefix}/Train_Acc_EpochAvg": final_avg_epoch_accuracy, f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_predictor_epoch,}
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
 
-        # --- Early Stopping Check ---
         if es_enabled:
             val_loss, val_acc = evaluate_cafo_predictor( block, predictor, val_loader, device, get_block_input_fn, criterion)
             logger.info(f"{log_prefix} Epoch {epoch+1}/{epochs} - Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
-            # Log validation metrics
             val_metrics = { "global_step": step_ref[0], f"{log_prefix}/Val_Loss_Epoch": val_loss, f"{log_prefix}/Val_Acc_Epoch": val_acc,}
             log_metrics(val_metrics, wandb_run=wandb_run, commit=True)
 
@@ -381,8 +367,6 @@ def train_cafo_predictor_only(
                     best_es_metric_value = current_es_metric_value
                     epochs_no_improve = 0
                     logger.debug(f"{log_prefix} Epoch {epoch+1}: Early stopping metric improved to {best_es_metric_value:.4f}. Reset patience.")
-                    # Optionally save the best predictor state here
-                    # save_checkpoint(...)
                 else:
                     epochs_no_improve += 1
                     logger.debug(f"{log_prefix} Epoch {epoch+1}: Early stopping metric did not improve. Patience: {epochs_no_improve}/{es_patience}.")
@@ -390,43 +374,39 @@ def train_cafo_predictor_only(
             if epochs_no_improve >= es_patience:
                 logger.info(f"{log_prefix}: Early Stopping Triggered at Epoch {epoch+1}!")
                 logger.info(f"  Metric '{es_metric_name}' did not improve for {es_patience} epochs (Best: {best_es_metric_value:.4f}).")
-                break # Exit the training loop for this predictor
-        # --- End Early Stopping Check ---
+                break
 
-    # Sample memory one last time
     if nvml_active and gpu_handle:
         mem_info = get_gpu_memory_usage(gpu_handle)
         if mem_info: peak_mem_predictor_train = max(peak_mem_predictor_train, mem_info[0])
 
     logger.info(f"Finished CaFo training for {log_prefix} after {epochs_trained} epochs. Overall Peak Mem Predictor: {peak_mem_predictor_train:.1f} MiB")
     predictor.eval()
-    return final_avg_epoch_loss, final_avg_epoch_accuracy, peak_mem_predictor_train, epochs_trained # <<< Return epochs_trained >>>
+    return final_avg_epoch_loss, final_avg_epoch_accuracy, peak_mem_predictor_train, epochs_trained
 
 
-# --- train_cafo_model (MODIFIED - Orchestrates block and predictor training, passes val_loader) ---
 def train_cafo_model(
-    model: CaFo_CNN,  # Contains only blocks
+    model: CaFo_CNN,
     train_loader: DataLoader,
-    val_loader: Optional[DataLoader], # <<< ADDED >>>
+    val_loader: Optional[DataLoader],
     config: Dict[str, Any],
     device: torch.device,
     wandb_run: Optional[Any] = None,
-    input_adapter: Optional[Callable] = None, # Added for signature consistency, not used
+    input_adapter: Optional[Callable] = None,
     step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
-) -> float: # Returns overall peak memory
+) -> float:
     """
     Orchestrates the training of CaFo_CNN.
     Optionally trains blocks using DFA first, then trains predictors layer-wise.
-    <<< MODIFIED: Passes val_loader and early stopping config to predictor training. >>>
     Returns the overall peak GPU memory observed across all training phases.
     """
     model.to(device)
     algo_config = config.get("algorithm_params", {})
     train_blocks_flag = algo_config.get("train_blocks", False)
     num_blocks = len(model.blocks)
-    peak_mem_train = 0.0 # Track overall peak memory
+    peak_mem_train = 0.0
 
     # --- Optional: Block Training Phase (DFA) ---
     if train_blocks_flag:
@@ -439,11 +419,9 @@ def train_cafo_model(
         logger.info("Skipping block training phase. Blocks remain frozen.")
         model.eval(); [p.requires_grad_(False) for p in model.blocks.parameters()]
 
-    # --- Predictor Training Phase ---
     logger.info(f"--- Starting CaFo Predictor Training Phase for {num_blocks} blocks ---")
     if input_adapter: logger.warning("CaFo Training: 'input_adapter' ignored for CNNs.")
 
-    # Predictor training specific configs
     predictor_optimizer_name = algo_config.get("predictor_optimizer_type", "Adam")
     predictor_lr = algo_config.get("predictor_lr", 0.001)
     predictor_weight_decay = algo_config.get("predictor_weight_decay", 0.0)
@@ -453,7 +431,6 @@ def train_cafo_model(
     optimizer_params_extra = algo_config.get("optimizer_params", {})
     checkpoint_dir = config.get("checkpointing", {}).get("checkpoint_dir", None)
 
-    # <<< Predictor Early Stopping Config >>>
     predictor_es_config = {
         "enabled": algo_config.get("predictor_early_stopping_enabled", True),
         "metric": algo_config.get("predictor_early_stopping_metric", "val_loss"),
@@ -499,13 +476,12 @@ def train_cafo_model(
             optimizer_kwargs = {"lr": predictor_lr, "weight_decay": predictor_weight_decay, **optimizer_params_extra}
             optimizer = getattr(optim, predictor_optimizer_name)(params_to_optimize, **optimizer_kwargs)
 
-            # <<< Pass val_loader and early stopping config >>>
             final_avg_loss, final_avg_acc, predictor_peak_mem_this, epochs_trained_this_predictor = train_cafo_predictor_only(
                 block=block, predictor=predictor, optimizer=optimizer, criterion=criterion,
-                train_loader=train_loader, val_loader=val_loader, # Pass val_loader
+                train_loader=train_loader, val_loader=val_loader,
                 epochs=epochs_per_block, device=device,
                 get_block_input_fn=current_block_input_fn,
-                early_stopping_config=predictor_es_config, # Pass ES config
+                early_stopping_config=predictor_es_config,
                 wandb_run=wandb_run, log_interval=log_interval, block_index=i,
                 step_ref=step_ref, gpu_handle=gpu_handle, nvml_active=nvml_active
             )
@@ -513,14 +489,13 @@ def train_cafo_model(
             peak_mem_predictor_phase_overall = max(peak_mem_predictor_phase_overall, predictor_peak_mem_this)
             [p.requires_grad_(False) for p in predictor.parameters()]; predictor.eval()
 
-        # Log summary after training predictor i
         current_global_step = step_ref[0]
         predictor_summary_metrics = {
             "global_step": current_global_step,
             f"{log_prefix}/Train_Loss_LayerAvg": final_avg_loss,
             f"{log_prefix}/Train_Acc_LayerAvg": final_avg_acc,
             f"{log_prefix}/Peak_GPU_Mem_Layer_MiB": predictor_peak_mem_this,
-            f"{log_prefix}/Epochs_Trained": epochs_trained_this_predictor, # Log epochs trained
+            f"{log_prefix}/Epochs_Trained": epochs_trained_this_predictor,
         }
         log_metrics(predictor_summary_metrics, wandb_run=wandb_run, commit=True)
         logger.debug(f"Logged CaFo {log_prefix} summary at global_step {current_global_step}")
@@ -546,7 +521,6 @@ def train_cafo_model(
     return peak_mem_train
 
 
-# --- evaluate_cafo_model (Remains the same) ---
 def evaluate_cafo_model(
     model: CaFo_CNN, data_loader: DataLoader, device: torch.device,
     criterion: Optional[nn.Module] = None, predictors: Optional[nn.ModuleList] = None,

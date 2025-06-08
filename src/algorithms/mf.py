@@ -1,4 +1,3 @@
-# File: ./src/algorithms/mf.py (CORRECTED ARGUMENT ORDER)
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,7 +5,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.functional as F
 import logging
 from tqdm import tqdm
-import pynvml # Import for type hint
+import pynvml
 from typing import Dict, Any, Optional, Callable, List, Tuple
 import os
 import time
@@ -19,7 +18,6 @@ from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
 
-# --- mf_local_loss_fn (Remains the same) ---
 def mf_local_loss_fn(
     activation_i: torch.Tensor,
     projection_matrix_i: nn.Parameter,
@@ -33,7 +31,6 @@ def mf_local_loss_fn(
     loss = criterion(goodness_scores_i, targets)
     return loss
 
-# --- evaluate_mf_local_loss (Argument order already correct) ---
 @torch.no_grad()
 def evaluate_mf_local_loss(
     model: MF_MLP,
@@ -77,7 +74,6 @@ def evaluate_mf_local_loss(
     return avg_loss
 
 
-# --- train_mf_matrix_only (CORRECTED ARGUMENT ORDER) ---
 def train_mf_matrix_only(
     model: MF_MLP,
     matrix_index: int,
@@ -88,7 +84,7 @@ def train_mf_matrix_only(
     device: torch.device,
     input_adapter: Callable[[torch.Tensor], torch.Tensor],
     early_stopping_config: Dict[str, Any],
-    val_loader: Optional[DataLoader] = None, # Default args start here
+    val_loader: Optional[DataLoader] = None,
     wandb_run: Optional[Any] = None,
     log_interval: int = 100,
     step_ref: List[int] = [-1],
@@ -157,7 +153,7 @@ def train_mf_matrix_only(
         epoch_summary_metrics = {"global_step": step_ref[0], f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss, f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_matrix_epoch}
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
 
-        if es_enabled and val_loader is not None: # Ensure val_loader exists for ES
+        if es_enabled and val_loader is not None:
             projection_matrix.requires_grad_(False)
             val_loss = evaluate_mf_local_loss(
                 model=model, matrix_index=matrix_index, criterion=criterion,
@@ -179,14 +175,13 @@ def train_mf_matrix_only(
     return final_avg_epoch_loss, peak_mem_matrix_train, epochs_trained
 
 
-# --- train_mf_model (CORRECTED ARGUMENT ORDER) ---
 def train_mf_model(
     model: MF_MLP,
     train_loader: DataLoader,
     config: Dict[str, Any],
     device: torch.device,
     input_adapter: Callable[[torch.Tensor], torch.Tensor],
-    val_loader: Optional[DataLoader] = None, # Default args start here
+    val_loader: Optional[DataLoader] = None,
     wandb_run: Optional[Any] = None,
     step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
@@ -256,7 +251,7 @@ def train_mf_model(
             model.layers[i*2+1].train()
         else: logger.error(f"{log_prefix}: Linear layer index {i*2} out of range."); continue
 
-        projection_matrix = model.get_projection_matrix(m_matrix_log_idx) # Should be i+1
+        projection_matrix = model.get_projection_matrix(m_matrix_log_idx)
         if projection_matrix is None : logger.error(f"{log_prefix}: Projection matrix index {m_matrix_log_idx} is None."); continue
         projection_matrix.requires_grad_(True)
         params_to_optimize.append(projection_matrix)
@@ -365,13 +360,12 @@ def train_mf_model(
     return peak_mem_train
 
 
-# --- evaluate_mf_model (Argument order already correct) ---
 def evaluate_mf_model(
     model: MF_MLP,
     data_loader: DataLoader,
     device: torch.device,
     input_adapter: Callable[[torch.Tensor], torch.Tensor],
-    criterion: Optional[nn.Module] = None, # Keep Optional for signature consistency if other algos use it
+    criterion: Optional[nn.Module] = None,
 ) -> Dict[str, float]:
     """
     Evaluates the trained MF_MLP model using the paper's "BP-style" approach.
