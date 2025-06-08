@@ -1,10 +1,8 @@
-# File: src/utils/config_parser.py
 import yaml
 import os
 from typing import Dict, Any
-import logging  # Use logging
+import logging
 
-# Get logger instance for this module
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +32,7 @@ def load_config(
         try:
             with open(base_config_path, "r") as f:
                 base_config = yaml.safe_load(f)
-                if base_config is None:  # Handle empty base file
+                if base_config is None:
                     base_config = {}
             logger.debug(f"Loaded base configuration from {base_config_path}")
         except yaml.YAMLError as e:
@@ -61,7 +59,7 @@ def load_config(
     try:
         with open(config_path, "r") as f:
             specific_config = yaml.safe_load(f)
-            if specific_config is None:  # Handle empty specific config file
+            if specific_config is None:
                 specific_config = {}
         logger.debug(f"Loaded specific configuration from {config_path}")
     except yaml.YAMLError as e:
@@ -74,20 +72,17 @@ def load_config(
         logger.error(f"An unexpected error occurred while reading {config_path}: {e}")
         raise
 
-    # --- Deep Merge Implementation ---
     def deep_merge(source, destination):
         """Deeply merges source dict into destination dict."""
         for key, value in source.items():
             if isinstance(value, dict):
-                # Get node or create one
                 node = destination.setdefault(key, {})
                 deep_merge(value, node)
             else:
                 destination[key] = value
         return destination
 
-    # Merge configurations: specific config overrides base config using deep merge
-    merged_config = base_config.copy()  # Start with a copy of the base
+    merged_config = base_config.copy()
     merged_config = deep_merge(specific_config, merged_config)
 
     logger.info(

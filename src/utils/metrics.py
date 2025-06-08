@@ -1,4 +1,3 @@
-# File: src/utils/metrics.py
 import torch
 import logging
 
@@ -18,11 +17,9 @@ def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
     """
     total = targets.size(0)
     if total == 0:
-        return 0.0  # Handle empty batch case
+        return 0.0
 
     with torch.no_grad():
-        # Get the index of the max log-probability/probability
-        # Ensure outputs are on CPU for argmax if targets are on CPU
         if outputs.device != targets.device:
             outputs = outputs.to(targets.device)
 

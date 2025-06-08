@@ -1,25 +1,19 @@
-# --------------------------------------------------------------------------------
-# File: ./src/utils/codecarbon_utils.py
-# --------------------------------------------------------------------------------
-# File: src/utils/codecarbon_utils.py
 import os
 import logging
 from typing import Dict, Any, Optional, Tuple
 
-# Assume codecarbon is installed. Handle import error gracefully.
 try:
     from codecarbon import OfflineEmissionsTracker
 except ImportError:
     OfflineEmissionsTracker = None
     logging.warning("CodeCarbon library not found. Carbon tracking will be disabled.")
 
-# Import helper from sibling directory
 from .helpers import create_directory_if_not_exists
 
 logger = logging.getLogger(__name__)
 
 def setup_codecarbon_tracker(
-    config: Dict[str, Any], results: Dict[str, Any] # Pass results dict to store path
+    config: Dict[str, Any], results: Dict[str, Any]
 ) -> Optional[OfflineEmissionsTracker]:
     """
     Initializes and starts the CodeCarbon OfflineEmissionsTracker based on config.
@@ -39,7 +33,7 @@ def setup_codecarbon_tracker(
         return None
 
     carbon_tracker_config = config.get("carbon_tracker", {})
-    enabled = carbon_tracker_config.get("enabled", False) # Default to False if not specified
+    enabled = carbon_tracker_config.get("enabled", False)
     results["codecarbon_enabled"] = enabled
 
     if not enabled:
@@ -49,14 +43,12 @@ def setup_codecarbon_tracker(
 
     output_dir = carbon_tracker_config.get("output_dir", "results/carbon")
     experiment_name = config.get("experiment_name", "default_experiment")
-    # Ensure directory exists
     create_directory_if_not_exists(output_dir)
 
     csv_filename = f"{experiment_name}_carbon.csv"
     csv_path = os.path.join(output_dir, csv_filename)
-    results["codecarbon_csv_path"] = csv_path # Store path for later use
-
-    country_iso = carbon_tracker_config.get("country_iso_code", None) # Let CodeCarbon detect if None
+    results["codecarbon_csv_path"] = csv_path
+    country_iso = carbon_tracker_config.get("country_iso_code", None)
     if not country_iso:
         logger.warning("CodeCarbon country_iso_code not specified, attempting auto-detection.")
     results["codecarbon_country_iso"] = country_iso
@@ -66,19 +58,15 @@ def setup_codecarbon_tracker(
 
     if mode != "offline":
         logger.warning(f"CodeCarbon mode set to '{mode}', but only offline mode is fully supported here. Using offline.")
-        # Force offline for this implementation
-        # mode = "offline"
 
     try:
         logger.info(f"Initializing CodeCarbon OfflineEmissionsTracker. Outputting to {csv_path}")
         tracker = OfflineEmissionsTracker(
             output_dir=output_dir,
             output_file=csv_filename,
-            country_iso_code=country_iso, # Pass None to let it try detection
-            # measure_power_secs=config.get("monitoring", {}).get("energy_interval_sec", 15), # Align sampling? Optional. Default is 15s.
-            log_level="INFO", # Keep CodeCarbon's internal logs concise
+            country_iso_code=country_iso,
+            log_level="INFO",
             save_to_file=True,
-            # project_name could be added for grouping in CodeCarbon dashboard if used online
             project_name=config.get("logging", {}).get("wandb", {}).get("project", "BeyondBackpropagation")
         )
         tracker.start()
@@ -86,6 +74,6 @@ def setup_codecarbon_tracker(
         return tracker
     except Exception as e:
         logger.error(f"Failed to initialize or start CodeCarbon tracker: {e}", exc_info=True)
-        results["codecarbon_csv_path"] = None # Ensure path is None if failed
-        results["codecarbon_enabled"] = False # Mark as disabled if failed
+        results["codecarbon_csv_path"] = None
+        results["codecarbon_enabled"] = False
         return None

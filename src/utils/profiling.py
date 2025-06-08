@@ -1,7 +1,3 @@
-# --------------------------------------------------------------------------------
-# File: ./src/utils/profiling.py
-# --------------------------------------------------------------------------------
-# File: src/utils/profiling.py
 import torch
 import torch.nn as nn
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -14,7 +10,7 @@ def profile_model_flops(
     model: nn.Module,
     input_constructor: Union[Tuple[int, ...], Callable[[], torch.Tensor]],
     device: Optional[torch.device] = None,
-    verbose: bool = False, # Verbose now controls printing the profiler table
+    verbose: bool = False,
 ) -> Optional[float]:
     """
     Estimates the FLOPs for a model's forward pass using torch.profiler.
@@ -51,10 +47,10 @@ def profile_model_flops(
             logger.debug(f"Created dummy input with shape: {input_shape}")
         elif callable(input_constructor):
             dummy_input = input_constructor()
-            dummy_input = dummy_input.to(device) # Ensure input is on the correct device
+            dummy_input = dummy_input.to(device)
             if dummy_input.shape[0] != 1:
                  logger.warning(f"Input constructor yielded batch size {dummy_input.shape[0]}, expected 1 for profiling. Using first sample.")
-                 dummy_input = dummy_input[:1] # Use only the first sample
+                 dummy_input = dummy_input[:1]
             logger.debug(f"Created dummy input from constructor, shape: {dummy_input.shape}")
         else:
             logger.error("Invalid input_constructor type provided.")
@@ -63,21 +59,20 @@ def profile_model_flops(
         logger.error(f"Failed to create dummy input: {e}", exc_info=True)
         model.train(original_mode); return None
 
-    total_flops = 0.0 # Initialize total FLOPs
+    total_flops = 0.0
     try:
         activities = [ProfilerActivity.CPU]
         if device.type == 'cuda':
             activities.append(ProfilerActivity.CUDA)
 
         with profile(activities=activities, record_shapes=False, profile_memory=False, with_flops=True) as prof:
-             with record_function("model_forward_pass"): # Label the operation
+             with record_function("model_forward_pass"):
                  with torch.no_grad():
-                     _ = model(dummy_input) # Run forward pass
+                     _ = model(dummy_input)
 
         if verbose:
             print("--- Torch Profiler Results (Sorted by CPU time) ---")
             try:
-                # Sort by flops if possible, otherwise fallback to CPU time
                 sort_key = "flops" if any(e.flops > 0 for e in prof.key_averages()) else "self_cpu_time_total"
                 print(prof.key_averages().table(sort_by=sort_key, row_limit=15))
             except Exception as table_err:
@@ -85,9 +80,7 @@ def profile_model_flops(
             print("--------------------------------------------------")
 
 
-        # Sum FLOPs from recorded events
         for event in prof.key_averages():
-             # event.flops seems to report total FLOPs for the operator
              if event.flops > 0:
                  total_flops += event.flops
 
@@ -98,13 +91,12 @@ def profile_model_flops(
         logger.error(f"Failed during torch.profiler execution: {e}", exc_info=True)
         total_flops = None
     finally:
-        model.train(original_mode) # Restore original mode
+        model.train(original_mode)
 
     if total_flops is not None:
-        gflops = total_flops / 1e9 # Calculate GigaFLOPs
-        # Log GFLOPs instead of MACs
+        gflops = total_flops / 1e9
         logger.info(f"Estimated Total Forward Pass FLOPs (via torch.profiler): {gflops:.4f} GFLOPs")
-        return gflops # Return GFLOPs
+        return gflops
     else:
         logger.warning("Failed to determine Total FLOPs from torch.profiler.")
         return None

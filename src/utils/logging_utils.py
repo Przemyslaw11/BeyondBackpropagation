@@ -1,15 +1,10 @@
-# --------------------------------------------------------------------------------
-# File: ./src/utils/logging_utils.py (MODIFIED)
-# --------------------------------------------------------------------------------
-# File: src/utils/logging_utils.py
 import wandb
 import os
 import logging
 from typing import Dict, Any, Optional, List
 import sys
-import time # Import time for fallback run name
+import time
 
-# --- Centralized Logging Setup ---
 def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
     """
     Configures the root logger.
@@ -23,47 +18,40 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
-    # Get root logger
     root_logger = logging.getLogger()
-    # Set level ONLY if handlers are not present or if this setup is meant to override
     if (
         not root_logger.hasHandlers()
         or os.environ.get("LOGGING_SETUP_COMPLETE") is None
     ):
         root_logger.setLevel(level)
 
-        # Clear existing handlers (optional, prevents duplicate logs if called multiple times within same initial setup)
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-            handler.close()  # Close handlers before removing
+            handler.close()
 
-        # Console Handler
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
 
-        # File Handler (if specified)
         if log_file:
-            # Ensure directory exists
             log_dir = os.path.dirname(log_file)
             if log_dir:
                 os.makedirs(log_dir, exist_ok=True)
 
-            file_handler = logging.FileHandler(log_file, mode="a")  # Append mode
+            file_handler = logging.FileHandler(log_file, mode="a")
             file_handler.setLevel(level)
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
             root_logger.info(f"Logging to file: {log_file}")
 
         os.environ["LOGGING_SETUP_COMPLETE"] = (
-            "1"  # Flag to prevent resetting level/handlers
+            "1"
         )
         root_logger.info(f"Root logger setup complete. Level: {log_level.upper()}")
     else:
         root_logger.info("Root logger already configured.")
 
-# Get logger instance *after* potential setup
 logger = logging.getLogger(__name__)
 
 
@@ -125,9 +113,8 @@ def setup_wandb(
         return None
 
 
-# --- MODIFIED log_metrics (Skips logging specific key) ---
 def log_metrics(
-    metrics: Dict[str, Any], # Expects metrics dictionary *including* 'global_step'
+    metrics: Dict[str, Any],
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
     commit: bool = True,
 ):
@@ -142,51 +129,41 @@ def log_metrics(
         wandb_run: The active W&B run object. If None, tries to use the global run.
         commit: If True (default), commits the log to W&B. Set to False to batch logs.
     """
-    step_val = metrics.get("global_step", "N/A") # Get step from dict
+    step_val = metrics.get("global_step", "N/A")
 
-    # --- Log to standard logger (Modified for multi-line output and filtering) ---
-    # Determine if this is likely a final summary log based on keys
     is_final_summary = any(key.startswith("final/") for key in metrics)
 
-    logger.info("") # Blank line for spacing
+    logger.info("")
     if is_final_summary:
         logger.info(f"--- Final Summary Metrics (Step: {step_val}) ---")
     else:
-        logger.info(f"--- Metrics Log (Step: {step_val}) ---") # Header for the block
+        logger.info(f"--- Metrics Log (Step: {step_val}) ---")
 
     for k, v in metrics.items():
-        if k == "global_step": # Skip logging the step itself again
+        if k == "global_step":
             continue
-        # <<< MODIFICATION: Skip logging the specific key to console >>>
         if k == "final/codecarbon_emissions_kgCO2e":
             continue
-        # <<< END MODIFICATION >>>
-
-        # Format floats for better readability
         if isinstance(v, float):
-            # Use more precision for small values like emissions/energy, less for others
             if ("emission" in k.lower() or "energy" in k.lower() or abs(v) < 1e-3) and v != 0.0:
-                log_value = f"{v:.6f}" # More precision for energy/emissions
+                log_value = f"{v:.6f}"
             elif "gflops" in k.lower():
-                log_value = f"{v:.4f}" # Standard 4 for gflops
+                log_value = f"{v:.4f}"
             else:
-                log_value = f"{v:.4f}" # Standard 4 decimal places otherwise
+                log_value = f"{v:.4f}"
         else:
             log_value = v
-        logger.info(f"  {k}: {log_value}") # Indent each metric
+        logger.info(f"  {k}: {log_value}")
 
     if is_final_summary:
         logger.info(f"--- End Final Summary ---")
     else:
-        logger.info(f"--- End Metrics Log ---") # Footer for the block
-    logger.info("") # Blank line for spacing
-    # --- End Logging Modification ---
+        logger.info(f"--- End Metrics Log ---")
+    logger.info("")
 
-    # Log to W&B (Unchanged - still logs both kg and g)
     active_run = wandb_run or wandb.run
     if active_run:
         try:
-            # Pass the full dictionary, W&B uses 'global_step' automatically due to define_metric
             active_run.log(metrics, commit=commit)
         except Exception as e:
             logger.error(
