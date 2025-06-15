@@ -4,7 +4,7 @@ import copy
 import logging
 import pprint
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import optuna
 import torch
@@ -17,14 +17,10 @@ from src.utils.helpers import format_time, set_seed
 logger = logging.getLogger(__name__)
 
 
-def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
-    """Optuna objective function for hyperparameter tuning of Mono-Forward (MF).
-
-    NOTE: Early stopping (if enabled in config) will happen *within* the
-          train_mf_model call during the trial, potentially reducing the
-          number of epochs trained per layer. Optuna itself does not prune
-          based on intermediate layer results in this setup.
-    """
+def _setup_mf_trial(
+    trial: optuna.Trial, base_config: Dict[str, Any]
+) -> Tuple[Dict[str, Any], torch.device, int]:
+    """Suggests hyperparameters and sets up the environment for an MF trial."""
     cfg = copy.deepcopy(base_config)
     tuning_cfg = cfg.get("tuning")
     if not isinstance(tuning_cfg, dict):
@@ -33,13 +29,15 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     if "algorithm_params" not in cfg or not isinstance(cfg["algorithm_params"], dict):
         cfg["algorithm_params"] = {}
 
+    # Suggest hyperparameters
     lr_range = tuning_cfg.get("mf_lr_range", tuning_cfg.get("lr_range", [1e-5, 1e-2]))
     epochs_range = tuning_cfg.get("mf_epochs_per_layer_range", [5, 50])
-
     cfg["algorithm_params"]["lr"] = trial.suggest_float("lr", *lr_range, log=True)
-    epochs_key = "epochs_per_layer"
-    cfg["algorithm_params"][epochs_key] = trial.suggest_int(epochs_key, *epochs_range)
+    cfg["algorithm_params"]["epochs_per_layer"] = trial.suggest_int(
+        "epochs_per_layer", *epochs_range
+    )
 
+    # Setup environment
     trial_seed = cfg.get("general", {}).get("seed", 42) + trial.number
     set_seed(trial_seed)
     device_name = cfg.get("general", {}).get("device", "auto").lower()
@@ -48,13 +46,19 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     else:
         device = torch.device("cpu")
 
+    return cfg, device, trial_seed
+
+
+def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
+    """Optuna objective function for hyperparameter tuning of Mono-Forward (MF)."""
+    cfg, device, trial_seed = _setup_mf_trial(trial, base_config)
+    tuning_cfg = cfg["tuning"]
+
     logger.info(
-        f"--- Starting Optuna Trial {trial.number} "
-        f"(Study: {trial.study.study_name}) for MF ---"
+        f"--- Starting Optuna Trial {trial.number} (Study: {trial.study.study_name}) for MF ---"
     )
     logger.info(f"  Device: {device}, Seed: {trial_seed}")
-    param_str = pprint.pformat(trial.params)
-    logger.info(f"  MF Hyperparameters:\n{param_str}")
+    logger.info(f"  MF Hyperparameters:\n{pprint.pformat(trial.params)}")
 
     metric_to_optimize = tuning_cfg.get("metric", "val_accuracy").lower()
     optimization_direction = tuning_cfg.get("direction", "maximize").lower()
@@ -64,13 +68,9 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         )
 
     model = None
-    train_loader = None
-    val_loader = None
-
     try:
         data_config = cfg.get("data", {})
         loader_config = cfg.get("data_loader", {})
-        logger.info(f"Trial {trial.number}: Loading data...")
         train_loader, val_loader, _ = get_dataloaders(
             dataset_name=data_config.get("name", "FashionMNIST"),
             batch_size=loader_config.get("batch_size", 64),
@@ -86,62 +86,33 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             "mf_early_stopping_enabled", False
         )
         if not val_loader and es_enabled:
-            logger.warning(
-                f"Trial {trial.number}: MF Early stopping is enabled but "
-                "val_loader is None. Disabling ES for this trial."
-            )
+            logger.warning("MF Early stopping enabled but no val_loader. Disabling ES.")
             cfg["algorithm_params"]["mf_early_stopping_enabled"] = False
-        elif not val_loader:
-            logger.info(
-                f"Trial {trial.number}: No validation loader, MF early stopping "
-                "cannot be used."
-            )
         logger.info(f"Trial {trial.number}: Data loaded.")
 
-        logger.info(
-            f"Trial {trial.number}: Instantiating MF model and getting adapter..."
-        )
         model, input_adapter = get_model_and_adapter(cfg, device)
         model.to(device)
-        num_params = sum(p.numel() for p in model.parameters())
         logger.info(
-            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' "
-            f"({num_params:,} params) on {device}."
+            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' created."
         )
 
-        logger.info(f"Trial {trial.number}: Starting MF layer-wise training...")
         trial_train_start_time = time.time()
-
-        minimal_cfg_for_train = copy.deepcopy(cfg)
-        minimal_cfg_for_train["monitoring"] = {
-            "enabled": False,
-            "energy_enabled": False,
-        }
-        minimal_cfg_for_train["profiling"] = {"enabled": False}
-        minimal_cfg_for_train["checkpointing"] = {"checkpoint_dir": None}
-        minimal_cfg_for_train["logging"] = {"wandb": {"use_wandb": False}}
-
-        step_ref = [-1]
-
-        _ = train_mf_model(
+        train_mf_model(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            config=minimal_cfg_for_train,
+            config=cfg,
             device=device,
             wandb_run=None,
             input_adapter=input_adapter,
-            step_ref=step_ref,
+            step_ref=[-1],
             gpu_handle=None,
             nvml_active=False,
         )
-        trial_train_duration = time.time() - trial_train_start_time
         logger.info(
-            f"Trial {trial.number}: MF training completed in "
-            f"{format_time(trial_train_duration)}."
+            f"MF training completed in {format_time(time.time() - trial_train_start_time)}."
         )
 
-        logger.info(f"Trial {trial.number}: Evaluating MF model on validation set...")
         eval_results = evaluate_mf_model(
             model=model,
             data_loader=val_loader,
@@ -154,12 +125,10 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         )
 
         if torch.isnan(torch.tensor(validation_accuracy)):
-            logger.error(f"Trial {trial.number}: Evaluation returned NaN accuracy.")
-            raise ValueError("Eval failed.")
+            raise ValueError("Evaluation returned NaN accuracy.")
 
         logger.info(
-            f"Trial {trial.number} finished. Final Validation Accuracy: "
-            f"{validation_accuracy:.4f}"
+            f"Trial {trial.number} finished. Final Validation Accuracy: {validation_accuracy:.4f}"
         )
         return validation_accuracy
 
@@ -169,7 +138,7 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         logger.error(f"Trial {trial.number} failed with error: {e}", exc_info=True)
         return -1.0 if optimization_direction == "maximize" else float("inf")
     finally:
-        del model, train_loader, val_loader
+        del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
             logger.debug(f"Trial {trial.number}: Cleared CUDA cache.")
