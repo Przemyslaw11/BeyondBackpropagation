@@ -43,10 +43,7 @@ def parse_args() -> argparse.Namespace:
         "--study-name",
         type=str,
         default=None,
-        help=(
-            "Name of the Optuna study. If None, attempts to load "
-            "the first/only study."
-        ),
+        help=("Name of the Optuna study. If None, attempts to load the first/only study."),
     )
     parser.add_argument(
         "--no-backup",
@@ -82,9 +79,7 @@ def update_ff_config_from_optuna(
             return False
         if study_name is None:
             if len(loaded_studies) > 1:
-                logger.error(
-                    f"Multiple studies found in {db_path}. Specify --study-name."
-                )
+                logger.error(f"Multiple studies found in {db_path}. Specify --study-name.")
                 return False
             study_name = loaded_studies[0].study_name
             logger.info(f"Auto-selected study: '{study_name}'")
@@ -121,7 +116,7 @@ def update_ff_config_from_optuna(
     # --- Load YAML Config ---
     try:
         logger.info(f"Loading FF YAML configuration file: {config_path}")
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config_data = yaml.safe_load(f)
         if not isinstance(config_data, dict):
             logger.error(f"Failed to parse YAML or file not dict: {config_path}")
@@ -130,7 +125,7 @@ def update_ff_config_from_optuna(
     except yaml.YAMLError as e:
         logger.error(f"Error parsing YAML file {config_path}: {e}", exc_info=True)
         return False
-    except IOError as e:
+    except OSError as e:
         logger.error(f"Error reading YAML file {config_path}: {e}", exc_info=True)
         return False
 
@@ -138,9 +133,7 @@ def update_ff_config_from_optuna(
     if "algorithm_params" not in config_data or not isinstance(
         config_data.get("algorithm_params"), dict
     ):
-        logger.warning(
-            f"YAML file {config_path} missing 'algorithm_params' dict. Creating it."
-        )
+        logger.warning(f"YAML file {config_path} missing 'algorithm_params' dict. Creating it.")
         config_data["algorithm_params"] = {}
 
     algo_params_section = config_data["algorithm_params"]
@@ -185,15 +178,11 @@ def update_ff_config_from_optuna(
     try:
         logger.info(f"Writing updated configuration back to: {config_path}")
         with open(config_path, "w") as f:
-            yaml.dump(
-                config_data, f, default_flow_style=False, sort_keys=False, indent=2
-            )
+            yaml.dump(config_data, f, default_flow_style=False, sort_keys=False, indent=2)
         logger.info(f"FF YAML file updated successfully. Keys updated: {keys_updated}")
         return True
-    except IOError as e:
-        logger.error(
-            f"Error writing updated YAML file {config_path}: {e}", exc_info=True
-        )
+    except OSError as e:
+        logger.error(f"Error writing updated YAML file {config_path}: {e}", exc_info=True)
         return False
     except Exception as e:
         logger.error(f"Unexpected error writing YAML: {e}", exc_info=True)

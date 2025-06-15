@@ -263,11 +263,7 @@ class FF_MLP(torch.nn.Module):
             try:
                 x = x.view(x.shape[0], self.input_dim)
             except RuntimeError as e:
-                # FIX 1: Broke the long f-string into a multi-line string.
-                msg = (
-                    f"Cannot reshape input {x.shape} to "
-                    f"({x.shape[0]}, {self.input_dim})"
-                )
+                msg = f"Cannot reshape input {x.shape} to ({x.shape[0]}, {self.input_dim})"
                 raise ValueError(msg) from e
         z = self._layer_norm(x)  # Normalize input
         for _, layer in enumerate(self.layers):
@@ -303,13 +299,13 @@ class FF_MLP(torch.nn.Module):
                 peer_loss = self._calc_peer_normalization_loss(idx, z_pos)
                 scalar_outputs["Peer_Normalization_Loss_Total"] += peer_loss
                 # Log per-layer loss
-                scalar_outputs[f"Layer_{idx+1}/Peer_Norm_Loss"] = peer_loss.item()
+                scalar_outputs[f"Layer_{idx + 1}/Peer_Norm_Loss"] = peer_loss.item()
                 scalar_outputs["Loss"] += self.peer_normalization_factor * peer_loss
 
             # --- Forward-Forward Loss ---
             ff_loss, ff_accuracy = self._calc_ff_loss(z_act, posneg_labels)
-            scalar_outputs[f"Layer_{idx+1}/FF_Loss"] = ff_loss.item()
-            scalar_outputs[f"Layer_{idx+1}/FF_Accuracy"] = ff_accuracy
+            scalar_outputs[f"Layer_{idx + 1}/FF_Loss"] = ff_loss.item()
+            scalar_outputs[f"Layer_{idx + 1}/FF_Accuracy"] = ff_accuracy
             scalar_outputs["FF_Loss_Total"] += ff_loss
             scalar_outputs["Loss"] += ff_loss
 
@@ -399,11 +395,7 @@ class FF_MLP(torch.nn.Module):
     ) -> List[torch.Tensor]:
         """Forward pass calculating goodness per layer for evaluation."""
         if x_flattened_modified.shape[1] != self.input_dim:
-            # FIX 2: Broke the long f-string into a multi-line string.
-            msg = (
-                f"Eval input dim mismatch: {x_flattened_modified.shape[1]} vs "
-                f"{self.input_dim}"
-            )
+            msg = f"Eval input dim mismatch: {x_flattened_modified.shape[1]} vs {self.input_dim}"
             raise ValueError(msg)
 
         layer_goodness = []

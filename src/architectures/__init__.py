@@ -150,9 +150,9 @@ def get_architecture(
 
 __all__ = [
     "FF_MLP",
-    "CaFo_CNN",
+    "MF_MLP",
     "CaFoBlock",
     "CaFoPredictor",
-    "MF_MLP",
+    "CaFo_CNN",
     "get_architecture",
 ]

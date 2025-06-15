@@ -93,8 +93,7 @@ def update_config_from_optuna(
         if study_name is None:
             if len(loaded_studies) > 1:
                 logger.error(
-                    f"Multiple studies found in {db_path}. Please specify one using "
-                    "--study-name:"
+                    f"Multiple studies found in {db_path}. Please specify one using --study-name:"
                 )
                 for study in loaded_studies:
                     logger.error(f"  - {study.study_name}")
@@ -103,8 +102,7 @@ def update_config_from_optuna(
             logger.info(f"Automatically selected study: '{study_name}'")
         elif study_name not in [s.study_name for s in loaded_studies]:
             logger.error(
-                f"Specified study name '{study_name}' not found in the database: "
-                f"{db_path}"
+                f"Specified study name '{study_name}' not found in the database: {db_path}"
             )
             logger.error("Available studies:")
             for study in loaded_studies:
@@ -127,16 +125,12 @@ def update_config_from_optuna(
     # --- Get Best Trial ---
     try:
         best_trial = study.best_trial
-        logger.info(
-            f"Best trial found: Number {best_trial.number}, "
-            f"Value: {best_trial.value:.6f}"
-        )
+        logger.info(f"Best trial found: Number {best_trial.number}, Value: {best_trial.value:.6f}")
         logger.info("Best Hyperparameters:")
         best_params = best_trial.params
         if not best_params:
             logger.warning(
-                f"Best trial {best_trial.number} has no parameters recorded. "
-                "Cannot update config."
+                f"Best trial {best_trial.number} has no parameters recorded. Cannot update config."
             )
             return False  # Nothing to update
         for key, value in best_params.items():
@@ -157,26 +151,22 @@ def update_config_from_optuna(
     # --- Load YAML Config ---
     try:
         logger.info(f"Loading YAML configuration file: {config_path}")
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             # Use safe_load for security
             config_data = yaml.safe_load(f)
         if not isinstance(config_data, dict):
-            logger.error(
-                f"Failed to parse YAML or file is not a dictionary: {config_path}"
-            )
+            logger.error(f"Failed to parse YAML or file is not a dictionary: {config_path}")
             return False
         logger.info("YAML loaded successfully.")
     except yaml.YAMLError as e:
         logger.error(f"Error parsing YAML file {config_path}: {e}", exc_info=True)
         return False
-    except IOError as e:
+    except OSError as e:
         logger.error(f"Error reading YAML file {config_path}: {e}", exc_info=True)
         return False
 
     # --- Update Optimizer Section ---
-    if "optimizer" not in config_data or not isinstance(
-        config_data.get("optimizer"), dict
-    ):
+    if "optimizer" not in config_data or not isinstance(config_data.get("optimizer"), dict):
         # Error out if 'optimizer' section is missing, as it's safer.
         logger.error(
             f"YAML file {config_path} is missing the 'optimizer' dictionary "
@@ -222,9 +212,7 @@ def update_config_from_optuna(
             shutil.copyfile(config_path, backup_path)
             logger.info(f"Created backup of original config: {backup_path}")
         except Exception as e:
-            logger.error(
-                f"Failed to create backup file {backup_path}: {e}", exc_info=True
-            )
+            logger.error(f"Failed to create backup file {backup_path}: {e}", exc_info=True)
             logger.warning("Proceeding without backup.")
 
     # --- Write Updated YAML ---
@@ -232,20 +220,14 @@ def update_config_from_optuna(
         logger.info(f"Writing updated configuration back to: {config_path}")
         with open(config_path, "w") as f:
             # Dump with settings to preserve formatting better
-            yaml.dump(
-                config_data, f, default_flow_style=False, sort_keys=False, indent=2
-            )
+            yaml.dump(config_data, f, default_flow_style=False, sort_keys=False, indent=2)
         logger.info(f"YAML file updated successfully. Keys updated: {keys_updated}")
         return True
-    except IOError as e:
-        logger.error(
-            f"Error writing updated YAML file {config_path}: {e}", exc_info=True
-        )
+    except OSError as e:
+        logger.error(f"Error writing updated YAML file {config_path}: {e}", exc_info=True)
         return False
     except Exception as e:
-        logger.error(
-            f"An unexpected error occurred while writing YAML: {e}", exc_info=True
-        )
+        logger.error(f"An unexpected error occurred while writing YAML: {e}", exc_info=True)
         return False
 
 

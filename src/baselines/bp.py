@@ -54,7 +54,7 @@ def train_bp_epoch(
     epoch_total_loss, epoch_total_correct, epoch_total_samples = 0.0, 0, 0
     peak_mem_epoch = 0.0
 
-    pbar = tqdm(train_loader, desc=f"BP Epoch {epoch+1}/{total_epochs}", leave=False)
+    pbar = tqdm(train_loader, desc=f"BP Epoch {epoch + 1}/{total_epochs}", leave=False)
 
     for batch_idx, (images, labels) in enumerate(pbar):
         step_ref[0] += 1
@@ -91,12 +91,8 @@ def train_bp_epoch(
                 peak_mem_epoch = max(peak_mem_epoch, current_mem_used)
 
         if is_log_time or is_last_batch:
-            batch_accuracy = (
-                (batch_correct / batch_size) * 100.0 if batch_size > 0 else 0.0
-            )
-            pbar.set_postfix(
-                loss=f"{batch_loss_value:.4f}", acc=f"{batch_accuracy:.2f}%"
-            )
+            batch_accuracy = (batch_correct / batch_size) * 100.0 if batch_size > 0 else 0.0
+            pbar.set_postfix(loss=f"{batch_loss_value:.4f}", acc=f"{batch_accuracy:.2f}%")
             metrics_to_log = {
                 "global_step": current_global_step,
                 "BP_Baseline/Train_Loss_Batch": batch_loss_value,
@@ -106,13 +102,9 @@ def train_bp_epoch(
                 metrics_to_log["BP_Baseline/GPU_Mem_Used_MiB_Batch"] = current_mem_used
             log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
-    avg_epoch_loss = (
-        epoch_total_loss / epoch_total_samples if epoch_total_samples > 0 else 0.0
-    )
+    avg_epoch_loss = epoch_total_loss / epoch_total_samples if epoch_total_samples > 0 else 0.0
     avg_epoch_accuracy = (
-        (epoch_total_correct / epoch_total_samples) * 100.0
-        if epoch_total_samples > 0
-        else 0.0
+        (epoch_total_correct / epoch_total_samples) * 100.0 if epoch_total_samples > 0 else 0.0
     )
 
     if nvml_active and gpu_handle and peak_mem_epoch == 0.0 and epoch_total_samples > 0:
@@ -214,9 +206,7 @@ def train_bp_model(
             )
             metric_is_accuracy = "accuracy" in es_metric
             metric_is_loss = "loss" in es_metric
-            if (es_mode == "min" and metric_is_accuracy) or (
-                es_mode == "max" and metric_is_loss
-            ):
+            if (es_mode == "min" and metric_is_accuracy) or (es_mode == "max" and metric_is_loss):
                 logger.error(
                     f"Early stopping mode '{es_mode}' is incompatible with metric "
                     f"'{es_metric}'. Disabling."
@@ -239,9 +229,7 @@ def train_bp_model(
     }
     params_to_optimize = [p for p in model.parameters() if p.requires_grad]
     if not params_to_optimize:
-        logger.error(
-            "BP Baseline: No parameters found requiring gradients. Cannot train."
-        )
+        logger.error("BP Baseline: No parameters found requiring gradients. Cannot train.")
         return 0.0
 
     optimizer = getattr(optim, optimizer_name)(params_to_optimize, **optimizer_kwargs)
@@ -256,9 +244,7 @@ def train_bp_model(
     if any("projection_matrices" in name for name in optimized_param_names):
         logger.warning("BP Baseline Optimizer - WARNING: 'projection_matrices' found.")
     else:
-        logger.debug(
-            "BP Baseline Optimizer - Verified: 'projection_matrices' NOT optimized."
-        )
+        logger.debug("BP Baseline Optimizer - Verified: 'projection_matrices' NOT optimized.")
 
     scheduler = None
     if scheduler_name:
@@ -277,13 +263,9 @@ def train_bp_model(
             else:
                 logger.warning(f"Unsupported scheduler: {scheduler_name}.")
         except Exception as e:
-            logger.error(
-                f"Failed to create scheduler '{scheduler_name}': {e}", exc_info=True
-            )
+            logger.error(f"Failed to create scheduler '{scheduler_name}': {e}", exc_info=True)
     if scheduler:
-        logger.info(
-            f"Using LR scheduler: {scheduler_name} with params: {scheduler_params}"
-        )
+        logger.info(f"Using LR scheduler: {scheduler_name} with params: {scheduler_params}")
 
     best_checkpoint_metric_value = (
         -float("inf") if save_best_metric_mode == "max" else float("inf")
@@ -315,7 +297,7 @@ def train_bp_model(
         current_es_metric_value = None
         current_global_step = step_ref[0]
         logger.debug(
-            f"End of Epoch {epoch+1} training. Current global_step: "
+            f"End of Epoch {epoch + 1} training. Current global_step: "
             f"{current_global_step}. Peak Mem Epoch: {peak_mem_epoch:.2f} MiB"
         )
 
@@ -330,9 +312,8 @@ def train_bp_model(
             else:
                 logger.warning(f"Unknown save_best_metric '{save_best_metric}'.")
 
-            metric_is_valid = (
-                current_checkpoint_metric_value is not None
-                and not torch.isnan(torch.tensor(current_checkpoint_metric_value))
+            metric_is_valid = current_checkpoint_metric_value is not None and not torch.isnan(
+                torch.tensor(current_checkpoint_metric_value)
             )
             if metric_is_valid:
                 checkpoint_metric_improved = (
@@ -346,13 +327,13 @@ def train_bp_model(
                     best_checkpoint_metric_value = current_checkpoint_metric_value
                     is_best_for_checkpointing = True
                     logger.info(
-                        f"Epoch {epoch+1}: New best checkpoint metric "
+                        f"Epoch {epoch + 1}: New best checkpoint metric "
                         f"({save_best_metric}): {best_checkpoint_metric_value:.4f}"
                     )
 
             if checkpoint_dir:
                 create_directory_if_not_exists(checkpoint_dir)
-                checkpoint_filename = f"bp_checkpoint_epoch_{epoch+1}.pth"
+                checkpoint_filename = f"bp_checkpoint_epoch_{epoch + 1}.pth"
                 experiment_name = config.get("experiment_name", "model")
                 best_checkpoint_filename = f"bp_{experiment_name}_best.pth"
                 save_checkpoint(
@@ -382,43 +363,34 @@ def train_bp_model(
                 )
                 if metric_is_invalid:
                     logger.warning(
-                        f"Epoch {epoch+1}: Early stopping metric '{es_metric}' is "
+                        f"Epoch {epoch + 1}: Early stopping metric '{es_metric}' is "
                         "None or NaN. Treating as no improvement."
                     )
                     epochs_no_improve += 1
                 else:
                     if es_mode == "min":
-                        improved = (
-                            current_es_metric_value
-                            < best_es_metric_value - es_min_delta
-                        )
+                        improved = current_es_metric_value < best_es_metric_value - es_min_delta
                     else:  # es_mode == "max"
-                        improved = (
-                            current_es_metric_value
-                            > best_es_metric_value + es_min_delta
-                        )
+                        improved = current_es_metric_value > best_es_metric_value + es_min_delta
 
                     if improved:
                         best_es_metric_value = current_es_metric_value
                         epochs_no_improve = 0
                         logger.debug(
-                            f"Epoch {epoch+1}: Early stopping metric improved to "
+                            f"Epoch {epoch + 1}: Early stopping metric improved to "
                             f"{best_es_metric_value:.4f}. Reset patience."
                         )
                     else:
                         epochs_no_improve += 1
                         logger.debug(
-                            f"Epoch {epoch+1}: Early stopping metric did not "
+                            f"Epoch {epoch + 1}: Early stopping metric did not "
                             f"improve. Patience: {epochs_no_improve}/{es_patience}."
                         )
 
                 if epochs_no_improve >= es_patience:
                     logger.info("--- Early Stopping Triggered ---")
-                    logger.info(
-                        f"Metric '{es_metric}' did not improve for "
-                        f"{es_patience} epochs."
-                    )
-                    logger.info(f"Stopping training at epoch {epoch+1}.")
+                    logger.info(f"Metric '{es_metric}' did not improve for {es_patience} epochs.")
+                    logger.info(f"Stopping training at epoch {epoch + 1}.")
                     break
 
         epoch_duration = time.time() - epoch_start_time
@@ -436,12 +408,10 @@ def train_bp_model(
             "BP_Baseline/Peak_GPU_Mem_Epoch_MiB": peak_mem_epoch,
         }
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
-        logger.debug(
-            f"Logged combined epoch summary at global_step {current_global_step}"
-        )
+        logger.debug(f"Logged combined epoch summary at global_step {current_global_step}")
 
         logger.info(
-            f"BP Epoch {epoch+1}/{epochs} | LR: {current_lr:.6f} | "
+            f"BP Epoch {epoch + 1}/{epochs} | LR: {current_lr:.6f} | "
             f"Train Loss: {avg_epoch_train_loss:.4f}, "
             f"Acc: {avg_epoch_train_acc:.2f}% | "
             f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.2f}% | "
@@ -455,16 +425,11 @@ def train_bp_model(
                     metric_for_scheduler = (
                         current_checkpoint_metric_value
                         if current_checkpoint_metric_value is not None
-                        else (
-                            float("inf")
-                            if save_best_metric_mode == "min"
-                            else -float("inf")
-                        )
+                        else (float("inf") if save_best_metric_mode == "min" else -float("inf"))
                     )
                     if torch.isnan(torch.tensor(metric_for_scheduler)):
                         logger.warning(
-                            "Metric for ReduceLROnPlateau scheduler is NaN, "
-                            "skipping step."
+                            "Metric for ReduceLROnPlateau scheduler is NaN, skipping step."
                         )
                     else:
                         scheduler.step(metric_for_scheduler)
@@ -481,17 +446,13 @@ def train_bp_model(
 
     if checkpoint_dir:
         experiment_name = config.get("experiment_name", "model")
-        best_checkpoint_path = os.path.join(
-            checkpoint_dir, f"bp_{experiment_name}_best.pth"
-        )
+        best_checkpoint_path = os.path.join(checkpoint_dir, f"bp_{experiment_name}_best.pth")
         if os.path.exists(best_checkpoint_path):
             try:
                 logger.info(f"Loading best model state from: {best_checkpoint_path}")
                 best_state_dict = torch.load(best_checkpoint_path, map_location=device)
                 model.load_state_dict(best_state_dict)
-                logger.info(
-                    "Successfully loaded best model weights for final evaluation."
-                )
+                logger.info("Successfully loaded best model weights for final evaluation.")
             except Exception as e:
                 logger.error(
                     f"Failed to load best checkpoint from {best_checkpoint_path}: {e}",

@@ -13,24 +13,22 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 # Third-party and local imports must come AFTER sys.path is modified.
-import optuna  # noqa: E402
-import yaml  # noqa: E402
+import optuna
+import yaml
 
-from src.tuning.optuna_objective import objective as objective_bp  # noqa: E402
-from src.tuning.optuna_objective_cafo import objective_cafo  # noqa: E402
-from src.tuning.optuna_objective_ff import objective_ff  # noqa: E402
-from src.tuning.optuna_objective_mf import objective_mf  # noqa: E402
-from src.utils.config_parser import load_config  # noqa: E402
-from src.utils.helpers import create_directory_if_not_exists  # noqa: E402
-from src.utils.logging_utils import logger, setup_logging  # noqa: E402
+from src.tuning.optuna_objective import objective as objective_bp
+from src.tuning.optuna_objective_cafo import objective_cafo
+from src.tuning.optuna_objective_ff import objective_ff
+from src.tuning.optuna_objective_mf import objective_mf
+from src.utils.config_parser import load_config
+from src.utils.helpers import create_directory_if_not_exists
+from src.utils.logging_utils import logger, setup_logging
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description=(
-            "Run Optuna hyperparameter search for BP, MF, CaFo, or FF algorithms."
-        )
+        description=("Run Optuna hyperparameter search for BP, MF, CaFo, or FF algorithms.")
     )
     parser.add_argument(
         "--config",
@@ -44,9 +42,7 @@ def parse_args() -> argparse.Namespace:
         default="results/optuna",
         help="Directory to save Optuna study results.",
     )
-    parser.add_argument(
-        "--study-name", type=str, default=None, help="Name for the Optuna study."
-    )
+    parser.add_argument("--study-name", type=str, default=None, help="Name for the Optuna study.")
     parser.add_argument(
         "--n-trials",
         type=int,
@@ -109,11 +105,7 @@ def main() -> None:
     if not tuning_config or not tuning_config.get("enabled", False):
         logger.error("Config file must contain 'tuning' section with 'enabled: true'.")
         return
-    n_trials = (
-        args.n_trials
-        if args.n_trials is not None
-        else tuning_config.get("n_trials", 20)
-    )
+    n_trials = args.n_trials if args.n_trials is not None else tuning_config.get("n_trials", 20)
     storage_path = f"sqlite:///{os.path.join(args.output_dir, f'{study_name}.db')}"
     sampler_type = tuning_config.get("sampler", "TPE").upper()
     pruner_type = tuning_config.get("pruner", "Median").upper()
@@ -132,9 +124,7 @@ def main() -> None:
         "HYPERBAND": optuna.pruners.HyperbandPruner(),
         "NONE": optuna.pruners.NopPruner(),
     }
-    sampler = sampler_map.get(
-        sampler_type, optuna.samplers.TPESampler(seed=optuna_seed)
-    )
+    sampler = sampler_map.get(sampler_type, optuna.samplers.TPESampler(seed=optuna_seed))
     pruner = pruner_map.get(pruner_type, optuna.pruners.MedianPruner())
     if sampler_type not in sampler_map:
         logger.warning(f"Unsupported sampler '{sampler_type}', using TPE.")
@@ -154,9 +144,7 @@ def main() -> None:
             pruner=pruner,
             load_if_exists=True,
         )
-        logger.info(
-            f"Starting Optuna optimization ({algorithm_name}) with {n_trials} trials..."
-        )
+        logger.info(f"Starting Optuna optimization ({algorithm_name}) with {n_trials} trials...")
         study.optimize(lambda trial: objective_func(trial, config), n_trials=n_trials)
 
         logger.info("Optimization finished.")
@@ -179,9 +167,7 @@ def main() -> None:
             update_section_name = "optimizer"
             for key, value in params_to_log.items():
                 logger.info(f"    {key}: {value}")
-                best_config_update["optimizer"][
-                    "weight_decay" if key == "wd" else key
-                ] = value
+                best_config_update["optimizer"]["weight_decay" if key == "wd" else key] = value
             best_config_update["optimizer"]["type"] = config.get("optimizer", {}).get(
                 "type", "AdamW"
             )
@@ -190,9 +176,9 @@ def main() -> None:
             update_section_name = "algorithm_params"
             for key, value in params_to_log.items():
                 logger.info(f"    {key}: {value}")
-                best_config_update["algorithm_params"][
-                    "weight_decay" if key == "wd" else key
-                ] = value
+                best_config_update["algorithm_params"]["weight_decay" if key == "wd" else key] = (
+                    value
+                )
             best_config_update["algorithm_params"]["optimizer_type"] = config.get(
                 "algorithm_params", {}
             ).get("optimizer_type", "Adam")
@@ -204,30 +190,22 @@ def main() -> None:
                 if key == "pred_lr":
                     best_config_update["algorithm_params"]["predictor_lr"] = value
                 elif key == "pred_wd":
-                    best_config_update["algorithm_params"][
-                        "predictor_weight_decay"
-                    ] = value
+                    best_config_update["algorithm_params"]["predictor_weight_decay"] = value
                 elif key == "epochs_per_block":
-                    best_config_update["algorithm_params"][
-                        "num_epochs_per_block"
-                    ] = value
+                    best_config_update["algorithm_params"]["num_epochs_per_block"] = value
                 elif key == "block_lr":
                     best_config_update["algorithm_params"]["block_lr"] = value
                 elif key == "block_wd":
                     best_config_update["algorithm_params"]["block_weight_decay"] = value
                 else:
                     best_config_update["algorithm_params"][key] = value
-            best_config_update["algorithm_params"]["predictor_optimizer_type"] = (
-                config.get("algorithm_params", {}).get(
-                    "predictor_optimizer_type", "Adam"
-                )
-            )
+            best_config_update["algorithm_params"]["predictor_optimizer_type"] = config.get(
+                "algorithm_params", {}
+            ).get("predictor_optimizer_type", "Adam")
             if config.get("algorithm_params", {}).get("train_blocks", False):
-                best_config_update["algorithm_params"]["block_optimizer_type"] = (
-                    config.get("algorithm_params", {}).get(
-                        "block_optimizer_type", "Adam"
-                    )
-                )
+                best_config_update["algorithm_params"]["block_optimizer_type"] = config.get(
+                    "algorithm_params", {}
+                ).get("block_optimizer_type", "Adam")
         elif algorithm_name == "FF":
             best_config_update = {"algorithm_params": {}}
             update_section_name = "algorithm_params"
@@ -238,13 +216,9 @@ def main() -> None:
                 elif key == "ff_wd":
                     best_config_update["algorithm_params"]["ff_weight_decay"] = value
                 elif key == "ds_lr":
-                    best_config_update["algorithm_params"][
-                        "downstream_learning_rate"
-                    ] = value
+                    best_config_update["algorithm_params"]["downstream_learning_rate"] = value
                 elif key == "ds_wd":
-                    best_config_update["algorithm_params"][
-                        "downstream_weight_decay"
-                    ] = value
+                    best_config_update["algorithm_params"]["downstream_weight_decay"] = value
                 else:
                     best_config_update["algorithm_params"][key] = value
             best_config_update["algorithm_params"]["optimizer_type"] = config.get(
@@ -256,14 +230,10 @@ def main() -> None:
         logger.info("=" * 30)
         logger.info(f"YAML snippet to update config's '{update_section_name}' section:")
         print(
-            "\n"
-            + yaml.dump(best_config_update, default_flow_style=False, sort_keys=False)
-            + "\n"
+            "\n" + yaml.dump(best_config_update, default_flow_style=False, sort_keys=False) + "\n"
         )
 
-        best_params_file = os.path.join(
-            args.output_dir, f"{study_name}_best_params.yaml"
-        )
+        best_params_file = os.path.join(args.output_dir, f"{study_name}_best_params.yaml")
         study_results_summary = {
             "study_name": study_name,
             "algorithm": algorithm_name,
@@ -274,9 +244,7 @@ def main() -> None:
         }
         try:
             with open(best_params_file, "w") as f:
-                yaml.dump(
-                    study_results_summary, f, default_flow_style=False, sort_keys=False
-                )
+                yaml.dump(study_results_summary, f, default_flow_style=False, sort_keys=False)
             logger.info(f"Best parameters saved to: {best_params_file}")
             logger.warning("=" * 50)
             logger.warning(
@@ -294,7 +262,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     main()

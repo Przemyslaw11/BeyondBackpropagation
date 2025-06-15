@@ -100,9 +100,7 @@ def get_dataloaders(
             root=data_root, train=False, download=download, transform=test_transform
         )
     except Exception as e:
-        logger.error(
-            f"Failed to load dataset {dataset_name.upper()}: {e}", exc_info=True
-        )
+        logger.error(f"Failed to load dataset {dataset_name.upper()}: {e}", exc_info=True)
         if isinstance(e, RuntimeError) and "download=True" in str(e) and not download:
             logger.error("Dataset not found locally and download=False.")
             raise FileNotFoundError(
@@ -124,15 +122,8 @@ def get_dataloaders(
         train_indices = list(range(50000))
         val_indices = list(range(50000, 60000))
 
-        if (
-            not train_indices
-            or not val_indices
-            or val_indices[-1] >= len(full_train_dataset_raw)
-        ):
-            logger.error(
-                "Failed to apply fixed 50k/10k split to MNIST. "
-                "Check dataset integrity."
-            )
+        if not train_indices or not val_indices or val_indices[-1] >= len(full_train_dataset_raw):
+            logger.error("Failed to apply fixed 50k/10k split to MNIST. Check dataset integrity.")
             logger.warning("Falling back to random split due to fixed split error.")
             train_indices, val_indices = None, None
         else:
@@ -148,8 +139,7 @@ def get_dataloaders(
     if "train_dataset" not in locals():
         if not 0.0 <= val_split < 1.0:
             raise ValueError(
-                "Validation split must be between 0.0 and 1.0 "
-                f"(exclusive of 1.0), got {val_split}"
+                f"Validation split must be between 0.0 and 1.0 (exclusive of 1.0), got {val_split}"
             )
 
         if val_split > 0.0:
@@ -172,17 +162,13 @@ def get_dataloaders(
                     f"Splitting training data randomly: {num_train_split} train / "
                     f"{num_val} validation samples."
                 )
-                generator = (
-                    torch.Generator().manual_seed(seed) if seed is not None else None
-                )
+                generator = torch.Generator().manual_seed(seed) if seed is not None else None
                 train_subset, val_subset = random_split(
                     full_train_dataset_raw,
                     [num_train_split, num_val],
                     generator=generator,
                 )
-                train_dataset = TransformedSubset(
-                    train_subset, transform=train_transform
-                )
+                train_dataset = TransformedSubset(train_subset, transform=train_transform)
                 val_dataset = TransformedSubset(val_subset, transform=test_transform)
                 logger.info(
                     "Applied training transforms to train subset and "
@@ -218,8 +204,7 @@ def get_dataloaders(
         )
     elif val_split > 0.0 and dataset_name != "mnist":
         logger.warning(
-            "Validation dataset is empty after random split. "
-            "Validation loader will be None."
+            "Validation dataset is empty after random split. Validation loader will be None."
         )
 
     test_loader = DataLoader(

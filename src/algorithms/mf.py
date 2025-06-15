@@ -38,8 +38,7 @@ def mf_local_loss_fn(
 
     if activation_i.dim() != 2:
         raise ValueError(
-            "Activation must be flattened (2D) for local loss. "
-            f"Got shape: {activation_i.shape}"
+            f"Activation must be flattened (2D) for local loss. Got shape: {activation_i.shape}"
         )
     goodness_scores_i = torch.matmul(activation_i, projection_matrix_i.t())
     loss = criterion(goodness_scores_i, targets)
@@ -82,9 +81,7 @@ def evaluate_mf_local_loss(
             continue
         activation_a_i = all_activations[matrix_index]
 
-        batch_loss = mf_local_loss_fn(
-            activation_a_i, projection_matrix, labels, criterion
-        )
+        batch_loss = mf_local_loss_fn(activation_a_i, projection_matrix, labels, criterion)
         total_loss += batch_loss.item() * batch_size
         total_samples += batch_size
 
@@ -151,7 +148,7 @@ def train_mf_matrix_only(
         peak_mem_matrix_epoch = 0.0
         projection_matrix.requires_grad_(True)
 
-        pbar_desc = f"{log_prefix} Epoch {epoch+1}/{epochs}"
+        pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs}"
         pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
 
         for batch_idx, (images, labels) in enumerate(pbar):
@@ -161,21 +158,16 @@ def train_mf_matrix_only(
 
             with torch.no_grad():
                 adapted_input = input_adapter(images)
-                all_activations = model.forward_with_intermediate_activations(
-                    adapted_input
-                )
+                all_activations = model.forward_with_intermediate_activations(adapted_input)
                 if len(all_activations) <= matrix_index:
                     logger.error(f"{log_prefix} Batch {batch_idx}: Act list too short.")
                     continue
                 activation_a_i = all_activations[matrix_index]
 
-            loss = mf_local_loss_fn(
-                activation_a_i, projection_matrix, labels, criterion
-            )
+            loss = mf_local_loss_fn(activation_a_i, projection_matrix, labels, criterion)
             if torch.isnan(loss) or torch.isinf(loss):
                 logger.error(
-                    f"NaN/Inf loss at {log_prefix}, Epoch {epoch+1}, "
-                    f"Batch {batch_idx}."
+                    f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
                 )
                 break  # Break from batch loop
 
@@ -209,12 +201,10 @@ def train_mf_matrix_only(
             logger.error(f"Terminating {log_prefix} training due to invalid loss.")
             break  # Break from epoch loop
 
-        final_avg_epoch_loss = (
-            epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
-        )
+        final_avg_epoch_loss = epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
         peak_mem_matrix_train = max(peak_mem_matrix_train, peak_mem_matrix_epoch)
         logger.info(
-            f"{log_prefix} Epoch {epoch+1}/{epochs} - Train Loss: "
+            f"{log_prefix} Epoch {epoch + 1}/{epochs} - Train Loss: "
             f"{final_avg_epoch_loss:.6f}, Peak Mem: {peak_mem_matrix_epoch:.1f} MiB"
         )
         epoch_metrics = {
@@ -235,10 +225,7 @@ def train_mf_matrix_only(
                 input_adapter=input_adapter,
                 log_prefix=log_prefix,
             )
-            log_msg = (
-                f"{log_prefix} Epoch {epoch+1}/{epochs} - "
-                f"Val Local Loss: {val_loss:.6f}"
-            )
+            log_msg = f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Local Loss: {val_loss:.6f}"
             logger.info(log_msg)
             log_metrics(
                 {
@@ -256,19 +243,15 @@ def train_mf_matrix_only(
             else:
                 epochs_no_improve += 1
             if epochs_no_improve >= es_patience:
-                logger.info(f"--- {log_prefix}: Early Stopping at Epoch {epoch+1}! ---")
+                logger.info(f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---")
                 break
 
     if nvml_active and gpu_handle:
         mem_info = get_gpu_memory_usage(gpu_handle)
-        peak_mem_matrix_train = max(
-            peak_mem_matrix_train, mem_info[0] if mem_info else 0.0
-        )
+        peak_mem_matrix_train = max(peak_mem_matrix_train, mem_info[0] if mem_info else 0.0)
 
     projection_matrix.requires_grad_(False)
-    logger.info(
-        f"--- Finished training for {log_prefix} after {epochs_trained} epochs. ---"
-    )
+    logger.info(f"--- Finished training for {log_prefix} after {epochs_trained} epochs. ---")
     return final_avg_epoch_loss, peak_mem_matrix_train, epochs_trained
 
 
@@ -373,7 +356,7 @@ def train_mf_model(
             linear_layer.train()
             model.layers[i * 2 + 1].train()  # Associated activation
         else:
-            logger.error(f"{log_prefix}: Linear layer index {i*2} out of range.")
+            logger.error(f"{log_prefix}: Linear layer index {i * 2} out of range.")
             continue
 
         projection_matrix = model.get_projection_matrix(m_idx)
@@ -404,7 +387,7 @@ def train_mf_model(
             model.layers[i * 2 + 1].train()
             projection_matrix.requires_grad_(True)
 
-            pbar_desc = f"{log_prefix} Epoch {epoch+1}/{epochs_per_layer}"
+            pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs_per_layer}"
             pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
 
             for batch_idx, (images, labels) in enumerate(pbar):
@@ -423,13 +406,10 @@ def train_mf_model(
                 pre_act_z = model.layers[i * 2](prev_activation.detach())
                 activation_a_next = model.layers[i * 2 + 1](pre_act_z)
 
-                loss = mf_local_loss_fn(
-                    activation_a_next, projection_matrix, labels, mf_criterion
-                )
+                loss = mf_local_loss_fn(activation_a_next, projection_matrix, labels, mf_criterion)
                 if torch.isnan(loss) or torch.isinf(loss):
                     log_msg = (
-                        f"NaN/Inf loss at {log_prefix}, Epoch {epoch+1}, "
-                        f"Batch {batch_idx}."
+                        f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
                     )
                     logger.error(log_msg)
                     break
@@ -463,9 +443,7 @@ def train_mf_model(
                 else:
                     epochs_no_improve += 1
                 if epochs_no_improve >= es_patience:
-                    logger.info(
-                        f"--- {log_prefix}: Early Stopping at Epoch {epoch+1}! ---"
-                    )
+                    logger.info(f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---")
                     break
 
         total_epochs_trained_all_layers += epochs_trained_this_layer

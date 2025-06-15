@@ -61,9 +61,7 @@ class MF_MLP(nn.Module):
         for _, h_dim in enumerate(hidden_dims):
             linear_layer = nn.Linear(current_dim, h_dim, bias=bias)  # Layer W_{i+1}
             if activation.lower() == "relu":
-                nn.init.kaiming_uniform_(
-                    linear_layer.weight, a=math.sqrt(5), nonlinearity="relu"
-                )
+                nn.init.kaiming_uniform_(linear_layer.weight, a=math.sqrt(5), nonlinearity="relu")
             elif activation.lower() == "tanh":
                 nn.init.xavier_uniform_(linear_layer.weight)
             else:
@@ -97,9 +95,7 @@ class MF_MLP(nn.Module):
             self.projection_matrices.append(m_matrix)
 
         logger.info(f"Initialized MF_MLP with {self.num_hidden_layers} hidden layers.")
-        layer_dims_str = " -> ".join(
-            map(str, [input_dim] + hidden_dims + [num_classes])
-        )
+        layer_dims_str = " -> ".join(map(str, [input_dim] + hidden_dims + [num_classes]))
         logger.info(f"Feedforward Layer dimensions (W): {layer_dims_str}")
         logger.info(
             "Created %d projection matrices (M_0 to M_%d).",
@@ -135,9 +131,7 @@ class MF_MLP(nn.Module):
         logits = self.output_layer(current_activation)
         return logits
 
-    def forward_with_intermediate_activations(
-        self, x: torch.Tensor
-    ) -> List[torch.Tensor]:
+    def forward_with_intermediate_activations(self, x: torch.Tensor) -> List[torch.Tensor]:
         """Forward pass that returns all intermediate activations.
 
         This returns the activations *after* the activation function for the

@@ -82,9 +82,7 @@ class CaFoBlock(nn.Module):
         """Calculates the output shape (C, H, W) for a given input shape."""
         if device is None:
             device = (
-                next(self.parameters()).device
-                if list(self.parameters())
-                else torch.device("cpu")
+                next(self.parameters()).device if list(self.parameters()) else torch.device("cpu")
             )
 
         with torch.no_grad():
@@ -108,9 +106,7 @@ class CaFoPredictor(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features, num_classes, bias=bias)
-        logger.debug(
-            "CaFoPredictor: In=%d, Out=%d, Bias=%s", in_features, num_classes, bias
-        )
+        logger.debug("CaFoPredictor: In=%d, Out=%d, Bias=%s", in_features, num_classes, bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Performs the forward pass through the predictor."""
@@ -185,9 +181,7 @@ class CaFo_CNN(nn.Module):
 
         for i, out_channels in enumerate(block_channels):
             # Determine padding to preserve dimensions if stride=1
-            padding = (
-                kernel_size // 2 if kernel_size % 2 != 0 else 0
-            )  # Common for odd kernels
+            padding = kernel_size // 2 if kernel_size % 2 != 0 else 0  # Common for odd kernels
 
             block = CaFoBlock(
                 current_channels,
@@ -202,9 +196,7 @@ class CaFo_CNN(nn.Module):
             self.blocks.append(block)
 
             try:
-                output_shape = block.get_output_shape(
-                    current_input_shape, device=device
-                )
+                output_shape = block.get_output_shape(current_input_shape, device=device)
                 self._block_output_shapes.append(output_shape)
                 flat_dim = output_shape[0] * output_shape[1] * output_shape[2]
                 self._block_output_dims_flat.append(flat_dim)

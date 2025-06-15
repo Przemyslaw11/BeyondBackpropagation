@@ -34,7 +34,7 @@ cd $SLURM_SUBMIT_DIR || exit 1
 echo "Loading modules..."
 module purge
 module load Python/3.10.4
-module load CUDA/12.4.0     # Version compatible with PyTorch build (cu121)
+module load CUDA/12.4.0
 
 echo "Modules loaded:"
 module list

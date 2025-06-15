@@ -50,8 +50,7 @@ def generate_ff_hinton_inputs(
     image_pixels = base_flat_view.shape[1]
     if num_classes > image_pixels:
         raise ValueError(
-            f"num_classes ({num_classes}) > total pixels ({image_pixels}). "
-            "Cannot embed label."
+            f"num_classes ({num_classes}) > total pixels ({image_pixels}). Cannot embed label."
         )
     one_hot_pos = F.one_hot(base_labels, num_classes=num_classes).to(
         device=device, dtype=torch.float
@@ -59,9 +58,7 @@ def generate_ff_hinton_inputs(
     label_patch_pos = torch.where(one_hot_pos == 1, replace_value_on, replace_value_off)
     pos_flattened = base_flat_view.clone()
     pos_flattened[:, :num_classes] = label_patch_pos
-    rand_offset = torch.randint(
-        1, num_classes, (batch_size,), device=device, dtype=torch.long
-    )
+    rand_offset = torch.randint(1, num_classes, (batch_size,), device=device, dtype=torch.long)
     neg_labels = (base_labels + rand_offset) % num_classes
     collision = neg_labels == base_labels
     retries = 0
@@ -76,8 +73,7 @@ def generate_ff_hinton_inputs(
         retries += 1
     if retries == max_retries and torch.any(collision):
         logger.warning(
-            f"Could not guarantee distinct negative labels after {max_retries} "
-            "retries. Forcing."
+            f"Could not guarantee distinct negative labels after {max_retries} retries. Forcing."
         )
         neg_labels[collision] = (neg_labels[collision] + 1) % num_classes
     one_hot_neg = F.one_hot(neg_labels, num_classes=num_classes).to(
@@ -125,9 +121,7 @@ def train_ff_model(
     if step_ref is None:
         step_ref = [-1]
     model.to(device)
-    logger.info(
-        "Starting Forward-Forward (Hinton style) training using modified FF_MLP."
-    )
+    logger.info("Starting Forward-Forward (Hinton style) training using modified FF_MLP.")
     if input_adapter is not None:
         logger.warning(
             "FF Training: 'input_adapter' provided but FF_MLP uses internal "
@@ -157,9 +151,7 @@ def train_ff_model(
 
     # --- Early Stopping Setup ---
     es_enabled = train_config.get("early_stopping_enabled", True)
-    es_metric_key = train_config.get(
-        "early_stopping_metric", "FF_Hinton/Val_Acc_Epoch"
-    ).lower()
+    es_metric_key = train_config.get("early_stopping_metric", "FF_Hinton/Val_Acc_Epoch").lower()
     es_patience = train_config.get("early_stopping_patience", 10)
     es_mode = train_config.get("early_stopping_mode", "max").lower()
     es_min_delta = train_config.get("early_stopping_min_delta", 0.0)
@@ -192,12 +184,8 @@ def train_ff_model(
         logger.info("Early stopping disabled.")
 
     # --- Optimizer Setup ---
-    ff_layer_params = [
-        p for layer in model.layers for p in layer.parameters() if p.requires_grad
-    ]
-    classifier_params = [
-        p for p in model.linear_classifier.parameters() if p.requires_grad
-    ]
+    ff_layer_params = [p for layer in model.layers for p in layer.parameters() if p.requires_grad]
+    classifier_params = [p for p in model.linear_classifier.parameters() if p.requires_grad]
     optimizer_groups = []
     if ff_layer_params:
         group_ff = {
@@ -259,7 +247,7 @@ def train_ff_model(
         if len(optimizer.param_groups) > 1:
             optimizer.param_groups[1]["lr"] = current_lr_ds
         logger.debug(
-            f"Epoch {epoch+1}/{epochs}: LR Update - "
+            f"Epoch {epoch + 1}/{epochs}: LR Update - "
             f"FF={current_lr_ff:.6f}, DS={current_lr_ds:.6f}"
         )
 
@@ -269,10 +257,10 @@ def train_ff_model(
         epoch_total_loss, epoch_samples = 0.0, 0
         epoch_ff_loss_total, epoch_peer_loss_total = 0.0, 0.0
         epoch_cls_loss_total, epoch_cls_acc_total = 0.0, 0.0
-        epoch_layer_ff_acc_sum = {f"Layer_{i+1}": 0.0 for i in range(model.num_layers)}
+        epoch_layer_ff_acc_sum = {f"Layer_{i + 1}": 0.0 for i in range(model.num_layers)}
         peak_mem_epoch = 0.0
 
-        pbar = tqdm(train_loader, desc=f"FF Epoch {epoch+1}/{epochs}", leave=False)
+        pbar = tqdm(train_loader, desc=f"FF Epoch {epoch + 1}/{epochs}", leave=False)
         for batch_idx, (images, labels) in enumerate(pbar):
             step_ref[0] += 1
             current_global_step = step_ref[0]
@@ -345,21 +333,18 @@ def train_ff_model(
             # --- Accumulate Epoch Metrics ---
             epoch_total_loss += total_batch_loss.item() * current_batch_size
             epoch_ff_loss_total += (
-                ff_metrics_dict.get("FF_Loss_Total", torch.tensor(0.0)).item()
-                * current_batch_size
+                ff_metrics_dict.get("FF_Loss_Total", torch.tensor(0.0)).item() * current_batch_size
             )
             epoch_peer_loss_total += (
-                ff_metrics_dict.get(
-                    "Peer_Normalization_Loss_Total", torch.tensor(0.0)
-                ).item()
+                ff_metrics_dict.get("Peer_Normalization_Loss_Total", torch.tensor(0.0)).item()
                 * current_batch_size
             )
             epoch_cls_loss_total += cls_loss.item() * current_batch_size
             epoch_cls_acc_total += cls_accuracy * current_batch_size
             epoch_samples += current_batch_size
             for i in range(model.num_layers):
-                key = f"Layer_{i+1}/FF_Accuracy"
-                epoch_layer_ff_acc_sum[f"Layer_{i+1}"] += (
+                key = f"Layer_{i + 1}/FF_Accuracy"
+                epoch_layer_ff_acc_sum[f"Layer_{i + 1}"] += (
                     ff_metrics_dict.get(key, 0.0) * current_batch_size
                 )
 
@@ -371,9 +356,7 @@ def train_ff_model(
                 if not torch.isnan(torch.tensor(current_mem_used)):
                     peak_mem_epoch = max(peak_mem_epoch, current_mem_used)
 
-            if (batch_idx + 1) % log_interval == 0 or (
-                batch_idx == len(train_loader) - 1
-            ):
+            if (batch_idx + 1) % log_interval == 0 or (batch_idx == len(train_loader) - 1):
                 metrics_to_log = {
                     "global_step": current_global_step,
                     "FF_Hinton/Train_Loss_Batch": total_batch_loss.item(),
@@ -387,14 +370,10 @@ def train_ff_model(
                     "FF_Hinton/Cls_Acc_Batch": cls_accuracy,
                 }
                 for i in range(model.num_layers):
-                    key = f"Layer_{i+1}/FF_Accuracy"
-                    metrics_to_log[f"Layer_{i+1}/FF_Acc_Batch"] = ff_metrics_dict.get(
-                        key, 0.0
-                    )
+                    key = f"Layer_{i + 1}/FF_Accuracy"
+                    metrics_to_log[f"Layer_{i + 1}/FF_Acc_Batch"] = ff_metrics_dict.get(key, 0.0)
                 if not torch.isnan(torch.tensor(current_mem_used)):
-                    metrics_to_log["FF_Hinton/GPU_Mem_Used_MiB_Batch"] = (
-                        current_mem_used
-                    )
+                    metrics_to_log["FF_Hinton/GPU_Mem_Used_MiB_Batch"] = current_mem_used
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
                 pbar.set_postfix(
                     loss=f"{total_batch_loss.item():.4f}",
@@ -405,7 +384,7 @@ def train_ff_model(
 
         if epoch_samples == 0:
             logger.warning(
-                f"Epoch {epoch+1} completed with 0 samples processed. "
+                f"Epoch {epoch + 1} completed with 0 samples processed. "
                 "Skipping evaluation and logging."
             )
             continue
@@ -416,7 +395,7 @@ def train_ff_model(
         avg_cls_loss = epoch_cls_loss_total / epoch_samples
         avg_cls_acc = epoch_cls_acc_total / epoch_samples
         epoch_layer_ff_acc_avg = {
-            f"Layer_{i+1}": epoch_layer_ff_acc_sum[f"Layer_{i+1}"] / epoch_samples
+            f"Layer_{i + 1}": epoch_layer_ff_acc_sum[f"Layer_{i + 1}"] / epoch_samples
             for i in range(model.num_layers)
         }
         epoch_duration = time.time() - epoch_start_time
@@ -425,7 +404,7 @@ def train_ff_model(
         if val_loader:
             val_results = evaluate_ff_model(model, val_loader, device)
             logger.info(
-                f"FF Validation Epoch {epoch+1}/{epochs} - Accuracy: "
+                f"FF Validation Epoch {epoch + 1}/{epochs} - Accuracy: "
                 f"{val_results.get('eval_accuracy', 'N/A'):.2f}%"
             )
         else:
@@ -447,11 +426,11 @@ def train_ff_model(
             "FF_Hinton/Peak_GPU_Mem_Epoch_MiB": peak_mem_epoch,
         }
         for i in range(model.num_layers):
-            key = f"Layer_{i+1}/FF_Acc_EpochAvg"
-            epoch_summary_metrics[key] = epoch_layer_ff_acc_avg[f"Layer_{i+1}"]
+            key = f"Layer_{i + 1}/FF_Acc_EpochAvg"
+            epoch_summary_metrics[key] = epoch_layer_ff_acc_avg[f"Layer_{i + 1}"]
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
         log_msg = (
-            f"FF Epoch {epoch+1}/{epochs} | Train Loss: {avg_epoch_loss:.4f}, "
+            f"FF Epoch {epoch + 1}/{epochs} | Train Loss: {avg_epoch_loss:.4f}, "
             f"Cls Acc: {avg_cls_acc:.2f}% | "
             f"Val Acc: {val_results.get('eval_accuracy', 'N/A'):.2f}% | "
             f"Peak Mem: {peak_mem_epoch:.1f} MiB | "
@@ -465,7 +444,7 @@ def train_ff_model(
         if es_enabled:
             if torch.isnan(torch.tensor(current_metric_value)):
                 logger.warning(
-                    f"Epoch {epoch+1}: Early stopping metric '{es_metric_key}' is "
+                    f"Epoch {epoch + 1}: Early stopping metric '{es_metric_key}' is "
                     "NaN. Treating as no improvement."
                 )
                 epochs_no_improve += 1
@@ -484,13 +463,13 @@ def train_ff_model(
                     best_checkpoint_metric_value = best_es_metric_value
                     epochs_no_improve = 0
                     logger.info(
-                        f"Epoch {epoch+1}: Early stopping metric improved to "
+                        f"Epoch {epoch + 1}: Early stopping metric improved to "
                         f"{best_es_metric_value:.4f}. Reset patience."
                     )
                 else:
                     epochs_no_improve += 1
                     logger.info(
-                        f"Epoch {epoch+1}: Early stopping metric did not improve. "
+                        f"Epoch {epoch + 1}: Early stopping metric did not improve. "
                         f"Patience: {epochs_no_improve}/{es_patience}."
                     )
 
@@ -500,23 +479,18 @@ def train_ff_model(
                     f"Metric '{es_metric_key}' did not improve for {es_patience} "
                     f"epochs (Best: {best_es_metric_value:.4f})."
                 )
-                logger.info(f"Stopping training at epoch {epoch+1}.")
+                logger.info(f"Stopping training at epoch {epoch + 1}.")
                 break
         else:
             if not torch.isnan(torch.tensor(current_metric_value)):
-                if es_mode == "max" and (
-                    current_metric_value > best_checkpoint_metric_value
-                ):
-                    best_checkpoint_metric_value = current_metric_value
-                    is_best_for_checkpointing = True
-                elif es_mode == "min" and (
-                    current_metric_value < best_checkpoint_metric_value
-                ):
+                if (
+                    es_mode == "max" and (current_metric_value > best_checkpoint_metric_value)
+                ) or (es_mode == "min" and (current_metric_value < best_checkpoint_metric_value)):
                     best_checkpoint_metric_value = current_metric_value
                     is_best_for_checkpointing = True
             if is_best_for_checkpointing:
                 logger.info(
-                    f"Epoch {epoch+1}: New best checkpoint metric: "
+                    f"Epoch {epoch + 1}: New best checkpoint metric: "
                     f"{best_checkpoint_metric_value:.4f}"
                 )
 
@@ -533,7 +507,7 @@ def train_ff_model(
                 },
                 is_best=is_best_for_checkpointing,
                 checkpoint_dir=checkpoint_dir,
-                filename=f"ff_checkpoint_epoch_{epoch+1}.pth",
+                filename=f"ff_checkpoint_epoch_{epoch + 1}.pth",
                 best_filename=f"ff_{exp_name}_best.pth",
             )
 
@@ -628,26 +602,20 @@ def evaluate_ff_model(
                     batch_total_goodness[:, label_candidate] = -torch.inf
                     continue
                 try:
-                    layer_goodness_list = model.forward_goodness_per_layer(
-                        ff_input_candidate
-                    )
+                    layer_goodness_list = model.forward_goodness_per_layer(ff_input_candidate)
                     if not layer_goodness_list:
-                        total_goodness_candidate = torch.zeros(
-                            (batch_size,), device=device
-                        )
+                        total_goodness_candidate = torch.zeros((batch_size,), device=device)
                         logger.warning(f"Eval no goodness {label_candidate}.")
                     # Reference sums goodness from layer 1 onwards (index >= 1)
                     elif len(layer_goodness_list) > 1:
-                        total_goodness_candidate = torch.stack(
-                            layer_goodness_list[1:], dim=0
-                        ).sum(dim=0)
+                        total_goodness_candidate = torch.stack(layer_goodness_list[1:], dim=0).sum(
+                            dim=0
+                        )
                     else:
                         logger.warning("Eval only 1 hidden layer, using its goodness.")
                         total_goodness_candidate = layer_goodness_list[0]
                     if total_goodness_candidate.shape != (batch_size,):
-                        raise ValueError(
-                            "Bad goodness shape: " f"{total_goodness_candidate.shape}"
-                        )
+                        raise ValueError(f"Bad goodness shape: {total_goodness_candidate.shape}")
                 except Exception as e_fwd:
                     logger.error(f"Eval fwd err {label_candidate}: {e_fwd}")
                     batch_total_goodness[:, label_candidate] = -torch.inf
@@ -666,11 +634,11 @@ def evaluate_ff_model(
                     )
                 if torch.any(all_inf_mask):
                     logger.warning(
-                        f"Eval Batch {batch_idx+1}: {all_inf_mask.sum().item()}/"
+                        f"Eval Batch {batch_idx + 1}: {all_inf_mask.sum().item()}/"
                         f"{batch_size} samples failed all candidates."
                     )
             except Exception as e_pred:
-                logger.error(f"Eval pred err Batch {batch_idx+1}: {e_pred}")
+                logger.error(f"Eval pred err Batch {batch_idx + 1}: {e_pred}")
                 predicted_labels = torch.zeros_like(labels)
             total_correct += (predicted_labels == labels).sum().item()
             total_samples += batch_size

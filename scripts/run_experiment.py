@@ -12,12 +12,12 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 # Third-party and local imports must come AFTER sys.path is modified.
-import yaml  # noqa: E402
+import yaml
 
-from src.training.engine import run_training  # noqa: E402
-from src.utils.config_parser import load_config  # noqa: E402
-from src.utils.helpers import create_directory_if_not_exists  # noqa: E402
-from src.utils.logging_utils import logger, setup_logging  # noqa: E402
+from src.training.engine import run_training
+from src.utils.config_parser import load_config
+from src.utils.helpers import create_directory_if_not_exists
+from src.utils.logging_utils import logger, setup_logging
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -45,7 +45,7 @@ def main(args: argparse.Namespace) -> None:
 
         setup_logging(log_level=log_config.get("level", "INFO"), log_file=log_file_path)
 
-    except (FileNotFoundError, yaml.YAMLError, IOError) as e:
+    except (OSError, FileNotFoundError, yaml.YAMLError) as e:
         logger.error(f"Error loading or merging configuration: {e}", exc_info=True)
         sys.exit(1)
     except Exception as e:
@@ -64,9 +64,7 @@ def main(args: argparse.Namespace) -> None:
             logger.info(line)
 
         if "error" in results:
-            logger.error(
-                f"Warning: Experiment completed with error: {results['error']}"
-            )
+            logger.error(f"Warning: Experiment completed with error: {results['error']}")
             sys.exit(1)
         else:
             logger.info("\n--- Experiment Finished Successfully ---")

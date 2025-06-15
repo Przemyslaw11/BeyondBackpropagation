@@ -92,9 +92,7 @@ def update_mf_config_from_optuna(
 
         if study_name is None:
             if len(loaded_studies) > 1:
-                logger.error(
-                    f"Multiple studies found in {db_path}. Specify --study-name."
-                )
+                logger.error(f"Multiple studies found in {db_path}. Specify --study-name.")
                 return False
             study_name = loaded_studies[0].study_name
             logger.info(f"Automatically selected study: '{study_name}'")
@@ -115,15 +113,11 @@ def update_mf_config_from_optuna(
     # --- Get Best Trial ---
     try:
         best_trial = study.best_trial
-        logger.info(
-            f"Best trial: Number {best_trial.number}, Value: {best_trial.value:.6f}"
-        )
+        logger.info(f"Best trial: Number {best_trial.number}, Value: {best_trial.value:.6f}")
         logger.info("Best Hyperparameters (for MF):")
         best_params = best_trial.params
         if not best_params:
-            logger.warning(
-                "Best trial has no parameters recorded. Cannot update config."
-            )
+            logger.warning("Best trial has no parameters recorded. Cannot update config.")
             return True  # Treat as success, nothing to do
         for key, value in best_params.items():
             logger.info(f"  - {key}: {value}")
@@ -137,18 +131,16 @@ def update_mf_config_from_optuna(
     # --- Load YAML Config ---
     try:
         logger.info(f"Loading MF YAML configuration file: {config_path}")
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config_data = yaml.safe_load(f)
         if not isinstance(config_data, dict):
-            logger.error(
-                f"Failed to parse YAML or file is not a dictionary: {config_path}"
-            )
+            logger.error(f"Failed to parse YAML or file is not a dictionary: {config_path}")
             return False
         logger.info("YAML loaded successfully.")
     except yaml.YAMLError as e:
         logger.error(f"Error parsing YAML file {config_path}: {e}", exc_info=True)
         return False
-    except IOError as e:
+    except OSError as e:
         logger.error(f"Error reading YAML file {config_path}: {e}", exc_info=True)
         return False
 
@@ -158,8 +150,7 @@ def update_mf_config_from_optuna(
         config_data.get("algorithm_params"), dict
     ):
         logger.warning(
-            "YAML file {config_path} is missing the 'algorithm_params' "
-            "dictionary. Creating it."
+            "YAML file {config_path} is missing the 'algorithm_params' dictionary. Creating it."
         )
         config_data["algorithm_params"] = {}
 
@@ -187,8 +178,7 @@ def update_mf_config_from_optuna(
 
     if not updated_values:
         logger.warning(
-            "No relevant MF parameters (lr, epochs_per_layer) found in best "
-            "trial to update."
+            "No relevant MF parameters (lr, epochs_per_layer) found in best trial to update."
         )
         return True  # Success, nothing changed
 
@@ -199,29 +189,21 @@ def update_mf_config_from_optuna(
             shutil.copyfile(config_path, backup_path)
             logger.info(f"Created backup of original config: {backup_path}")
         except Exception as e:
-            logger.error(
-                f"Failed to create backup file {backup_path}: {e}", exc_info=True
-            )
+            logger.error(f"Failed to create backup file {backup_path}: {e}", exc_info=True)
             logger.warning("Proceeding without backup.")
 
     # --- Write Updated YAML ---
     try:
         logger.info(f"Writing updated configuration back to: {config_path}")
         with open(config_path, "w") as f:
-            yaml.dump(
-                config_data, f, default_flow_style=False, sort_keys=False, indent=2
-            )
+            yaml.dump(config_data, f, default_flow_style=False, sort_keys=False, indent=2)
         logger.info(f"MF YAML file updated successfully. Keys updated: {keys_updated}")
         return True
-    except IOError as e:
-        logger.error(
-            f"Error writing updated YAML file {config_path}: {e}", exc_info=True
-        )
+    except OSError as e:
+        logger.error(f"Error writing updated YAML file {config_path}: {e}", exc_info=True)
         return False
     except Exception as e:
-        logger.error(
-            f"An unexpected error occurred while writing YAML: {e}", exc_info=True
-        )
+        logger.error(f"An unexpected error occurred while writing YAML: {e}", exc_info=True)
         return False
 
 

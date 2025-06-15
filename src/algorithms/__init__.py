@@ -49,13 +49,13 @@ def get_evaluation_function(name: str) -> Callable:
 
 
 __all__ = [
-    "train_ff_model",
-    "evaluate_ff_model",
-    "train_cafo_model",
     "evaluate_cafo_model",
-    "mf_local_loss_fn",
-    "train_mf_model",
+    "evaluate_ff_model",
     "evaluate_mf_model",
-    "get_training_function",
     "get_evaluation_function",
+    "get_training_function",
+    "mf_local_loss_fn",
+    "train_cafo_model",
+    "train_ff_model",
+    "train_mf_model",
 ]

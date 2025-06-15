@@ -45,8 +45,7 @@ def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
 
     if dataset_key not in DATASET_STATS:
         raise ValueError(
-            f"Unknown dataset name: {dataset_name}. "
-            f"Available: {list(DATASET_STATS.keys())}"
+            f"Unknown dataset name: {dataset_name}. Available: {list(DATASET_STATS.keys())}"
         )
 
     stats = DATASET_STATS[dataset_key]
@@ -67,7 +66,5 @@ def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
     transform_list.append(T.ToTensor())
     transform_list.append(T.Normalize(mean, std))
 
-    logger.debug(
-        f"Transforms for dataset '{dataset_name}' (train={train}): {transform_list}"
-    )
+    logger.debug(f"Transforms for dataset '{dataset_name}' (train={train}): {transform_list}")
     return T.Compose(transform_list)
