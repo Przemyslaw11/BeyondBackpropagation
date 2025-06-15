@@ -1,8 +1,8 @@
-import torch
-import torchvision.transforms as T
-import torchvision.transforms.functional as TF
-from typing import Tuple, Dict, List
+"""Image transformation and normalization utilities for datasets."""
+
 import logging
+
+import torchvision.transforms as T
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,12 @@ DATASET_STATS = {
 
 
 def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
-    """
-    Returns the appropriate torchvision transforms for a given dataset and split.
+    """Returns the appropriate torchvision transforms for a given dataset.
 
     Args:
-        dataset_name: Name of the dataset (case-insensitive, e.g., 'FashionMNIST', 'cifar10').
-        train: Boolean indicating if the transforms are for the training set (True)
-               or validation/test set (False). Augmentation is applied only if train is True.
+        dataset_name: Name of the dataset (e.g., 'FashionMNIST', 'cifar10').
+        train: If True, applies training augmentations. Otherwise, returns
+            transforms for validation/testing.
 
     Returns:
         A torchvision.transforms.Compose object.
@@ -46,7 +45,8 @@ def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
 
     if dataset_key not in DATASET_STATS:
         raise ValueError(
-            f"Unknown dataset name: {dataset_name}. Available: {list(DATASET_STATS.keys())}"
+            f"Unknown dataset name: {dataset_name}. "
+            f"Available: {list(DATASET_STATS.keys())}"
         )
 
     stats = DATASET_STATS[dataset_key]
@@ -63,10 +63,8 @@ def get_transforms(dataset_name: str, train: bool = True) -> T.Compose:
                     T.RandomHorizontalFlip(),
                 ]
             )
--
-    transform_list.append(
-        T.ToTensor()
-    )
+
+    transform_list.append(T.ToTensor())
     transform_list.append(T.Normalize(mean, std))
 
     logger.debug(
