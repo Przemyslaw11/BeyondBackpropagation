@@ -1,3 +1,5 @@
+"""Helper functions for general utility tasks."""
+
 import logging
 import os
 import random
@@ -9,7 +11,7 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def set_seed(seed: int):
+def set_seed(seed: int) -> None:
     """Sets the seed for reproducibility across different libraries.
 
     Args:
@@ -26,7 +28,7 @@ def set_seed(seed: int):
         logger.info(f"Set random seed to {seed} (CUDA not available)")
 
 
-def create_directory_if_not_exists(path: str):
+def create_directory_if_not_exists(path: str) -> None:
     """Creates a directory if it doesn't already exist.
 
     Args:
@@ -39,6 +41,7 @@ def create_directory_if_not_exists(path: str):
         except OSError as e:
             logger.error(f"Failed to create directory {path}: {e}", exc_info=True)
             raise
+
 
 def format_time(seconds: float) -> str:
     """Formats a duration in seconds into a human-readable string (HH:MM:SS).
@@ -61,11 +64,12 @@ def save_checkpoint(
     filename: str = "checkpoint.pth",
     best_filename: str = "model_best.pth",
     checkpoint_dir: str = "checkpoints",
-):
+) -> None:
     """Saves model checkpoint.
 
     Args:
-        state: Dictionary containing model state and other info (e.g., epoch, optimizer state).
+        state: Dictionary containing model state and other info
+            (e.g., epoch, optimizer state).
         is_best: Boolean flag indicating if this is the best model seen so far.
         filename: Base filename for the checkpoint.
         best_filename: Filename for the best model checkpoint.
@@ -83,11 +87,13 @@ def save_checkpoint(
         torch.save(state, filepath)
         logger.debug(f"Saved checkpoint to {filepath}")
         if is_best:
-            torch.save(
-                state["state_dict"], best_filepath
-            )
+            epoch = state.get("epoch", "?")
+            metric = state.get("best_metric_value", "?")
+            metric_str = f"{metric:.4f}" if isinstance(metric, (int, float)) else "?"
             logger.info(
-                f"Saved best model state_dict to {best_filepath} (Epoch {state.get('epoch', '?')}, Metric: {state.get('best_metric_value', '?'):.4f})"
+                f"Saved best model state_dict to {best_filepath} "
+                f"(Epoch {epoch}, Metric: {metric_str})"
             )
+            torch.save(state["state_dict"], best_filepath)
     except Exception as e:
         logger.error(f"Failed to save checkpoint to {filepath}: {e}", exc_info=True)

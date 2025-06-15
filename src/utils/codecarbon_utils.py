@@ -1,3 +1,5 @@
+"""Utilities for setting up the CodeCarbon emissions tracker."""
+
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -12,10 +14,12 @@ from .helpers import create_directory_if_not_exists
 
 logger = logging.getLogger(__name__)
 
+
 def setup_codecarbon_tracker(
     config: Dict[str, Any], results: Dict[str, Any]
 ) -> Optional[OfflineEmissionsTracker]:
     """Initializes and starts the CodeCarbon OfflineEmissionsTracker based on config.
+
     Stores the CSV path in the results dictionary.
 
     Args:
@@ -49,30 +53,44 @@ def setup_codecarbon_tracker(
     results["codecarbon_csv_path"] = csv_path
     country_iso = carbon_tracker_config.get("country_iso_code", None)
     if not country_iso:
-        logger.warning("CodeCarbon country_iso_code not specified, attempting auto-detection.")
+        logger.warning(
+            "CodeCarbon country_iso_code not specified, attempting auto-detection."
+        )
     results["codecarbon_country_iso"] = country_iso
 
     mode = carbon_tracker_config.get("mode", "offline").lower()
     results["codecarbon_mode"] = mode
 
     if mode != "offline":
-        logger.warning(f"CodeCarbon mode set to '{mode}', but only offline mode is fully supported here. Using offline.")
+        logger.warning(
+            f"CodeCarbon mode is '{mode}', but only offline is supported. "
+            "Using offline."
+        )
 
     try:
-        logger.info(f"Initializing CodeCarbon OfflineEmissionsTracker. Outputting to {csv_path}")
+        logger.info(
+            "Initializing CodeCarbon OfflineEmissionsTracker. "
+            f"Outputting to {csv_path}"
+        )
+        project_name = (
+            config.get("logging", {})
+            .get("wandb", {})
+            .get("project", "BeyondBackpropagation")
+        )
         tracker = OfflineEmissionsTracker(
             output_dir=output_dir,
             output_file=csv_filename,
             country_iso_code=country_iso,
             log_level="INFO",
             save_to_file=True,
-            project_name=config.get("logging", {}).get("wandb", {}).get("project", "BeyondBackpropagation")
+            project_name=project_name,
         )
         tracker.start()
         logger.info("CodeCarbon tracker started.")
         return tracker
     except Exception as e:
-        logger.error(f"Failed to initialize or start CodeCarbon tracker: {e}", exc_info=True)
+        log_msg = f"Failed to initialize or start CodeCarbon tracker: {e}"
+        logger.error(log_msg, exc_info=True)
         results["codecarbon_csv_path"] = None
         results["codecarbon_enabled"] = False
         return None

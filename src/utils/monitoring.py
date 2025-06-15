@@ -1,7 +1,11 @@
+"""GPU monitoring utilities using the pynvml library."""
+
+import atexit
 import logging
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
+from types import TracebackType
+from typing import Dict, List, Optional, Tuple, Type
 
 import pynvml
 
@@ -13,7 +17,7 @@ _gpu_handles: Dict[int, pynvml.c_nvmlDevice_t] = {}
 
 
 def init_nvml() -> bool:
-    """Initializes the NVML library if not already done (thread-safe). Returns True if successful or already initialized."""
+    """Initializes NVML library (thread-safe). Returns True if successful."""
     global _nvml_initialized
     if _nvml_initialized:
         return True
@@ -29,32 +33,34 @@ def init_nvml() -> bool:
                 try:
                     driver_version = pynvml.nvmlSystemGetDriverVersion()
                     if isinstance(driver_version, bytes):
-                        driver_version = driver_version.decode('utf-8')
+                        driver_version = driver_version.decode("utf-8")
                     logger.info(f"NVIDIA Driver Version: {driver_version}")
                 except AttributeError:
-                    logger.warning("pynvml.nvmlSystemGetDriverVersion() attribute not found in this pynvml version.")
+                    logger.warning(
+                        "pynvml.nvmlSystemGetDriverVersion() attr not found."
+                    )
                 except pynvml.NVMLError as e:
-                    logger.warning(f"Could not retrieve Driver version info (NVML Error): {e}")
+                    logger.warning(f"Could not get Driver version (NVML Error): {e}")
 
                 try:
                     nvml_version = pynvml.nvmlSystemGetNvmlVersion()
                     if isinstance(nvml_version, bytes):
-                        nvml_version = nvml_version.decode('utf-8')
+                        nvml_version = nvml_version.decode("utf-8")
                     logger.info(f"NVML Library Version: {nvml_version}")
                 except AttributeError:
-                    logger.info("NVML version query (nvmlSystemGetNvmlVersion) not available in this pynvml library version.")
+                    logger.info(
+                        "NVML version query is unavailable in this pynvml library."
+                    )
                 except pynvml.NVMLError as e:
-                    logger.warning(f"Could not retrieve NVML version info (NVML Error): {e}")
+                    logger.warning(f"Could not get NVML version (NVML Error): {e}")
 
             except Exception as e:
-                logger.warning(f"An unexpected error occurred while retrieving NVML/Driver version info: {e}")
+                logger.warning(f"Unexpected error getting NVML/Driver info: {e}")
 
             return True
 
         except pynvml.NVMLError_LibraryNotFound:
-            logger.error(
-                "NVML library not found. NVIDIA driver may not be installed or pynvml installation issue."
-            )
+            logger.error("NVML lib not found. NVIDIA driver may not be installed.")
             _nvml_initialized = False
             return False
         except pynvml.NVMLError as error:
@@ -62,12 +68,12 @@ def init_nvml() -> bool:
             _nvml_initialized = False
             return False
         except Exception as e:
-             logger.error(f"An unexpected error occurred during NVML initialization: {e}", exc_info=True)
-             _nvml_initialized = False
-             return False
+            logger.error(f"Unexpected error during NVML init: {e}", exc_info=True)
+            _nvml_initialized = False
+            return False
 
 
-def shutdown_nvml():
+def shutdown_nvml() -> None:
     """Shuts down the NVML library (thread-safe)."""
     global _nvml_initialized, _gpu_handles
     with _nvml_lock:
@@ -175,10 +181,17 @@ def get_gpu_memory_usage(
 
 class GPUEnergyMonitor:
     """Monitors GPU energy consumption using background thread sampling.
+
     MODIFIED: Added check for non-positive time delta during energy calculation.
     """
 
-    def __init__(self, device_index: int = 0, interval_sec: float = 0.2):
+    def __init__(self, device_index: int = 0, interval_sec: float = 0.2) -> None:
+        """Initializes the GPUEnergyMonitor.
+
+        Args:
+            device_index: The index of the GPU to monitor.
+            interval_sec: The sampling interval in seconds.
+        """
         if interval_sec <= 0:
             raise ValueError("Sampling interval must be positive.")
 
@@ -187,9 +200,7 @@ class GPUEnergyMonitor:
         self._handle: Optional[pynvml.c_nvmlDevice_t] = None
         self._monitoring_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._samples: List[Tuple[float, Optional[float]]] = (
-            []
-        )
+        self._samples: List[Tuple[float, Optional[float]]] = []
         self._samples_lock = threading.Lock()
         self._is_running = False
         self._total_energy_joules: Optional[float] = None
@@ -202,14 +213,13 @@ class GPUEnergyMonitor:
             self._handle = get_gpu_handle(self._device_index)
             if self._handle is None:
                 logger.error(
-                    f"EnergyMonitor: Failed to get handle for GPU {self._device_index}. Monitoring disabled."
+                    "EnergyMonitor for GPU %s disabled: could not get handle.",
+                    self._device_index,
                 )
         else:
-            logger.error(
-                "EnergyMonitor: NVML initialization failed. Monitoring disabled."
-            )
+            logger.error("EnergyMonitor disabled: NVML initialization failed.")
 
-    def _monitor_energy(self):
+    def _monitor_energy(self) -> None:
         logger.debug(f"Energy monitoring thread started for GPU {self._device_index}.")
         last_sample_time = time.monotonic()
 
@@ -220,7 +230,8 @@ class GPUEnergyMonitor:
                 power_watts = get_gpu_power_usage(self._handle)
                 if power_watts is None and not self._power_error_logged:
                     logger.warning(
-                        f"EnergyMonitor: Failed to get power reading for GPU {self._device_index}. Will store None."
+                        "EnergyMonitor GPU %s: could not get power reading.",
+                        self._device_index,
                     )
                     self._power_error_logged = True
 
@@ -243,7 +254,8 @@ class GPUEnergyMonitor:
         with self._samples_lock:
             if len(self._samples) < 2:
                 logger.warning(
-                    f"EnergyMonitor GPU {self._device_index}: Not enough samples ({len(self._samples)}) collected to calculate energy."
+                    f"EnergyMonitor GPU {self._device_index}: Not enough samples "
+                    f"({len(self._samples)}) to calculate energy."
                 )
                 return None
 
@@ -255,9 +267,11 @@ class GPUEnergyMonitor:
                 time_delta = t2 - t1
                 if time_delta <= 0:
                     if not self._time_delta_error_logged:
-                        logger.warning(
-                            f"EnergyMonitor GPU {self._device_index}: Detected non-positive time delta ({time_delta:.4f}s) between samples {i} and {i+1}. Skipping segment. This may indicate timer issues."
+                        log_msg = (
+                            f"EnergyMonitor GPU {self._device_index}: Non-positive "
+                            f"time delta ({time_delta:.4f}s). Skipping."
                         )
+                        logger.warning(log_msg)
                         self._time_delta_error_logged = True
                     continue
                 p1_valid = p1 if p1 is not None else (p2 if p2 is not None else 0.0)
@@ -265,12 +279,12 @@ class GPUEnergyMonitor:
 
                 if p1 is None and p2 is None:
                     avg_power = 0.0
-                    if (
-                        not self._power_error_logged
-                    ):
-                        logger.warning(
-                            f"EnergyMonitor GPU {self._device_index}: Missing power data for time segment [{t1:.2f}, {t2:.2f}]. Assuming 0W."
+                    if not self._power_error_logged:
+                        log_msg = (
+                            f"EnergyMonitor GPU {self._device_index}: "
+                            f"Missing power data for segment [{t1:.2f}, {t2:.2f}]."
                         )
+                        logger.warning(log_msg)
                         self._power_error_logged = True
                 else:
                     avg_power = (p1_valid + p2_valid) / 2.0
@@ -280,13 +294,15 @@ class GPUEnergyMonitor:
 
             if total_energy == 0 and self._power_error_logged:
                 logger.warning(
-                    f"EnergyMonitor GPU {self._device_index}: Calculated total energy is 0 Joules, likely due to persistent power reading failures."
+                    "EnergyMonitor GPU %s: Total energy is 0 Joules, "
+                    "likely due to persistent power reading failures.",
+                    self._device_index,
                 )
 
             self._total_energy_joules = total_energy
             return total_energy
 
-    def start(self):
+    def start(self) -> None:
         """Starts the energy monitoring thread."""
         if self._is_running:
             logger.warning(
@@ -295,7 +311,7 @@ class GPUEnergyMonitor:
             return
         if not self._handle:
             logger.error(
-                f"Cannot start energy monitor for GPU {self._device_index}: No valid GPU handle."
+                f"Cannot start monitor for GPU {self._device_index}: no valid handle."
             )
             return
 
@@ -315,11 +331,12 @@ class GPUEnergyMonitor:
         self._monitoring_thread.start()
         self._is_running = True
         logger.info(
-            f"Started energy monitoring for GPU {self._device_index} (interval: {self._interval_sec}s)."
+            f"Started energy monitoring for GPU {self._device_index} "
+            f"(interval: {self._interval_sec}s)."
         )
 
     def stop(self) -> Optional[float]:
-        """Stops the monitoring thread and calculates the total energy. Returns energy in Joules."""
+        """Stops monitoring thread, calculates total energy. Returns Joules."""
         if not self._is_running:
             logger.info(f"Energy monitor for GPU {self._device_index} is not running.")
             return self._total_energy_joules
@@ -330,7 +347,8 @@ class GPUEnergyMonitor:
             self._monitoring_thread.join(timeout=self._interval_sec * 2 + 1)
             if self._monitoring_thread.is_alive():
                 logger.warning(
-                    f"Energy monitoring thread for GPU {self._device_index} did not stop gracefully."
+                    "Energy monitor for GPU %s did not exit gracefully.",
+                    self._device_index,
                 )
         self._is_running = False
         logger.info(f"Stopped energy monitoring for GPU {self._device_index}.")
@@ -354,13 +372,19 @@ class GPUEnergyMonitor:
         end_time = self._end_time if self._end_time is not None else time.monotonic()
         return end_time - self._start_time
 
-    def __enter__(self):
+    def __enter__(self) -> "GPUEnergyMonitor":
+        """Starts the monitor when entering a context manager."""
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        """Stops the monitor when exiting a context manager."""
         self.stop()
 
-import atexit
 
 atexit.register(shutdown_nvml)

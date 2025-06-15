@@ -1,3 +1,5 @@
+"""Logging configuration and utilities for the project."""
+
 import logging
 import os
 import sys
@@ -7,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import wandb
 
 
-def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
+def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> None:
     """Configures the root logger.
 
     Args:
@@ -46,12 +48,11 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
             root_logger.addHandler(file_handler)
             root_logger.info(f"Logging to file: {log_file}")
 
-        os.environ["LOGGING_SETUP_COMPLETE"] = (
-            "1"
-        )
+        os.environ["LOGGING_SETUP_COMPLETE"] = "1"
         root_logger.info(f"Root logger setup complete. Level: {log_level.upper()}")
     else:
         root_logger.info("Root logger already configured.")
+
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,7 @@ def setup_wandb(
     tags: Optional[List[str]] = None,
     job_type: str = "training",
 ) -> Optional["wandb.sdk.wandb_run.Run"]:
-    """Initializes a Weights & Biases run.
-    """
+    """Initializes a Weights & Biases run."""
     wandb_config = config.get("logging", {}).get("wandb", {})
     if not wandb_config.get("use_wandb", True):
         logger.info("Weights & Biases logging is disabled in the configuration.")
@@ -75,7 +75,8 @@ def setup_wandb(
     try:
         if not os.getenv("WANDB_API_KEY"):
             logger.warning(
-                "WANDB_API_KEY environment variable not set. W&B logging might fail or prompt."
+                "WANDB_API_KEY environment variable not set. "
+                "W&B logging might fail or prompt."
             )
 
         resolved_entity = (
@@ -83,7 +84,8 @@ def setup_wandb(
         )
         if not resolved_entity:
             logger.warning(
-                "W&B entity not specified via args, config, or WANDB_ENTITY env var. Using W&B default."
+                "W&B entity not specified via args, config, or WANDB_ENTITY "
+                "env var. Using W&B default."
             )
 
         resolved_project = wandb_config.get("project", project_name)
@@ -117,8 +119,9 @@ def log_metrics(
     metrics: Dict[str, Any],
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
     commit: bool = True,
-):
+) -> None:
     """Logs metrics to W&B (if enabled) and standard logger.
+
     Assumes the 'global_step' key is present in the metrics dictionary.
     MODIFIED: Logs metrics to console line-by-line for readability with spacing.
     MODIFIED: Skips logging 'final/codecarbon_emissions_kgCO2e' to console.
@@ -144,7 +147,9 @@ def log_metrics(
         if k == "final/codecarbon_emissions_kgCO2e":
             continue
         if isinstance(v, float):
-            if ("emission" in k.lower() or "energy" in k.lower() or abs(v) < 1e-3) and v != 0.0:
+            if (
+                "emission" in k.lower() or "energy" in k.lower() or abs(v) < 1e-3
+            ) and v != 0.0:
                 log_value = f"{v:.6f}"
             elif "gflops" in k.lower():
                 log_value = f"{v:.4f}"

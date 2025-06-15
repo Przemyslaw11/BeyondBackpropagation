@@ -1,3 +1,5 @@
+"""Utility functions for calculating performance metrics."""
+
 import logging
 
 import torch
@@ -9,11 +11,13 @@ def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
     """Calculates the classification accuracy.
 
     Args:
-        outputs: The model's output logits or probabilities (shape: [batch_size, num_classes]).
+        outputs: The model's output logits or probabilities
+            (shape: [batch_size, num_classes]).
         targets: The ground truth labels (shape: [batch_size]).
 
     Returns:
-        The accuracy as a percentage (float between 0.0 and 100.0). Returns 0.0 for empty inputs.
+        The accuracy as a percentage (0.0 to 100.0). Returns 0.0 for
+        empty inputs.
     """
     total = targets.size(0)
     if total == 0:

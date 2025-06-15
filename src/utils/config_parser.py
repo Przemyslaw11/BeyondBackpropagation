@@ -1,3 +1,5 @@
+"""Utilities for loading and parsing YAML configuration files."""
+
 import logging
 import os
 from typing import Any, Dict
@@ -14,7 +16,8 @@ def load_config(
 
     Args:
         config_path: Path to the specific experiment configuration file.
-        base_config_path: Path to the base configuration file. Defaults to 'configs/base.yaml'.
+        base_config_path: Path to the base configuration file.
+            Defaults to 'configs/base.yaml'.
 
     Returns:
         A dictionary containing the merged configuration.
@@ -52,7 +55,8 @@ def load_config(
             raise
     else:
         logger.warning(
-            f"Base configuration file not found at {base_config_path}. Proceeding without it."
+            f"Base configuration file not found at {base_config_path}. "
+            "Proceeding without it."
         )
 
     specific_config = {}
@@ -72,7 +76,9 @@ def load_config(
         logger.error(f"An unexpected error occurred while reading {config_path}: {e}")
         raise
 
-    def deep_merge(source, destination):
+    def deep_merge(
+        source: Dict[str, Any], destination: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Deeply merges source dict into destination dict."""
         for key, value in source.items():
             if isinstance(value, dict):
