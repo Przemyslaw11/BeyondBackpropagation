@@ -53,9 +53,7 @@ def setup_codecarbon_tracker(
     results["codecarbon_csv_path"] = csv_path
     country_iso = carbon_tracker_config.get("country_iso_code", None)
     if not country_iso:
-        logger.warning(
-            "CodeCarbon country_iso_code not specified, attempting auto-detection."
-        )
+        logger.warning("CodeCarbon country_iso_code not specified, attempting auto-detection.")
     results["codecarbon_country_iso"] = country_iso
 
     mode = carbon_tracker_config.get("mode", "offline").lower()
@@ -63,19 +61,13 @@ def setup_codecarbon_tracker(
 
     if mode != "offline":
         logger.warning(
-            f"CodeCarbon mode is '{mode}', but only offline is supported. "
-            "Using offline."
+            f"CodeCarbon mode is '{mode}', but only offline is supported. Using offline."
         )
 
     try:
-        logger.info(
-            "Initializing CodeCarbon OfflineEmissionsTracker. "
-            f"Outputting to {csv_path}"
-        )
+        logger.info(f"Initializing CodeCarbon OfflineEmissionsTracker. Outputting to {csv_path}")
         project_name = (
-            config.get("logging", {})
-            .get("wandb", {})
-            .get("project", "BeyondBackpropagation")
+            config.get("logging", {}).get("wandb", {}).get("project", "BeyondBackpropagation")
         )
         tracker = OfflineEmissionsTracker(
             output_dir=output_dir,

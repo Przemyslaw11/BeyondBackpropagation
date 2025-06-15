@@ -75,8 +75,7 @@ def setup_wandb(
     try:
         if not os.getenv("WANDB_API_KEY"):
             logger.warning(
-                "WANDB_API_KEY environment variable not set. "
-                "W&B logging might fail or prompt."
+                "WANDB_API_KEY environment variable not set. W&B logging might fail or prompt."
             )
 
         resolved_entity = (
@@ -115,6 +114,24 @@ def setup_wandb(
         return None
 
 
+def _format_metric_for_logging(key: str, value: Any) -> str:
+    """Formats a metric value into a string for console logging."""
+    if not isinstance(value, float):
+        return str(value)
+
+    key_lower = key.lower()
+    # Check for small values, emissions, or energy to use high precision
+    if (
+        "emission" in key_lower or "energy" in key_lower or abs(value) < 1e-3
+    ) and value != 0.0:
+        return f"{value:.6f}"
+    # Check for gflops
+    if "gflops" in key_lower:
+        return f"{value:.4f}"
+    # Default float formatting
+    return f"{value:.4f}"
+
+
 def log_metrics(
     metrics: Dict[str, Any],
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
@@ -142,21 +159,9 @@ def log_metrics(
         logger.info(f"--- Metrics Log (Step: {step_val}) ---")
 
     for k, v in metrics.items():
-        if k == "global_step":
+        if k in ("global_step", "final/codecarbon_emissions_kgCO2e"):
             continue
-        if k == "final/codecarbon_emissions_kgCO2e":
-            continue
-        if isinstance(v, float):
-            if (
-                "emission" in k.lower() or "energy" in k.lower() or abs(v) < 1e-3
-            ) and v != 0.0:
-                log_value = f"{v:.6f}"
-            elif "gflops" in k.lower():
-                log_value = f"{v:.4f}"
-            else:
-                log_value = f"{v:.4f}"
-        else:
-            log_value = v
+        log_value = _format_metric_for_logging(k, v)
         logger.info(f"  {k}: {log_value}")
 
     if is_final_summary:

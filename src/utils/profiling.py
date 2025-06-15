@@ -10,6 +10,53 @@ from torch.profiler import ProfilerActivity, profile, record_function
 logger = logging.getLogger(__name__)
 
 
+def _get_profiling_device(
+    model: nn.Module, device: Optional[torch.device]
+) -> torch.device:
+    """Determines the device to use for profiling."""
+    if device:
+        return device
+    try:
+        return next(model.parameters()).device
+    except StopIteration:
+        logger.debug("Model has no params, using CPU for profiling.")
+        return torch.device("cpu")
+    except Exception as e:
+        logger.warning(f"Could not infer model device, using CPU: {e}")
+        return torch.device("cpu")
+
+
+def _create_profiling_input(
+    input_constructor: Union[Tuple[int, ...], Callable[[], torch.Tensor]],
+    device: torch.device,
+) -> torch.Tensor:
+    """Creates a dummy input tensor for profiling."""
+    if isinstance(input_constructor, tuple):
+        input_shape = input_constructor
+        if input_shape[0] != 1:
+            logger.warning(
+                f"Input shape tuple has batch size {input_shape[0]}, changing to 1 for FLOPs profiling."
+            )
+            input_shape = (1,) + input_shape[1:]
+        dummy_input = torch.randn(input_shape, device=device)
+        logger.debug(f"Created dummy input with shape: {dummy_input.shape}")
+    elif callable(input_constructor):
+        dummy_input = input_constructor()
+        dummy_input = dummy_input.to(device)
+        if dummy_input.shape[0] != 1:
+            logger.warning(
+                f"Input constructor yielded batch size {dummy_input.shape[0]}, "
+                "expected 1 for profiling. Using first sample."
+            )
+            dummy_input = dummy_input[:1]
+        logger.debug(
+            f"Created dummy input from constructor, shape: {dummy_input.shape}"
+        )
+    else:
+        raise TypeError("Invalid input_constructor type provided.")
+    return dummy_input
+
+
 def profile_model_flops(
     model: nn.Module,
     input_constructor: Union[Tuple[int, ...], Callable[[], torch.Tensor]],
@@ -33,50 +80,16 @@ def profile_model_flops(
         Estimated GigaFLOPs (GFLOPs), or None if profiling fails.
         Returns 0.0 if no FLOPs are recorded.
     """
-    if device is None:
-        try:
-            device = next(model.parameters()).device
-        except StopIteration:
-            device = torch.device("cpu")
-            logger.debug("Model has no params, using CPU for profiling.")
-        except Exception as e:
-            logger.warning(f"Could not infer model device, using CPU: {e}")
-            device = torch.device("cpu")
-
-    logger.debug(f"Profiling with torch.profiler on device: {device}")
+    resolved_device = _get_profiling_device(model, device)
+    logger.debug(f"Profiling with torch.profiler on device: {resolved_device}")
 
     original_mode = model.training
     model.eval()
-    model.to(device)
+    model.to(resolved_device)
 
     try:
-        if isinstance(input_constructor, tuple):
-            input_shape = input_constructor
-            if input_shape[0] != 1:
-                logger.warning(
-                    f"Input shape tuple has batch size {input_shape[0]}, changing to 1 "
-                    "for FLOPs profiling."
-                )
-                input_shape = (1,) + input_shape[1:]
-            dummy_input = torch.randn(input_shape, device=device)
-            logger.debug(f"Created dummy input with shape: {dummy_input.shape}")
-        elif callable(input_constructor):
-            dummy_input = input_constructor()
-            dummy_input = dummy_input.to(device)
-            if dummy_input.shape[0] != 1:
-                logger.warning(
-                    f"Input constructor yielded batch size {dummy_input.shape[0]}, "
-                    "expected 1 for profiling. Using first sample."
-                )
-                dummy_input = dummy_input[:1]
-            logger.debug(
-                f"Created dummy input from constructor, shape: {dummy_input.shape}"
-            )
-        else:
-            logger.error("Invalid input_constructor type provided.")
-            model.train(original_mode)
-            return None
-    except Exception as e:
+        dummy_input = _create_profiling_input(input_constructor, resolved_device)
+    except (TypeError, Exception) as e:
         logger.error(f"Failed to create dummy input: {e}", exc_info=True)
         model.train(original_mode)
         return None
@@ -84,7 +97,7 @@ def profile_model_flops(
     total_flops = 0.0
     try:
         activities = [ProfilerActivity.CPU]
-        if device.type == "cuda":
+        if resolved_device.type == "cuda":
             activities.append(ProfilerActivity.CUDA)
 
         with profile(
@@ -92,10 +105,8 @@ def profile_model_flops(
             record_shapes=False,
             profile_memory=False,
             with_flops=True,
-        ) as prof:
-            with record_function("model_forward_pass"):
-                with torch.no_grad():
-                    _ = model(dummy_input)
+        ) as prof, record_function("model_forward_pass"), torch.no_grad():
+            _ = model(dummy_input)
 
         if verbose:
             print("--- Torch Profiler Results (Sorted by CPU time) ---")
@@ -108,8 +119,7 @@ def profile_model_flops(
             print("--------------------------------------------------")
 
         for event in prof.key_averages():
-            if event.flops > 0:
-                total_flops += event.flops
+            total_flops += event.flops or 0
 
         if total_flops == 0:
             logger.warning("torch.profiler recorded 0 FLOPs. Check model or input.")
@@ -123,8 +133,7 @@ def profile_model_flops(
     if total_flops is not None:
         gflops = total_flops / 1e9
         logger.info(
-            "Estimated Total Forward Pass FLOPs (via torch.profiler): "
-            f"{gflops:.4f} GFLOPs"
+            f"Estimated Total Forward Pass FLOPs (via torch.profiler): {gflops:.4f} GFLOPs"
         )
         return gflops
     else:

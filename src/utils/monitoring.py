@@ -16,6 +16,29 @@ _nvml_lock = threading.Lock()
 _gpu_handles: Dict[int, pynvml.c_nvmlDevice_t] = {}
 
 
+def _log_nvml_version_info() -> None:
+    """Logs the NVIDIA driver and NVML library versions if available."""
+    try:
+        driver_version = pynvml.nvmlSystemGetDriverVersion()
+        if isinstance(driver_version, bytes):
+            driver_version = driver_version.decode("utf-8")
+        logger.info(f"NVIDIA Driver Version: {driver_version}")
+    except AttributeError:
+        logger.warning("pynvml.nvmlSystemGetDriverVersion() attr not found.")
+    except pynvml.NVMLError as e:
+        logger.warning(f"Could not get Driver version (NVML Error): {e}")
+
+    try:
+        nvml_version = pynvml.nvmlSystemGetNvmlVersion()
+        if isinstance(nvml_version, bytes):
+            nvml_version = nvml_version.decode("utf-8")
+        logger.info(f"NVML Library Version: {nvml_version}")
+    except AttributeError:
+        logger.info("NVML version query is unavailable in this pynvml library.")
+    except pynvml.NVMLError as e:
+        logger.warning(f"Could not get NVML version (NVML Error): {e}")
+
+
 def init_nvml() -> bool:
     """Initializes NVML library (thread-safe). Returns True if successful."""
     global _nvml_initialized
@@ -28,37 +51,8 @@ def init_nvml() -> bool:
             pynvml.nvmlInit()
             _nvml_initialized = True
             logger.info("NVML initialized successfully.")
-
-            try:
-                try:
-                    driver_version = pynvml.nvmlSystemGetDriverVersion()
-                    if isinstance(driver_version, bytes):
-                        driver_version = driver_version.decode("utf-8")
-                    logger.info(f"NVIDIA Driver Version: {driver_version}")
-                except AttributeError:
-                    logger.warning(
-                        "pynvml.nvmlSystemGetDriverVersion() attr not found."
-                    )
-                except pynvml.NVMLError as e:
-                    logger.warning(f"Could not get Driver version (NVML Error): {e}")
-
-                try:
-                    nvml_version = pynvml.nvmlSystemGetNvmlVersion()
-                    if isinstance(nvml_version, bytes):
-                        nvml_version = nvml_version.decode("utf-8")
-                    logger.info(f"NVML Library Version: {nvml_version}")
-                except AttributeError:
-                    logger.info(
-                        "NVML version query is unavailable in this pynvml library."
-                    )
-                except pynvml.NVMLError as e:
-                    logger.warning(f"Could not get NVML version (NVML Error): {e}")
-
-            except Exception as e:
-                logger.warning(f"Unexpected error getting NVML/Driver info: {e}")
-
+            _log_nvml_version_info()
             return True
-
         except pynvml.NVMLError_LibraryNotFound:
             logger.error("NVML lib not found. NVIDIA driver may not be installed.")
             _nvml_initialized = False
@@ -104,10 +98,9 @@ def get_gpu_handle(device_index: int = 0) -> Optional[pynvml.c_nvmlDevice_t]:
     Returns:
         The NVML device handle, or None if NVML init fails or device not found.
     """
-    if not _nvml_initialized:
-        if not init_nvml():
-            logger.error("NVML initialization failed. Cannot get GPU handle.")
-            return None
+    if not _nvml_initialized and not init_nvml():
+        logger.error("NVML initialization failed. Cannot get GPU handle.")
+        return None
 
     if device_index in _gpu_handles:
         return _gpu_handles[device_index]

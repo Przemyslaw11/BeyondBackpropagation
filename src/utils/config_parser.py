@@ -9,6 +9,45 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
+def _load_one_yaml(path: str) -> Dict[str, Any]:
+    """
+    Loads a single YAML file.
+
+    Returns an empty dictionary if the file is empty.
+    Raises FileNotFoundError or YAMLError on failure.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Configuration file not found: {path}")
+
+    try:
+        with open(path) as f:
+            config = yaml.safe_load(f)
+        # Ensure that an empty file is treated as an empty dict
+        return config if isinstance(config, dict) else {}
+    except yaml.YAMLError as e:
+        logger.error(f"Error parsing YAML file {path}: {e}")
+        raise
+    except OSError as e:
+        logger.error(f"Error reading configuration file {path}: {e}")
+        raise
+
+
+def _deep_merge(source: Dict[str, Any], destination: Dict[str, Any]) -> Dict[str, Any]:
+    """Deeply merges the source dictionary into the destination dictionary."""
+    for key, value in source.items():
+        if (
+            isinstance(value, dict)
+            and key in destination
+            and isinstance(destination[key], dict)
+        ):
+            # If the key exists in both and both values are dicts, recurse
+            _deep_merge(value, destination[key])
+        else:
+            # Otherwise, overwrite the destination's value with the source's
+            destination[key] = value
+    return destination
+
+
 def load_config(
     config_path: str, base_config_path: str = "configs/base.yaml"
 ) -> Dict[str, Any]:
@@ -27,69 +66,21 @@ def load_config(
         yaml.YAMLError: If there is an error parsing the YAML files.
         IOError: For other file reading issues.
     """
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
     base_config = {}
     if os.path.exists(base_config_path):
-        try:
-            with open(base_config_path, "r") as f:
-                base_config = yaml.safe_load(f)
-                if base_config is None:
-                    base_config = {}
-            logger.debug(f"Loaded base configuration from {base_config_path}")
-        except yaml.YAMLError as e:
-            logger.error(
-                f"Error parsing base configuration file {base_config_path}: {e}"
-            )
-            raise
-        except IOError as e:
-            logger.error(
-                f"Error reading base configuration file {base_config_path}: {e}"
-            )
-            raise
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while reading {base_config_path}: {e}"
-            )
-            raise
+        logger.debug(f"Loading base configuration from {base_config_path}")
+        base_config = _load_one_yaml(base_config_path)
     else:
         logger.warning(
-            f"Base configuration file not found at {base_config_path}. "
-            "Proceeding without it."
+            f"Base configuration file not found at {base_config_path}. Proceeding without it."
         )
 
-    specific_config = {}
-    try:
-        with open(config_path, "r") as f:
-            specific_config = yaml.safe_load(f)
-            if specific_config is None:
-                specific_config = {}
-        logger.debug(f"Loaded specific configuration from {config_path}")
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing specific configuration file {config_path}: {e}")
-        raise
-    except IOError as e:
-        logger.error(f"Error reading specific configuration file {config_path}: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"An unexpected error occurred while reading {config_path}: {e}")
-        raise
+    logger.debug(f"Loading specific configuration from {config_path}")
+    specific_config = _load_one_yaml(config_path)
 
-    def deep_merge(
-        source: Dict[str, Any], destination: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Deeply merges source dict into destination dict."""
-        for key, value in source.items():
-            if isinstance(value, dict):
-                node = destination.setdefault(key, {})
-                deep_merge(value, node)
-            else:
-                destination[key] = value
-        return destination
-
+    # Start with a copy of the base config and merge the specific config into it
     merged_config = base_config.copy()
-    merged_config = deep_merge(specific_config, merged_config)
+    _deep_merge(specific_config, merged_config)
 
     logger.info(
         f"Successfully merged configuration from {config_path} and {base_config_path}"
