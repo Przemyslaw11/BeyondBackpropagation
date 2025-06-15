@@ -1,22 +1,21 @@
+import copy
+import logging
+import pprint
+import time
+from typing import Any, Dict
+
 import optuna
 import torch
-import torch.nn as nn
-import logging
-import time
-import copy
-import pprint
-from typing import Dict, Any, Optional, Tuple, Callable, List
 
-from src.utils.helpers import set_seed, format_time
+from src.algorithms.mf import evaluate_mf_model, train_mf_model
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import get_model_and_adapter
-from src.algorithms.mf import train_mf_model, evaluate_mf_model
+from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
 
 def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
-    """
-    Optuna objective function for hyperparameter tuning of Mono-Forward (MF).
+    """Optuna objective function for hyperparameter tuning of Mono-Forward (MF).
     NOTE: Early stopping (if enabled in config) will happen *within* the
           train_mf_model call during the trial, potentially reducing the
           number of epochs trained per layer. Optuna itself does not prune

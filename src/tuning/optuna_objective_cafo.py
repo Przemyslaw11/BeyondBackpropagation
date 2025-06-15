@@ -1,22 +1,22 @@
+import copy
+import logging
+import pprint
+import time
+from typing import Any, Dict
+
 import optuna
 import torch
 import torch.nn as nn
-import logging
-import time
-import copy
-import pprint
-from typing import Dict, Any, Optional, Tuple, Callable, List
 
-from src.utils.helpers import set_seed, format_time
+from src.algorithms.cafo import evaluate_cafo_model, train_cafo_model
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import get_model_and_adapter
-from src.algorithms.cafo import train_cafo_model, evaluate_cafo_model
+from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
 
 def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
-    """
-    Optuna objective function for hyperparameter tuning of Cascaded Forward (CaFo).
+    """Optuna objective function for hyperparameter tuning of Cascaded Forward (CaFo).
     Focuses on tuning predictor learning rate and epochs per block.
     Can be extended to tune block training parameters if train_blocks is enabled.
     """

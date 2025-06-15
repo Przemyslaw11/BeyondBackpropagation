@@ -1,12 +1,12 @@
-import torch
 import logging
+
+import torch
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
-    """
-    Calculates the classification accuracy.
+    """Calculates the classification accuracy.
 
     Args:
         outputs: The model's output logits or probabilities (shape: [batch_size, num_classes]).

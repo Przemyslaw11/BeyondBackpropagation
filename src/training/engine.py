@@ -1,34 +1,30 @@
+import contextlib
+import os
+import time
+from typing import Any, Callable, Dict, Optional, Tuple
+
+import pandas as pd
 import torch
 import torch.nn as nn
-import logging
-import time
-import os
-import contextlib
-import pynvml
-import pandas as pd
-from typing import Dict, Any, Optional, Tuple, Callable, List
-import pprint
 
-from src.utils.config_parser import load_config
-from src.utils.helpers import set_seed, create_directory_if_not_exists, format_time
-from src.utils.logging_utils import setup_wandb, log_metrics, logger, setup_logging
+from src.algorithms import (
+    get_evaluation_function,
+    get_training_function,
+)
+from src.architectures import FF_MLP, MF_MLP, CaFo_CNN
+from src.data_utils.datasets import get_dataloaders
+from src.utils.codecarbon_utils import setup_codecarbon_tracker
+from src.utils.helpers import format_time, set_seed
+from src.utils.logging_utils import log_metrics, logger, setup_wandb
 from src.utils.monitoring import (
-    init_nvml,
-    shutdown_nvml,
+    GPUEnergyMonitor,
     get_gpu_handle,
     get_gpu_memory_usage,
-    GPUEnergyMonitor,
+    init_nvml,
+    shutdown_nvml,
 )
-from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.profiling import profile_model_flops
-from src.data_utils.datasets import get_dataloaders
-from src.architectures import (
-    FF_MLP, CaFo_CNN, MF_MLP
-)
-from src.algorithms import (
-    get_training_function,
-    get_evaluation_function,
-)
+
 
 def get_model_and_adapter(
     config: Dict[str, Any], device: torch.device
@@ -290,7 +286,7 @@ def run_training( config: Dict[str, Any], wandb_run: Optional[Any] = None ) -> D
         logger.info(f"Test Set Results: Acc: {eval_results.get(test_acc_key, 'N/A'):.2f}%, Loss: {eval_results.get(test_loss_key, 'N/A'):.4f}"); results.update(eval_results)
 
     except Exception as e:
-        logger.critical(f"\n--- Experiment Failed ---"); logger.critical(f"Error during run: {e}", exc_info=True)
+        logger.critical("\n--- Experiment Failed ---"); logger.critical(f"Error during run: {e}", exc_info=True)
         results["error"] = str(e)
         if wandb_run and hasattr(wandb_run, 'finish'):
             try: wandb_run.finish(exit_code=1); logger.info("W&B run finished with error.")

@@ -1,9 +1,9 @@
+import logging
+import math
+from typing import Any, Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import List, Tuple, Optional, Dict, Any
-import math
-import logging
 
 from src.utils.metrics import calculate_accuracy
 
@@ -19,8 +19,7 @@ class ReLU_full_grad(torch.autograd.Function):
         return grad_output.clone()
 
 class FF_MLP(torch.nn.Module):
-    """
-    CORRECTED MLP model implementing Hinton's reference Forward-Forward (FF) algorithm logic.
+    """CORRECTED MLP model implementing Hinton's reference Forward-Forward (FF) algorithm logic.
     Uses simultaneous local gradient updates via detach. Includes downstream classifier.
     Structure adapted to work with the modified training loop in src/algorithms/ff.py.
     """

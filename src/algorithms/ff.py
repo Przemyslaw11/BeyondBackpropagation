@@ -1,19 +1,22 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-import numpy as np
 import logging
-from tqdm import tqdm
-import pynvml
-from typing import Dict, Any, Optional, Tuple, List, Callable
 import os
 import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import pynvml
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.architectures.ff_mlp import FF_MLP
+from src.utils.helpers import (
+    create_directory_if_not_exists,
+    format_time,
+    save_checkpoint,
+)
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import format_time, save_checkpoint, create_directory_if_not_exists
 from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
@@ -27,8 +30,7 @@ def generate_ff_hinton_inputs(
     replace_value_off: float = 0.0,
     neutral_value: float = 0.1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Generates positive, negative, and neutral flattened image tensors for FF training
+    """Generates positive, negative, and neutral flattened image tensors for FF training
     using Hinton's pixel replacement method. Ensures negative label is different.
     Matches the logic in the reference `ff_mnist.py`.
 
@@ -69,12 +71,11 @@ def train_ff_model(
     wandb_run: Optional[Any] = None, input_adapter: Optional[Callable] = None, step_ref: List[int] = [-1],
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None, nvml_active: bool = False,
 ) -> float: # Returns overall peak memory
-    """
-    Orchestrates the end-to-end training of a model using the Forward-Forward algorithm.
+    """Orchestrates the end-to-end training of a model using the Forward-Forward algorithm.
     <<< MODIFIED: Added Early Stopping logic based on validation accuracy. >>>
     Returns the peak GPU memory observed during training.
     """
-    model.to(device); logger.info(f"Starting Forward-Forward (Hinton style) training using modified FF_MLP.")
+    model.to(device); logger.info("Starting Forward-Forward (Hinton style) training using modified FF_MLP.")
     if input_adapter is not None: logger.warning("FF Training: 'input_adapter' provided but FF_MLP uses internal logic. Adapter ignored.")
 
     train_config = config.get("training", {})
@@ -324,7 +325,7 @@ def train_ff_model(
                     logger.info(f"Epoch {epoch+1}: Early stopping metric did not improve. Patience: {epochs_no_improve}/{es_patience}.")
 
             if epochs_no_improve >= es_patience:
-                logger.info(f"--- Early Stopping Triggered ---")
+                logger.info("--- Early Stopping Triggered ---")
                 logger.info(f"Metric '{es_metric_key}' did not improve for {es_patience} epochs (Best: {best_es_metric_value:.4f}).")
                 logger.info(f"Stopping training at epoch {epoch+1}.")
                 break
@@ -391,11 +392,10 @@ def train_ff_model(
 def evaluate_ff_model(
     model: FF_MLP, data_loader: DataLoader, device: torch.device, **kwargs,
 ) -> Dict[str, float]:
-    """
-    Evaluates the Forward-Forward model using the multi-pass inference method.
+    """Evaluates the Forward-Forward model using the multi-pass inference method.
     """
     model.eval(); model.to(device); num_classes = model.num_classes
-    logger.info(f"Evaluating FF (Hinton style) model using multi-pass inference.")
+    logger.info("Evaluating FF (Hinton style) model using multi-pass inference.")
     total_correct, total_samples = 0, 0
     with torch.no_grad():
         pbar = tqdm(data_loader, desc="Evaluating FF (Hinton) Model", leave=False)

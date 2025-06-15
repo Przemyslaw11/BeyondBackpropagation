@@ -1,19 +1,19 @@
+import logging
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import pynvml
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-import torch.nn.functional as F
-import logging
+from torch.utils.data import DataLoader
 from tqdm import tqdm
-import pynvml
-from typing import Dict, Any, Optional, Callable, List, Tuple
-import os
-import time
 
 from src.architectures.mf_mlp import MF_MLP
-from src.utils.metrics import calculate_accuracy
+from src.utils.helpers import (
+    create_directory_if_not_exists,
+    save_checkpoint,
+)
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, format_time, create_directory_if_not_exists
 from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
@@ -41,8 +41,7 @@ def evaluate_mf_local_loss(
     input_adapter: Callable[[torch.Tensor], torch.Tensor],
     log_prefix: str = "Layer",
 ) -> float:
-    """
-    Evaluates the local loss for a specific MF layer (using M_i) on a validation set for an MF_MLP model.
+    """Evaluates the local loss for a specific MF layer (using M_i) on a validation set for an MF_MLP model.
     """
     if matrix_index < 0 or matrix_index >= len(model.projection_matrices):
         logger.error(f"{log_prefix} Eval: Matrix index {matrix_index} out of bounds.")
@@ -91,8 +90,7 @@ def train_mf_matrix_only(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> Tuple[float, float, int]:
-    """
-    Trains a single projection matrix (M_i) using local loss for an MF_MLP model.
+    """Trains a single projection matrix (M_i) using local loss for an MF_MLP model.
     """
     log_prefix = f"Layer_M{matrix_index}"
     if matrix_index < 0 or matrix_index >= len(model.projection_matrices):
@@ -187,8 +185,7 @@ def train_mf_model(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> float:
-    """
-    Orchestrates the layer-wise training of an MF_MLP model.
+    """Orchestrates the layer-wise training of an MF_MLP model.
     Trains M0 first, then trains W_i+1 and M_i+1 together for i=0 to L-1.
     """
     model.to(device)
@@ -367,8 +364,7 @@ def evaluate_mf_model(
     input_adapter: Callable[[torch.Tensor], torch.Tensor],
     criterion: Optional[nn.Module] = None,
 ) -> Dict[str, float]:
-    """
-    Evaluates the trained MF_MLP model using the paper's "BP-style" approach.
+    """Evaluates the trained MF_MLP model using the paper's "BP-style" approach.
     Uses the activation from the last layer (a_L) and the last projection matrix (M_L).
     """
     model.eval(); model.to(device)
@@ -384,7 +380,7 @@ def evaluate_mf_model(
     last_projection_matrix = model.get_projection_matrix(last_projection_matrix_index)
 
     with torch.no_grad():
-        pbar = tqdm(data_loader, desc=f"Evaluating MF MLP (BP-style)", leave=False)
+        pbar = tqdm(data_loader, desc="Evaluating MF MLP (BP-style)", leave=False)
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
             eval_input = input_adapter(images)

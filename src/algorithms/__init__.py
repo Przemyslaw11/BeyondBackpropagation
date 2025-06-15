@@ -1,20 +1,21 @@
+from typing import Any, Callable, Dict
+
+import torch.nn as nn
+
+from src.baselines import evaluate_bp_model as evaluate_bp_baseline
+from src.baselines import train_bp_model
+
+from .cafo import evaluate_cafo_model, train_cafo_model
 from .ff import (
-    train_ff_model,
     evaluate_ff_model,
+    train_ff_model,
 )
-
-from .cafo import train_cafo_model, evaluate_cafo_model
-
 from .mf import (
+    evaluate_mf_model,
     mf_local_loss_fn,
     train_mf_model,
-    evaluate_mf_model,
 )
 
-from src.baselines import train_bp_model, evaluate_bp_model as evaluate_bp_baseline
-
-from typing import Callable, Dict, Any
-import torch.nn as nn
 
 def get_training_function(name: str) -> Callable:
     """Returns the main training orchestration function for an algorithm."""

@@ -1,17 +1,16 @@
+import logging
+import os
 import random
+from typing import Any, Dict
+
 import numpy as np
 import torch
-import os
-import time
-import logging
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
 
 def set_seed(seed: int):
-    """
-    Sets the seed for reproducibility across different libraries.
+    """Sets the seed for reproducibility across different libraries.
 
     Args:
         seed: The integer seed value.
@@ -28,8 +27,7 @@ def set_seed(seed: int):
 
 
 def create_directory_if_not_exists(path: str):
-    """
-    Creates a directory if it doesn't already exist.
+    """Creates a directory if it doesn't already exist.
 
     Args:
         path: The directory path to create.
@@ -43,8 +41,7 @@ def create_directory_if_not_exists(path: str):
             raise
 
 def format_time(seconds: float) -> str:
-    """
-    Formats a duration in seconds into a human-readable string (HH:MM:SS).
+    """Formats a duration in seconds into a human-readable string (HH:MM:SS).
 
     Args:
         seconds: The duration in seconds.
@@ -65,8 +62,7 @@ def save_checkpoint(
     best_filename: str = "model_best.pth",
     checkpoint_dir: str = "checkpoints",
 ):
-    """
-    Saves model checkpoint.
+    """Saves model checkpoint.
 
     Args:
         state: Dictionary containing model state and other info (e.g., epoch, optimizer state).

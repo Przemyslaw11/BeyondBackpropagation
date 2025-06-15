@@ -1,17 +1,21 @@
+import logging
+import os
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import pynvml
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import logging
 from tqdm import tqdm
-import time
-import os
-import pynvml
-from typing import Dict, Any, Optional, Tuple, Callable, List
 
-from src.utils.metrics import calculate_accuracy
+from src.utils.helpers import (
+    create_directory_if_not_exists,
+    format_time,
+    save_checkpoint,
+)
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import format_time, save_checkpoint, create_directory_if_not_exists
 from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
@@ -31,8 +35,7 @@ def train_bp_epoch(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> Tuple[float, float, float]:
-    """
-    Performs one epoch of standard Backpropagation training.
+    """Performs one epoch of standard Backpropagation training.
     Logs BATCH metrics only. Returns epoch average loss, accuracy, and peak memory.
     """
     model.train()
@@ -133,8 +136,7 @@ def train_bp_model(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> float:
-    """
-    Orchestrates the end-to-end training of a model using Backpropagation.
+    """Orchestrates the end-to-end training of a model using Backpropagation.
     Returns the peak GPU memory observed during training.
     """
     model.to(device)
@@ -283,7 +285,7 @@ def train_bp_model(
                         logger.debug(f"Epoch {epoch+1}: Early stopping metric did not improve. Patience: {epochs_no_improve}/{es_patience}.")
 
                 if epochs_no_improve >= es_patience:
-                    logger.info(f"--- Early Stopping Triggered ---")
+                    logger.info("--- Early Stopping Triggered ---")
                     logger.info(f"Metric '{es_metric}' did not improve for {es_patience} epochs.")
                     logger.info(f"Stopping training at epoch {epoch+1}.")
                     break

@@ -1,7 +1,8 @@
-import yaml
-import os
-from typing import Dict, Any
 import logging
+import os
+from typing import Any, Dict
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -9,8 +10,7 @@ logger = logging.getLogger(__name__)
 def load_config(
     config_path: str, base_config_path: str = "configs/base.yaml"
 ) -> Dict[str, Any]:
-    """
-    Loads a YAML configuration file and merges it with a base configuration file.
+    """Loads a YAML configuration file and merges it with a base configuration file.
 
     Args:
         config_path: Path to the specific experiment configuration file.

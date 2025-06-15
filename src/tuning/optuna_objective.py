@@ -1,29 +1,29 @@
+import copy
+import logging
+import pprint
+import time
+from typing import Any, Dict
+
 import optuna
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import logging
-import time
-import copy
-import pprint
-from typing import Dict, Any, Optional, Tuple, Callable
 
-from src.utils.helpers import set_seed, format_time
+from src.baselines.bp import (
+    evaluate_bp_model,
+    train_bp_epoch,
+)
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import (
     get_model_and_adapter,
 )
-from src.baselines.bp import (
-    train_bp_epoch,
-    evaluate_bp_model,
-)
+from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
 
 
 def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
-    """
-    Optuna objective function for hyperparameter tuning of BP baselines.
+    """Optuna objective function for hyperparameter tuning of BP baselines.
     MODIFIED: Added logging of trial info to main logger.
     """
     cfg = copy.deepcopy(base_config)

@@ -1,6 +1,6 @@
-import os
 import logging
-from typing import Dict, Any, Optional, Tuple
+import os
+from typing import Any, Dict, Optional
 
 try:
     from codecarbon import OfflineEmissionsTracker
@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 def setup_codecarbon_tracker(
     config: Dict[str, Any], results: Dict[str, Any]
 ) -> Optional[OfflineEmissionsTracker]:
-    """
-    Initializes and starts the CodeCarbon OfflineEmissionsTracker based on config.
+    """Initializes and starts the CodeCarbon OfflineEmissionsTracker based on config.
     Stores the CSV path in the results dictionary.
 
     Args:

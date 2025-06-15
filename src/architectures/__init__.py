@@ -1,11 +1,12 @@
-from .ff_mlp import FF_MLP
-from .cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
-from .mf_mlp import MF_MLP
+import logging
+from typing import Any, Callable, Dict, Optional
 
-from typing import Dict, Any, Optional, Callable
 import torch
 import torch.nn as nn
-import logging
+
+from .cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
+from .ff_mlp import FF_MLP
+from .mf_mlp import MF_MLP
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,7 @@ def get_architecture(
     config: Dict[str, Any],
     device: torch.device,
 ) -> nn.Module:
-    """
-    Factory function to instantiate the correct model architecture.
+    """Factory function to instantiate the correct model architecture.
     Handles creation of BP baseline models from alternative algorithm structures.
     """
     name = name.lower()

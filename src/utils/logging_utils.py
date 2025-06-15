@@ -1,13 +1,14 @@
-import wandb
-import os
 import logging
-from typing import Dict, Any, Optional, List
+import os
 import sys
 import time
+from typing import Any, Dict, List, Optional
+
+import wandb
+
 
 def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None):
-    """
-    Configures the root logger.
+    """Configures the root logger.
 
     Args:
         log_level: Logging level string (e.g., 'DEBUG', 'INFO', 'WARNING').
@@ -64,8 +65,7 @@ def setup_wandb(
     tags: Optional[List[str]] = None,
     job_type: str = "training",
 ) -> Optional["wandb.sdk.wandb_run.Run"]:
-    """
-    Initializes a Weights & Biases run.
+    """Initializes a Weights & Biases run.
     """
     wandb_config = config.get("logging", {}).get("wandb", {})
     if not wandb_config.get("use_wandb", True):
@@ -118,8 +118,7 @@ def log_metrics(
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
     commit: bool = True,
 ):
-    """
-    Logs metrics to W&B (if enabled) and standard logger.
+    """Logs metrics to W&B (if enabled) and standard logger.
     Assumes the 'global_step' key is present in the metrics dictionary.
     MODIFIED: Logs metrics to console line-by-line for readability with spacing.
     MODIFIED: Skips logging 'final/codecarbon_emissions_kgCO2e' to console.
@@ -156,9 +155,9 @@ def log_metrics(
         logger.info(f"  {k}: {log_value}")
 
     if is_final_summary:
-        logger.info(f"--- End Final Summary ---")
+        logger.info("--- End Final Summary ---")
     else:
-        logger.info(f"--- End Metrics Log ---")
+        logger.info("--- End Metrics Log ---")
     logger.info("")
 
     active_run = wandb_run or wandb.run

@@ -1,8 +1,9 @@
+import logging
+from typing import Callable, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
-from torch.profiler import profile, record_function, ProfilerActivity
-import logging
-from typing import Tuple, Optional, Union, Callable
+from torch.profiler import ProfilerActivity, profile, record_function
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +13,7 @@ def profile_model_flops(
     device: Optional[torch.device] = None,
     verbose: bool = False,
 ) -> Optional[float]:
-    """
-    Estimates the FLOPs for a model's forward pass using torch.profiler.
+    """Estimates the FLOPs for a model's forward pass using torch.profiler.
 
     Args:
         model: The PyTorch model (nn.Module) to profile.

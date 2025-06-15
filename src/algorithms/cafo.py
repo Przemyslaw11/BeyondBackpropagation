@@ -1,20 +1,24 @@
+import logging
+import math
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import pynvml
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
-import logging
 from tqdm import tqdm
-import pynvml
-from typing import Dict, Any, Optional, Callable, List, Type, Tuple
-import os
-import time
-import math
 
 from src.architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
-from src.utils.metrics import calculate_accuracy
+from src.utils.helpers import (
+    create_directory_if_not_exists,
+    format_time,
+    save_checkpoint,
+)
 from src.utils.logging_utils import log_metrics
-from src.utils.helpers import save_checkpoint, create_directory_if_not_exists, format_time
+from src.utils.metrics import calculate_accuracy
 from src.utils.monitoring import get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
@@ -29,8 +33,7 @@ def train_cafo_dfa_blocks(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> float:
-    """
-    Trains the blocks of the CaFo_CNN model using Direct Feedback Alignment (DFA).
+    """Trains the blocks of the CaFo_CNN model using Direct Feedback Alignment (DFA).
     Uses the fully-connected approximation for Conv layer gradient updates.
     """
     logger.info("--- Starting CaFo Block Training (DFA) Phase ---")
@@ -139,7 +142,7 @@ def train_cafo_dfa_blocks(
                    h_i_recompute = target_block(h_prev.detach())
                    grads = torch.autograd.grad(outputs=h_i_recompute, inputs=target_block.parameters(),
                                                grad_outputs=delta_h_i_spatial, allow_unused=True, retain_graph=False)
-                   for param, grad in zip(target_block.parameters(), grads):
+                   for param, grad in zip(target_block.parameters(), grads, strict=False):
                        if grad is not None: param.grad = grad
                    target_block.train(original_mode)
                 except Exception as e_dfa_grad:
@@ -261,8 +264,7 @@ def train_cafo_predictor_only(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> Tuple[float, float, float, int]:
-    """
-    Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
+    """Trains a single CaFoPredictor layer-wise, keeping the corresponding CaFoBlock frozen.
     <<< MODIFIED: Added early stopping based on validation performance. >>>
     Returns: Avg Train Loss, Avg Train Accuracy, Peak Memory, Num Epochs Trained
     """
@@ -397,8 +399,7 @@ def train_cafo_model(
     gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
     nvml_active: bool = False,
 ) -> float:
-    """
-    Orchestrates the training of CaFo_CNN.
+    """Orchestrates the training of CaFo_CNN.
     Optionally trains blocks using DFA first, then trains predictors layer-wise.
     Returns the overall peak GPU memory observed across all training phases.
     """
@@ -548,7 +549,7 @@ def evaluate_cafo_model(
                     last_block_idx = num_blocks - 1
                     try: pred_out = predictors[last_block_idx](block_outputs[last_block_idx]); predictor_outputs.append(pred_out)
                     except Exception as e_pred: logger.error(f"Error LAST predictor ({last_block_idx}): {e_pred}", exc_info=True); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
-                else: logger.error(f"Cannot eval 'last': mismatch counts/outputs."); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+                else: logger.error("Cannot eval 'last': mismatch counts/outputs."); return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
             else:
                 for i, block_out in enumerate(block_outputs):
                     if i < len(predictors):

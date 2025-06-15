@@ -1,16 +1,15 @@
+import logging
+import math
+from typing import List
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import List, Tuple, Optional, Type
-import math
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 class MF_MLP(nn.Module):
-    """
-    Multi-Layer Perceptron designed for the Mono-Forward (MF) algorithm.
+    """Multi-Layer Perceptron designed for the Mono-Forward (MF) algorithm.
     Includes standard feedforward layers (W_i) and learnable projection matrices (M_i).
     The final self.output_layer is primarily used by the BP baseline.
 
@@ -104,8 +103,7 @@ class MF_MLP(nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Standard forward pass through the MLP layers (W_1...W_L+1), returning final logits.
+        """Standard forward pass through the MLP layers (W_1...W_L+1), returning final logits.
         Used ONLY for the BP baseline evaluation. Assumes input 'x' is already flattened.
         """
         current_activation = x
@@ -121,8 +119,7 @@ class MF_MLP(nn.Module):
     def forward_with_intermediate_activations(
         self, x: torch.Tensor
     ) -> List[torch.Tensor]:
-        """
-        Forward pass returning the activations *after* the activation function
+        """Forward pass returning the activations *after* the activation function
         for the input and each hidden layer.
         These are the 'a_i' vectors needed for local MF loss calculation and MF evaluation.
         Assumes input 'x' is already flattened.

@@ -1,17 +1,16 @@
+import logging
+from typing import Callable, Optional, Tuple
+
 import torch
 import torchvision
-from torch.utils.data import DataLoader, Subset, random_split, Dataset
-import os
-import logging
-from typing import Tuple, Optional, Callable
+from torch.utils.data import DataLoader, Dataset, Subset, random_split
 
 from .preprocessing import get_transforms
 
 logger = logging.getLogger(__name__)
 
 class TransformedSubset(Dataset):
-    """
-    A Subset that applies a specific transform independent of the original dataset's transform.
+    """A Subset that applies a specific transform independent of the original dataset's transform.
     """
     def __init__(self, subset: Subset, transform: Optional[Callable] = None):
         self.subset = subset
@@ -37,8 +36,7 @@ def get_dataloaders(
     pin_memory: bool = True,
     download: bool = True,
 ) -> Tuple[DataLoader, Optional[DataLoader], DataLoader]:
-    """
-    Creates training, validation, and test DataLoaders for a specified dataset.
+    """Creates training, validation, and test DataLoaders for a specified dataset.
     <<< CORRECTION: Implements the specific 50k/10k fixed split for MNIST, ignoring val_split argument >>>
     """
     dataset_name = dataset_name.lower()

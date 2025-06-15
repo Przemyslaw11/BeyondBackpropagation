@@ -1,9 +1,9 @@
-import torch
-import pynvml
-import time
 import logging
 import threading
-from typing import Optional, Tuple, Dict, List
+import time
+from typing import Dict, List, Optional, Tuple
+
+import pynvml
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +90,7 @@ def shutdown_nvml():
 
 
 def get_gpu_handle(device_index: int = 0) -> Optional[pynvml.c_nvmlDevice_t]:
-    """
-    Gets the NVML handle for a specific GPU device (initializes NVML if needed).
+    """Gets the NVML handle for a specific GPU device (initializes NVML if needed).
 
     Args:
         device_index: The index of the GPU device.
@@ -138,9 +137,9 @@ def get_gpu_power_usage(handle: pynvml.c_nvmlDevice_t) -> Optional[float]:
         return power_watts
     except pynvml.NVMLError as error:
         if error.value == pynvml.NVMLError_NotSupported:
-            logger.warning(f"Power usage reporting not supported for this GPU handle.")
+            logger.warning("Power usage reporting not supported for this GPU handle.")
         elif error.value == pynvml.NVMLError_GPUIsLost:
-            logger.error(f"GPU lost during power query.")
+            logger.error("GPU lost during power query.")
         elif error.value == pynvml.NVMLError_Uninitialized:
             logger.error("NVML uninitialized during power query.")
         else:
@@ -151,8 +150,7 @@ def get_gpu_power_usage(handle: pynvml.c_nvmlDevice_t) -> Optional[float]:
 def get_gpu_memory_usage(
     handle: pynvml.c_nvmlDevice_t,
 ) -> Optional[Tuple[float, float, float]]:
-    """
-    Gets the memory usage of the GPU in MiB (Used, Total, Free).
+    """Gets the memory usage of the GPU in MiB (Used, Total, Free).
 
     Returns:
         Tuple[Used MiB, Total MiB, Free MiB] or None if failed.
@@ -176,8 +174,7 @@ def get_gpu_memory_usage(
 
 
 class GPUEnergyMonitor:
-    """
-    Monitors GPU energy consumption using background thread sampling.
+    """Monitors GPU energy consumption using background thread sampling.
     MODIFIED: Added check for non-positive time delta during energy calculation.
     """
 

@@ -1,15 +1,14 @@
+import logging
+from typing import List, Optional, Tuple, Type
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import List, Tuple, Optional, Type
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 class CaFoBlock(nn.Module):
-    """
-    A single block for the CaFo CNN, typically: Conv -> Activation -> Pool -> BN.
+    """A single block for the CaFo CNN, typically: Conv -> Activation -> Pool -> BN.
     MODIFIED: Changed layer order to Conv->Act->Pool->BN to match paper/reference.
     MODIFIED: Added explicit Kaiming uniform initialization for Conv layer.
     """
@@ -76,8 +75,7 @@ class CaFoBlock(nn.Module):
 
 
 class CaFoPredictor(nn.Module):
-    """
-    A simple predictor head (typically Linear) attached to the output of a CaFoBlock.
+    """A simple predictor head (typically Linear) attached to the output of a CaFoBlock.
     """
 
     def __init__(self, in_features: int, num_classes: int, bias: bool = True):
@@ -92,8 +90,7 @@ class CaFoPredictor(nn.Module):
 
 
 class CaFo_CNN(nn.Module):
-    """
-    Cascaded Forward (CaFo) Convolutional Neural Network base.
+    """Cascaded Forward (CaFo) Convolutional Neural Network base.
     Contains only the cascaded blocks. Predictors are handled externally.
     """
 
