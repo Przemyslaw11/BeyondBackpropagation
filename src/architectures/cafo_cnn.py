@@ -1,3 +1,5 @@
+"""Implements the CaFo_CNN model for the Cascaded Forward algorithm."""
+
 import logging
 from typing import List, Optional, Tuple, Type
 
@@ -8,9 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class CaFoBlock(nn.Module):
-    """A single block for the CaFo CNN, typically: Conv -> Activation -> Pool -> BN.
-    MODIFIED: Changed layer order to Conv->Act->Pool->BN to match paper/reference.
-    MODIFIED: Added explicit Kaiming uniform initialization for Conv layer.
+    """A single block for the CaFo CNN: Conv -> Activation -> Pool -> BN.
+
+    MODIFIED: Changed layer order to Conv->Act->Pool->BN to match the paper.
+    MODIFIED: Added explicit Kaiming uniform initialization for the Conv layer.
     """
 
     def __init__(
@@ -24,7 +27,20 @@ class CaFoBlock(nn.Module):
         pool_stride: int = 2,
         activation_cls: Type[nn.Module] = nn.ReLU,
         use_batchnorm: bool = True,
-    ):
+    ) -> None:
+        """Initializes a CaFoBlock.
+
+        Args:
+            in_channels: Number of input channels.
+            out_channels: Number of output channels.
+            kernel_size: Kernel size for the convolutional layer.
+            stride: Stride for the convolutional layer.
+            padding: Padding for the convolutional layer.
+            pool_kernel_size: Kernel size for the pooling layer.
+            pool_stride: Stride for the pooling layer.
+            activation_cls: The activation function class (e.g., nn.ReLU).
+            use_batchnorm: Whether to use batch normalization.
+        """
         super().__init__()
         self.conv = nn.Conv2d(
             in_channels,
@@ -35,10 +51,14 @@ class CaFoBlock(nn.Module):
             bias=not use_batchnorm,
         )
 
-        nn.init.kaiming_uniform_(self.conv.weight, mode='fan_in', nonlinearity='relu')
+        nn.init.kaiming_uniform_(self.conv.weight, mode="fan_in", nonlinearity="relu")
         if self.conv.bias is not None:
             nn.init.constant_(self.conv.bias, 0)
-        logger.debug(f"CaFoBlock Conv ({in_channels}->{out_channels}): Explicitly applied Kaiming Uniform init.")
+        logger.debug(
+            "CaFoBlock Conv (%d->%d): Applied Kaiming Uniform init.",
+            in_channels,
+            out_channels,
+        )
 
         self.activation = activation_cls()
         self.pool = (
@@ -48,8 +68,8 @@ class CaFoBlock(nn.Module):
         )
         self.bn = nn.BatchNorm2d(out_channels) if use_batchnorm else nn.Identity()
 
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Performs the forward pass through the block."""
         x = self.conv(x)
         x = self.activation(x)
         x = self.pool(x)
@@ -59,7 +79,7 @@ class CaFoBlock(nn.Module):
     def get_output_shape(
         self, input_shape: Tuple[int, int, int], device: Optional[torch.device] = None
     ) -> Tuple[int, int, int]:
-        """Calculates the output shape (C, H, W) for a given input shape (C, H, W)"""
+        """Calculates the output shape (C, H, W) for a given input shape."""
         if device is None:
             device = (
                 next(self.parameters()).device
@@ -75,23 +95,34 @@ class CaFoBlock(nn.Module):
 
 
 class CaFoPredictor(nn.Module):
-    """A simple predictor head (typically Linear) attached to the output of a CaFoBlock.
-    """
+    """A simple linear predictor head attached to a CaFoBlock output."""
 
-    def __init__(self, in_features: int, num_classes: int, bias: bool = True):
+    def __init__(self, in_features: int, num_classes: int, bias: bool = True) -> None:
+        """Initializes the CaFoPredictor.
+
+        Args:
+            in_features: Number of input features (flattened from block output).
+            num_classes: Number of output classes.
+            bias: Whether to use a bias term in the linear layer.
+        """
         super().__init__()
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features, num_classes, bias=bias)
-        logger.debug(f"CaFoPredictor: In={in_features}, Out={num_classes}, Bias={bias}")
+        logger.debug(
+            "CaFoPredictor: In=%d, Out=%d, Bias=%s", in_features, num_classes, bias
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Performs the forward pass through the predictor."""
         x = self.flatten(x)
         return self.fc(x)
 
 
 class CaFo_CNN(nn.Module):
     """Cascaded Forward (CaFo) Convolutional Neural Network base.
-    Contains only the cascaded blocks. Predictors are handled externally.
+
+    This module contains only the cascaded blocks. Predictors are handled
+    externally by the training logic.
     """
 
     def __init__(
@@ -105,7 +136,20 @@ class CaFo_CNN(nn.Module):
         kernel_size: int = 3,
         pool_kernel_size: int = 2,
         pool_stride: int = 2,
-    ):
+    ) -> None:
+        """Initializes the CaFo_CNN base model.
+
+        Args:
+            input_channels: Number of channels in the input image.
+            block_channels: A list of output channels for each CaFoBlock.
+            image_size: The height and width of the input image.
+            num_classes: The number of output classes.
+            activation: The activation function to use ('relu' or 'tanh').
+            use_batchnorm: Whether to use batch normalization in the blocks.
+            kernel_size: Kernel size for the convolutional layers.
+            pool_kernel_size: Kernel size for the pooling layers.
+            pool_stride: Stride for the pooling layers.
+        """
         super().__init__()
         self.input_channels = input_channels
         self.block_channels = block_channels
@@ -134,15 +178,16 @@ class CaFo_CNN(nn.Module):
         device_to_check = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         temp_param = nn.Parameter(torch.empty(0))
         try:
-             device = temp_param.device
-        except: device = device_to_check
+            device = temp_param.device
+        except Exception:
+            device = device_to_check
         del temp_param
 
         for i, out_channels in enumerate(block_channels):
-            # Determine padding based on kernel size to preserve dimensions if stride=1
+            # Determine padding to preserve dimensions if stride=1
             padding = (
                 kernel_size // 2 if kernel_size % 2 != 0 else 0
-            )  # Common padding for odd kernels
+            )  # Common for odd kernels
 
             block = CaFoBlock(
                 current_channels,
@@ -168,24 +213,28 @@ class CaFo_CNN(nn.Module):
                 current_channels = output_shape[0]
             except Exception as e:
                 logger.error(
-                    f"Failed to determine output shape for block {i} with input shape {current_input_shape}: {e}",
+                    "Failed to get output shape for block %d with input shape %s: %s",
+                    i,
+                    current_input_shape,
+                    e,
                     exc_info=True,
                 )
                 raise RuntimeError(f"Shape calculation failed for block {i}.") from e
 
-        logger.info(f"Initialized CaFo_CNN base with {len(self.blocks)} blocks.")
+        logger.info("Initialized CaFo_CNN base with %d blocks.", len(self.blocks))
         logger.info(
-            f"Block channels: {input_channels} -> {' -> '.join(map(str, block_channels))}"
+            "Block channels: %d -> %s",
+            input_channels,
+            " -> ".join(map(str, block_channels)),
         )
-        logger.info(f"Block output shapes (C, H, W): {self._block_output_shapes}")
-        logger.info(f"Block output flattened dims: {self._block_output_dims_flat}")
+        logger.info("Block output shapes (C, H, W): %s", self._block_output_shapes)
+        logger.info("Block output flattened dims: %s", self._block_output_dims_flat)
 
     def get_predictor_input_dim(self, block_index: int) -> int:
-        """Returns the expected flattened input dimension for the predictor of a given block."""
+        """Returns the flattened input dimension for a given block's predictor."""
         if 0 <= block_index < len(self._block_output_dims_flat):
             return self._block_output_dims_flat[block_index]
-        else:
-            raise IndexError(f"Block index {block_index} out of range.")
+        raise IndexError(f"Block index {block_index} out of range.")
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """Forward pass through blocks, returning intermediate block outputs."""
