@@ -1,27 +1,31 @@
+# File: ./scripts/run_experiment.py
+"""Script to run a single experiment based on a YAML config file."""
+
 import argparse
+import logging
+import os
 import pprint
 import sys
-import os
-import yaml
-import logging
 
+# Add project root to sys.path to allow for local imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from src.utils.config_parser import load_config
-from src.utils.helpers import set_seed, create_directory_if_not_exists
-from src.training.engine import run_training
-from src.utils.logging_utils import setup_logging, logger
+# Third-party and local imports must come AFTER sys.path is modified.
+import yaml  # noqa: E402
+
+from src.training.engine import run_training  # noqa: E402
+from src.utils.config_parser import load_config  # noqa: E402
+from src.utils.helpers import create_directory_if_not_exists  # noqa: E402
+from src.utils.logging_utils import logger, setup_logging  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 
-def main(args):
-    """
-    Main function to run an experiment.
-    """
+def main(args: argparse.Namespace) -> None:
+    """Run a single experiment based on a config file."""
     print(f"Loading and merging configuration from: {args.config}")
     try:
         config = load_config(args.config)
@@ -50,11 +54,9 @@ def main(args):
 
     logger.info("\n--- Starting Experiment ---")
     try:
-        results = run_training(
-            config, wandb_run=None
-        )
-        results.pop('codecarbon_emissions_kgCO2e', None)
-        logger.debug("Removed 'codecarbon_emissions_kgCO2e' from results dict before final print.")
+        results = run_training(config, wandb_run=None)
+        results.pop("codecarbon_emissions_kgCO2e", None)
+        logger.debug("Removed kgCO2e emissions from results dict before printing.")
         logger.info("\n--- Experiment Finished ---")
         logger.info("Results:")
         results_str = pprint.pformat(results)
@@ -70,10 +72,8 @@ def main(args):
             logger.info("\n--- Experiment Finished Successfully ---")
 
     except Exception as e:
-        logger.critical(f"\n--- Experiment Failed ---")
-        logger.critical(
-            f"Error during training: {e}", exc_info=True
-        )
+        logger.critical("\n--- Experiment Failed ---")
+        logger.critical(f"Error during training: {e}", exc_info=True)
         sys.exit(1)
 
 
@@ -88,5 +88,5 @@ if __name__ == "__main__":
         help="Path to the YAML configuration file for the experiment.",
     )
 
-    args = parser.parse_args()
-    main(args)
+    cli_args = parser.parse_args()
+    main(cli_args)
