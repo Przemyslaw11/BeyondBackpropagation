@@ -1,13 +1,15 @@
-#!/usr/bin/env python
+"""Updates MF config files with the best hyperparameters from an Optuna study."""
+
 import argparse
 import logging
-import optuna
 import os
-import yaml
-import sys
 import shutil
+import sys
 from datetime import datetime
 from typing import Optional
+
+import optuna
+import yaml
 
 # --- Basic Logging Setup ---
 logging.basicConfig(
@@ -15,10 +17,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def parse_args():
+
+def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Update a Mono-Forward (MF) YAML config file with the best hyperparameters from an Optuna study.",
+        description=(
+            "Update a Mono-Forward (MF) YAML config file with the best "
+            "hyperparameters from an Optuna study."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -37,7 +43,10 @@ def parse_args():
         "--study-name",
         type=str,
         default=None,
-        help="Name of the Optuna study within the database. If None, attempts to load the first/only study.",
+        help=(
+            "Name of the Optuna study within the database. If None, attempts to "
+            "load the first/only study."
+        ),
     )
     parser.add_argument(
         "--no-backup",
@@ -50,9 +59,10 @@ def parse_args():
 def update_mf_config_from_optuna(
     db_path: str, config_path: str, study_name: Optional[str], create_backup: bool
 ) -> bool:
-    """
-    Loads an Optuna study, finds the best trial, and updates the
-    algorithm_params section of the specified MF YAML configuration file.
+    """Loads an Optuna study and updates an MF config file.
+
+    This function finds the best trial and updates the `algorithm_params`
+    section of the specified MF YAML configuration file.
 
     Args:
         db_path: Path to the Optuna database (.db).
@@ -82,7 +92,9 @@ def update_mf_config_from_optuna(
 
         if study_name is None:
             if len(loaded_studies) > 1:
-                logger.error(f"Multiple studies found in {db_path}. Specify --study-name.")
+                logger.error(
+                    f"Multiple studies found in {db_path}. Specify --study-name."
+                )
                 return False
             study_name = loaded_studies[0].study_name
             logger.info(f"Automatically selected study: '{study_name}'")
@@ -103,12 +115,16 @@ def update_mf_config_from_optuna(
     # --- Get Best Trial ---
     try:
         best_trial = study.best_trial
-        logger.info(f"Best trial: Number {best_trial.number}, Value: {best_trial.value:.6f}")
+        logger.info(
+            f"Best trial: Number {best_trial.number}, Value: {best_trial.value:.6f}"
+        )
         logger.info("Best Hyperparameters (for MF):")
         best_params = best_trial.params
         if not best_params:
-            logger.warning("Best trial has no parameters recorded. Cannot update config.")
-            return True # Treat as success, nothing to do
+            logger.warning(
+                "Best trial has no parameters recorded. Cannot update config."
+            )
+            return True  # Treat as success, nothing to do
         for key, value in best_params.items():
             logger.info(f"  - {key}: {value}")
     except ValueError:
@@ -124,7 +140,9 @@ def update_mf_config_from_optuna(
         with open(config_path, "r") as f:
             config_data = yaml.safe_load(f)
         if not isinstance(config_data, dict):
-            logger.error(f"Failed to parse YAML or file is not a dictionary: {config_path}")
+            logger.error(
+                f"Failed to parse YAML or file is not a dictionary: {config_path}"
+            )
             return False
         logger.info("YAML loaded successfully.")
     except yaml.YAMLError as e:
@@ -139,7 +157,10 @@ def update_mf_config_from_optuna(
     if "algorithm_params" not in config_data or not isinstance(
         config_data.get("algorithm_params"), dict
     ):
-        logger.warning(f"YAML file {config_path} is missing the 'algorithm_params' dictionary. Creating it.")
+        logger.warning(
+            "YAML file {config_path} is missing the 'algorithm_params' "
+            "dictionary. Creating it."
+        )
         config_data["algorithm_params"] = {}
 
     algo_params_section = config_data["algorithm_params"]
@@ -148,12 +169,15 @@ def update_mf_config_from_optuna(
 
     logger.info("Updating algorithm_params section with best parameters...")
     for optuna_key, value in best_params.items():
-        # Map Optuna param names directly to YAML config keys within algorithm_params
-        # (assuming objective_mf uses keys 'lr', 'epochs_per_layer', potentially 'wd')
-        if optuna_key == "lr": yaml_key = "lr"
-        elif optuna_key == "epochs_per_layer": yaml_key = "epochs_per_layer"
-        elif optuna_key == "wd": yaml_key = "weight_decay" # Map 'wd' if tuned
-        else: continue # Ignore other potential trial params
+        # Map Optuna param names directly to YAML config keys
+        if optuna_key == "lr":
+            yaml_key = "lr"
+        elif optuna_key == "epochs_per_layer":
+            yaml_key = "epochs_per_layer"
+        elif optuna_key == "wd":
+            yaml_key = "weight_decay"  # Map 'wd' if tuned
+        else:
+            continue  # Ignore other potential trial params
 
         old_value = algo_params_section.get(yaml_key, "NOT_PRESENT")
         algo_params_section[yaml_key] = value
@@ -162,8 +186,11 @@ def update_mf_config_from_optuna(
         logger.info(f"  Updated '{yaml_key}': {old_value} -> {value}")
 
     if not updated_values:
-        logger.warning("No relevant MF parameters (lr, epochs_per_layer) found in best trial to update.")
-        return True # Success, nothing changed
+        logger.warning(
+            "No relevant MF parameters (lr, epochs_per_layer) found in best "
+            "trial to update."
+        )
+        return True  # Success, nothing changed
 
     # --- Create Backup ---
     if create_backup:
@@ -172,7 +199,9 @@ def update_mf_config_from_optuna(
             shutil.copyfile(config_path, backup_path)
             logger.info(f"Created backup of original config: {backup_path}")
         except Exception as e:
-            logger.error(f"Failed to create backup file {backup_path}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to create backup file {backup_path}: {e}", exc_info=True
+            )
             logger.warning("Proceeding without backup.")
 
     # --- Write Updated YAML ---
@@ -185,13 +214,18 @@ def update_mf_config_from_optuna(
         logger.info(f"MF YAML file updated successfully. Keys updated: {keys_updated}")
         return True
     except IOError as e:
-        logger.error(f"Error writing updated YAML file {config_path}: {e}", exc_info=True)
+        logger.error(
+            f"Error writing updated YAML file {config_path}: {e}", exc_info=True
+        )
         return False
     except Exception as e:
-        logger.error(f"An unexpected error occurred while writing YAML: {e}", exc_info=True)
+        logger.error(
+            f"An unexpected error occurred while writing YAML: {e}", exc_info=True
+        )
         return False
 
-def main():
+
+def main() -> None:
     """Main execution function."""
     args = parse_args()
 
@@ -209,6 +243,7 @@ def main():
     else:
         logger.error("MF Configuration update process failed.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

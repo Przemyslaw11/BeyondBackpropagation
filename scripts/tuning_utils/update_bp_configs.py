@@ -1,29 +1,30 @@
-#!/usr/bin/env python
+"""Updates BP config files with the best hyperparameters from an Optuna study."""
+
 import argparse
 import logging
-import optuna
 import os
-import yaml
+import shutil
 import sys
-import shutil  # For file backup
 from datetime import datetime
-from typing import Optional 
+from typing import Optional
+
+import optuna
+import yaml
+
 # --- Basic Logging Setup (before potentially loading project config) ---
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Add project root to path if needed (usually not necessary if run from root)
-# project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# sys.path.insert(0, project_root)
-# from src.utils.logging_utils import setup_logging # Optional: Use project's full logging setup
 
-
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Update a baseline YAML config file with the best hyperparameters from an Optuna study.",
+        description=(
+            "Update a baseline YAML config file with the best hyperparameters "
+            "from an Optuna study."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -42,7 +43,10 @@ def parse_args():
         "--study-name",
         type=str,
         default=None,
-        help="Name of the Optuna study within the database. If None, attempts to load the first/only study.",
+        help=(
+            "Name of the Optuna study within the database. If None, attempts to "
+            "load the first/only study."
+        ),
     )
     parser.add_argument(
         "--no-backup",
@@ -55,8 +59,9 @@ def parse_args():
 def update_config_from_optuna(
     db_path: str, config_path: str, study_name: Optional[str], create_backup: bool
 ) -> bool:
-    """
-    Loads an Optuna study, finds the best trial, and updates the optimizer
+    """Loads an Optuna study and updates an optimizer config.
+
+    This function finds the best trial from a study and updates the optimizer
     section of the specified YAML configuration file.
 
     Args:
@@ -80,7 +85,6 @@ def update_config_from_optuna(
     storage_url = f"sqlite:///{db_path}"
     try:
         logger.info(f"Loading Optuna study from storage: {storage_url}")
-        # If study_name is None, load_study tries to infer it (if only one study exists)
         loaded_studies = optuna.study.get_all_study_summaries(storage=storage_url)
         if not loaded_studies:
             logger.error(f"No studies found in the database: {db_path}")
@@ -89,7 +93,8 @@ def update_config_from_optuna(
         if study_name is None:
             if len(loaded_studies) > 1:
                 logger.error(
-                    f"Multiple studies found in {db_path}. Please specify one using --study-name:"
+                    f"Multiple studies found in {db_path}. Please specify one using "
+                    "--study-name:"
                 )
                 for study in loaded_studies:
                     logger.error(f"  - {study.study_name}")
@@ -98,7 +103,8 @@ def update_config_from_optuna(
             logger.info(f"Automatically selected study: '{study_name}'")
         elif study_name not in [s.study_name for s in loaded_studies]:
             logger.error(
-                f"Specified study name '{study_name}' not found in the database: {db_path}"
+                f"Specified study name '{study_name}' not found in the database: "
+                f"{db_path}"
             )
             logger.error("Available studies:")
             for study in loaded_studies:
@@ -122,20 +128,23 @@ def update_config_from_optuna(
     try:
         best_trial = study.best_trial
         logger.info(
-            f"Best trial found: Number {best_trial.number}, Value: {best_trial.value:.6f}"
+            f"Best trial found: Number {best_trial.number}, "
+            f"Value: {best_trial.value:.6f}"
         )
         logger.info("Best Hyperparameters:")
         best_params = best_trial.params
         if not best_params:
             logger.warning(
-                f"Best trial {best_trial.number} has no parameters recorded. Cannot update config."
+                f"Best trial {best_trial.number} has no parameters recorded. "
+                "Cannot update config."
             )
             return False  # Nothing to update
         for key, value in best_params.items():
             logger.info(f"  - {key}: {value}")
     except ValueError:
         logger.error(
-            f"No completed trials found in study '{study.study_name}'. Cannot determine best parameters."
+            f"No completed trials found in study '{study.study_name}'. Cannot "
+            "determine best parameters."
         )
         return False
     except Exception as e:
@@ -168,14 +177,12 @@ def update_config_from_optuna(
     if "optimizer" not in config_data or not isinstance(
         config_data.get("optimizer"), dict
     ):
-        # Attempt to create the optimizer section if missing? Or error out? Error is safer.
+        # Error out if 'optimizer' section is missing, as it's safer.
         logger.error(
-            f"YAML file {config_path} is missing the 'optimizer' dictionary section. Cannot update."
+            f"YAML file {config_path} is missing the 'optimizer' dictionary "
+            "section. Cannot update."
         )
-        # Alternatively, initialize it:
-        # logger.warning(f"YAML file {config_path} is missing the 'optimizer' dictionary section. Creating it.")
-        # config_data["optimizer"] = {}
-        return False  # Fail if section is missing
+        return False
 
     optimizer_section = config_data["optimizer"]
     updated_values = {}
@@ -190,12 +197,7 @@ def update_config_from_optuna(
             yaml_key = "weight_decay"  # Config uses 'weight_decay'
         elif optuna_key == "momentum":  # Handle momentum if tuned
             yaml_key = "momentum"
-        # Add mappings for other potential tunable hyperparameters here if needed
-        # elif optuna_key == "beta1":
-        #     yaml_key = "beta1" # Example
         else:
-            # Silently ignore unknown keys, or log warning
-            # logger.warning(f"Unknown Optuna parameter '{optuna_key}' found in best trial. Ignoring.")
             continue
 
         # Update the value in the loaded config dictionary
@@ -207,10 +209,11 @@ def update_config_from_optuna(
 
     if not updated_values:
         logger.warning(
-            "No relevant optimizer parameters (lr, wd, momentum) were found in the best trial params to update the config."
+            "No relevant optimizer parameters (lr, wd, momentum) were found "
+            "in the best trial params to update the config."
         )
-        # Don't treat this as failure, maybe the study didn't tune expected params
-        return True  # Indicate nothing needed changing
+        # Don't treat as failure, maybe study didn't tune expected params
+        return True
 
     # --- Create Backup (Optional) ---
     if create_backup:
@@ -222,9 +225,7 @@ def update_config_from_optuna(
             logger.error(
                 f"Failed to create backup file {backup_path}: {e}", exc_info=True
             )
-            # Decide whether to proceed without backup or stop
             logger.warning("Proceeding without backup.")
-            # return False # Uncomment to stop if backup fails
 
     # --- Write Updated YAML ---
     try:
@@ -248,7 +249,7 @@ def update_config_from_optuna(
         return False
 
 
-def main():
+def main() -> None:
     """Main execution function."""
     args = parse_args()
 
