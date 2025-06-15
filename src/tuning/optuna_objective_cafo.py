@@ -1,3 +1,5 @@
+"""Optuna objective function for Cascaded Forward (CaFo) model tuning."""
+
 import copy
 import logging
 import pprint
@@ -15,8 +17,10 @@ from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
 
+
 def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     """Optuna objective function for hyperparameter tuning of Cascaded Forward (CaFo).
+
     Focuses on tuning predictor learning rate and epochs per block.
     Can be extended to tune block training parameters if train_blocks is enabled.
     """
@@ -28,9 +32,11 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     if "algorithm_params" not in cfg or not isinstance(cfg["algorithm_params"], dict):
         cfg["algorithm_params"] = {}
 
-    pred_lr_range = tuning_cfg.get("cafo_predictor_lr_range", tuning_cfg.get("lr_range", [1e-5, 1e-2]))
+    lr_range_fallback = tuning_cfg.get("lr_range", [1e-5, 1e-2])
+    wd_range_fallback = tuning_cfg.get("wd_range", [1e-6, 1e-3])
+    pred_lr_range = tuning_cfg.get("cafo_predictor_lr_range", lr_range_fallback)
     epochs_range = tuning_cfg.get("cafo_epochs_per_block_range", [10, 200])
-    pred_wd_range = tuning_cfg.get("cafo_predictor_wd_range", tuning_cfg.get("wd_range", [1e-6, 1e-3]))
+    pred_wd_range = tuning_cfg.get("cafo_predictor_wd_range", wd_range_fallback)
 
     cfg["algorithm_params"]["predictor_lr"] = trial.suggest_float(
         "pred_lr", *pred_lr_range, log=True
@@ -55,7 +61,6 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             "block_wd", *block_wd_range, log=True
         )
 
-
     trial_seed = cfg.get("general", {}).get("seed", 42) + trial.number
     set_seed(trial_seed)
     device_name = cfg.get("general", {}).get("device", "auto").lower()
@@ -66,7 +71,10 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    logger.info(f"--- Starting Optuna Trial {trial.number} (Study: {trial.study.study_name}) for CaFo ---")
+    logger.info(
+        f"--- Starting Optuna Trial {trial.number} (Study: "
+        f"{trial.study.study_name}) for CaFo ---"
+    )
     logger.info(f"  Device: {device}, Seed: {trial_seed}")
     param_str = pprint.pformat(trial.params)
     logger.info(f"  CaFo Hyperparameters:\n{param_str}")
@@ -74,7 +82,9 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     metric_to_optimize = tuning_cfg.get("metric", "val_accuracy").lower()
     optimization_direction = tuning_cfg.get("direction", "maximize").lower()
     if metric_to_optimize != "val_accuracy":
-        logger.warning(f"CaFo optimization metric '{metric_to_optimize}' is not 'val_accuracy'.")
+        logger.warning(
+            f"CaFo optimization metric '{metric_to_optimize}' is not 'val_accuracy'."
+        )
 
     model = None
     train_loader = None
@@ -103,19 +113,26 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         model.to(device)
         num_block_params = sum(p.numel() for p in model.parameters())
         logger.info(
-            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' blocks ({num_block_params:,} params) on {device}."
+            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' "
+            f"blocks ({num_block_params:,} params) on {device}."
         )
         if input_adapter is not None:
-             logger.warning("CaFo trial: Input adapter was returned but CaFo_CNN typically doesn't use it.")
+            logger.warning(
+                "CaFo trial: Input adapter was returned but CaFo_CNN typically "
+                "doesn't use it."
+            )
 
         logger.info(f"Trial {trial.number}: Starting CaFo training process...")
         trial_train_start_time = time.time()
 
         minimal_cfg_for_train = copy.deepcopy(cfg)
-        minimal_cfg_for_train['monitoring'] = {'enabled': False, 'energy_enabled': False}
-        minimal_cfg_for_train['profiling'] = {'enabled': False}
-        minimal_cfg_for_train['checkpointing'] = {'checkpoint_dir': None}
-        minimal_cfg_for_train['logging'] = {'wandb': {'use_wandb': False}}
+        minimal_cfg_for_train["monitoring"] = {
+            "enabled": False,
+            "energy_enabled": False,
+        }
+        minimal_cfg_for_train["profiling"] = {"enabled": False}
+        minimal_cfg_for_train["checkpointing"] = {"checkpoint_dir": None}
+        minimal_cfg_for_train["logging"] = {"wandb": {"use_wandb": False}}
 
         step_ref = [-1]
         _ = train_cafo_model(
@@ -132,30 +149,47 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         )
 
         trial_train_duration = time.time() - trial_train_start_time
-        logger.info(f"Trial {trial.number}: CaFo training completed in {format_time(trial_train_duration)}.")
+        logger.info(
+            f"Trial {trial.number}: CaFo training completed in "
+            f"{format_time(trial_train_duration)}."
+        )
 
         logger.info(f"Trial {trial.number}: Evaluating CaFo model on validation set...")
+        aggregation_method = cfg.get("algorithm_params", {}).get(
+            "aggregation_method", "sum"
+        )
+        eval_criterion = (
+            nn.CrossEntropyLoss() if metric_to_optimize == "val_loss" else None
+        )
         eval_results = evaluate_cafo_model(
             model=model,
             data_loader=val_loader,
             device=device,
-            aggregation_method=cfg.get("algorithm_params",{}).get("aggregation_method", "sum"),
-            criterion=nn.CrossEntropyLoss() if metric_to_optimize == "val_loss" else None
+            aggregation_method=aggregation_method,
+            criterion=eval_criterion,
         )
-        final_metric_value = eval_results.get(f"eval_{metric_to_optimize.replace('val_', '')}", float('nan'))
+        metric_key = f"eval_{metric_to_optimize.replace('val_', '')}"
+        final_metric_value = eval_results.get(metric_key, float("nan"))
 
         if metric_to_optimize == "val_accuracy":
-             logger.info(f"Trial {trial.number}: Validation Accuracy: {final_metric_value:.2f}%")
+            logger.info(
+                f"Trial {trial.number}: Validation Accuracy: {final_metric_value:.2f}%"
+            )
         else:
-             logger.info(f"Trial {trial.number}: Validation Loss: {final_metric_value:.4f}")
-
+            logger.info(
+                f"Trial {trial.number}: Validation Loss: {final_metric_value:.4f}"
+            )
 
         if torch.isnan(torch.tensor(final_metric_value)):
-             logger.error(f"Trial {trial.number}: Evaluation returned NaN {metric_to_optimize}. Treating as failure.")
-             raise ValueError("Evaluation failed.")
+            logger.error(
+                f"Trial {trial.number}: Evaluation returned NaN "
+                f"{metric_to_optimize}. Treating as failure."
+            )
+            raise ValueError("Evaluation failed.")
 
         logger.info(
-            f"Trial {trial.number} finished. Final Metric ({metric_to_optimize}): {final_metric_value:.4f}"
+            f"Trial {trial.number} finished. Final Metric "
+            f"({metric_to_optimize}): {final_metric_value:.4f}"
         )
 
         return final_metric_value

@@ -1,24 +1,25 @@
-# File: src/tuning/optuna_objective_ff.py
+"""Optuna objective function for Forward-Forward (FF) model tuning."""
+
+import copy
+import logging
+import pprint
+import time
+from typing import Any, Dict
+
 import optuna
 import torch
-import torch.nn as nn
-import logging
-import time
-import copy
-import pprint
-from typing import Dict, Any, Optional, Tuple, Callable, List
 
-from src.utils.helpers import set_seed, format_time
-from src.data_utils.datasets import get_dataloaders
-from src.training.engine import get_model_and_adapter
-from src.algorithms.ff import train_ff_model, evaluate_ff_model
+from src.algorithms.ff import evaluate_ff_model, train_ff_model
 from src.architectures.ff_mlp import FF_MLP
+from src.data_utils.datasets import get_dataloaders
+from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
 
+
 def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
-    """
-    Optuna objective function for hyperparameter tuning of Forward-Forward (FF).
+    """Optuna objective function for hyperparameter tuning of Forward-Forward (FF).
+
     Focuses on tuning FF layer LR/WD and Downstream LR/WD.
     """
     cfg = copy.deepcopy(base_config)
@@ -60,7 +61,10 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    logger.info(f"--- Starting Optuna Trial {trial.number} (Study: {trial.study.study_name}) for FF ---")
+    logger.info(
+        f"--- Starting Optuna Trial {trial.number} (Study: "
+        f"{trial.study.study_name}) for FF ---"
+    )
     logger.info(f"  Device: {device}, Seed: {trial_seed}")
     param_str = pprint.pformat(trial.params)
     logger.info(f"  FF Hyperparameters:\n{param_str}")
@@ -69,7 +73,8 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     optimization_direction = tuning_cfg.get("direction", "maximize").lower()
     if metric_to_optimize != "val_accuracy":
         logger.warning(
-            f"FF optimization metric '{metric_to_optimize}' is not 'val_accuracy'. FF eval only returns accuracy."
+            f"FF optimization metric '{metric_to_optimize}' is not 'val_accuracy'. "
+            "FF eval only returns accuracy."
         )
         metric_to_optimize = "val_accuracy"
 
@@ -102,17 +107,24 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         model.to(device)
         num_params = sum(p.numel() for p in model.parameters())
         logger.info(
-            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' ({num_params:,} params) on {device}."
+            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' "
+            f"({num_params:,} params) on {device}."
         )
 
-        logger.info(f"Trial {trial.number}: Starting FF training for {num_epochs_per_trial} epochs...")
+        logger.info(
+            f"Trial {trial.number}: Starting FF training for "
+            f"{num_epochs_per_trial} epochs..."
+        )
         trial_train_start_time = time.time()
 
         minimal_cfg_for_train = copy.deepcopy(cfg)
-        minimal_cfg_for_train['monitoring'] = {'enabled': False, 'energy_enabled': False}
-        minimal_cfg_for_train['profiling'] = {'enabled': False}
-        minimal_cfg_for_train['checkpointing'] = {'checkpoint_dir': None}
-        minimal_cfg_for_train['logging'] = {'wandb': {'use_wandb': False}}
+        minimal_cfg_for_train["monitoring"] = {
+            "enabled": False,
+            "energy_enabled": False,
+        }
+        minimal_cfg_for_train["profiling"] = {"enabled": False}
+        minimal_cfg_for_train["checkpointing"] = {"checkpoint_dir": None}
+        minimal_cfg_for_train["logging"] = {"wandb": {"use_wandb": False}}
 
         step_ref = [-1]
 
@@ -120,7 +132,7 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            config=minimal_cfg_for_train,s
+            config=minimal_cfg_for_train,
             device=device,
             wandb_run=None,
             input_adapter=None,
@@ -129,7 +141,10 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             nvml_active=False,
         )
         trial_train_duration = time.time() - trial_train_start_time
-        logger.info(f"Trial {trial.number}: FF training completed in {format_time(trial_train_duration)}.")
+        logger.info(
+            f"Trial {trial.number}: FF training completed in "
+            f"{format_time(trial_train_duration)}."
+        )
         logger.info(f"Trial {trial.number}: Evaluating FF model on validation set...")
         eval_results = evaluate_ff_model(
             model=model,
@@ -137,15 +152,20 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             device=device,
         )
         validation_accuracy = eval_results.get("eval_accuracy", float("nan"))
-        logger.info(f"Trial {trial.number}: Validation Accuracy: {validation_accuracy:.2f}%")
+        logger.info(
+            f"Trial {trial.number}: Validation Accuracy: {validation_accuracy:.2f}%"
+        )
 
         if torch.isnan(torch.tensor(validation_accuracy)):
-             logger.error(f"Trial {trial.number}: Evaluation returned NaN accuracy. Treating as failure.")
-             raise ValueError("Evaluation failed.")
-
+            logger.error(
+                f"Trial {trial.number}: Evaluation returned NaN accuracy. "
+                "Treating as failure."
+            )
+            raise ValueError("Evaluation failed.")
 
         logger.info(
-            f"Trial {trial.number} finished. Final Validation Accuracy ({metric_to_optimize}): {validation_accuracy:.4f}"
+            f"Trial {trial.number} finished. Final Validation Accuracy "
+            f"({metric_to_optimize}): {validation_accuracy:.4f}"
         )
 
         return validation_accuracy
@@ -154,7 +174,7 @@ def objective_ff(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
         raise e
     except Exception as e:
         logger.error(f"Trial {trial.number} failed with error: {e}", exc_info=True)
-        return -1.0
+        return -1.0 if optimization_direction == "maximize" else float("inf")
     finally:
         del model, train_loader, val_loader
         if device.type == "cuda":

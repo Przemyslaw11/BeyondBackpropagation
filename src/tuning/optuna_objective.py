@@ -1,3 +1,5 @@
+"""Optuna objective function for standard backpropagation (BP) model tuning."""
+
 import copy
 import logging
 import pprint
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     """Optuna objective function for hyperparameter tuning of BP baselines.
+
     MODIFIED: Added logging of trial info to main logger.
     """
     cfg = copy.deepcopy(base_config)
@@ -55,7 +58,10 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    logger.info(f"--- Starting Optuna Trial {trial.number} (Study: {trial.study.study_name}) ---")
+    logger.info(
+        f"--- Starting Optuna Trial {trial.number} "
+        f"(Study: {trial.study.study_name}) ---"
+    )
     logger.info(f"  Device: {device}, Seed: {trial_seed}")
     param_str = pprint.pformat(trial.params)
     logger.info(f"  Hyperparameters:\n{param_str}")
@@ -64,7 +70,8 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
     optimization_direction = tuning_cfg.get("direction", "maximize").lower()
     if metric_to_optimize not in ["val_accuracy", "val_loss"]:
         logger.warning(
-            f"Unsupported optimization metric '{metric_to_optimize}'. Defaulting to 'val_accuracy'."
+            f"Unsupported optimization metric '{metric_to_optimize}'. "
+            "Defaulting to 'val_accuracy'."
         )
         metric_to_optimize = "val_accuracy"
 
@@ -94,18 +101,22 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             )
         logger.info(f"Trial {trial.number}: Data loaded.")
 
-        logger.info(f"Trial {trial.number}: Instantiating BP baseline model and getting adapter...")
+        logger.info(
+            f"Trial {trial.number}: Instantiating BP baseline model and adapter..."
+        )
         if cfg.get("algorithm", {}).get("name", "").lower() != "bp":
-            logger.warning(f"Trial {trial.number}: Overriding algorithm to 'BP' for baseline tuning.")
+            logger.warning(
+                f"Trial {trial.number}: Overriding algorithm to 'BP' "
+                "for baseline tuning."
+            )
             cfg["algorithm"] = {"name": "BP"}
 
-        model, input_adapter = get_model_and_adapter(
-            cfg, device
-        )
+        model, input_adapter = get_model_and_adapter(cfg, device)
         model.to(device)
         num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(
-            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' baseline ({num_params:,} params) on {device}. "
+            f"Trial {trial.number}: Model '{cfg.get('model', {}).get('name')}' "
+            f"baseline ({num_params:,} params) on {device}. "
             f"Input adapter type: {type(input_adapter)}"
         )
 
@@ -117,9 +128,7 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             "weight_decay": trial.params["wd"],
         }
         if optimizer_type == "sgd":
-            opt_kwargs["momentum"] = trial.params.get(
-                "momentum", 0.9
-            )
+            opt_kwargs["momentum"] = trial.params.get("momentum", 0.9)
 
         if optimizer_type == "adamw":
             optimizer = optim.AdamW(model.parameters(), **opt_kwargs)
@@ -140,7 +149,8 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
                 f"Unsupported criterion specified in config: {criterion_name}"
             )
         logger.info(
-            f"Trial {trial.number}: Optimizer ({optimizer_type}) and Criterion ({criterion_name}) setup."
+            f"Trial {trial.number}: Optimizer ({optimizer_type}) and "
+            f"Criterion ({criterion_name}) setup."
         )
 
         num_epochs = tuning_cfg.get("num_epochs", 10)
@@ -148,7 +158,9 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             -float("inf") if optimization_direction == "maximize" else float("inf")
         )
 
-        logger.info(f"Trial {trial.number}: Starting training loop for {num_epochs} epochs.")
+        logger.info(
+            f"Trial {trial.number}: Starting training loop for {num_epochs} epochs."
+        )
         trial_start_time = time.time()
 
         for epoch in range(num_epochs):
@@ -205,7 +217,8 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
 
         total_trial_time = time.time() - trial_start_time
         logger.info(
-            f"Trial {trial.number} finished. Duration: {format_time(total_trial_time)}. "
+            f"Trial {trial.number} finished. "
+            f"Duration: {format_time(total_trial_time)}. "
             f"Best Value ({metric_to_optimize}): {best_val_metric_for_trial:.4f}"
         )
 
