@@ -1,0 +1,67 @@
+experiment_name: bp_baseline_cifar100_cnn_3block
+algorithm:
+  name: BP
+data:
+  name: CIFAR100
+  root: ./data
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+model:
+  name: CaFo_CNN
+  params:
+    block_channels:
+    - 32
+    - 128
+    - 512
+    activation: ReLU
+    use_batchnorm: true
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
+optimizer:
+  type: AdamW
+  lr: 0.0003201243830098061
+  weight_decay: 5.880350745731698e-05
+training:
+  epochs: 100
+  criterion: CrossEntropyLoss
+  log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "bp_val_loss"
+  early_stopping_patience: 20
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.0 
+tuning:
+  enabled: true
+  n_trials: 10
+  num_epochs: 15
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: Median
+  lr_range:
+  - 1.0e-05
+  - 0.01
+  wd_range:
+  - 1.0e-06
+  - 0.001
+checkpointing:
+  checkpoint_dir: checkpoints/bp_baseline_cifar100_cnn_3block
+  save_best_metric: bp_val_accuracy
+logging:
+  level: INFO
+  wandb:
+    use_wandb: true
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

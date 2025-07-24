@@ -1,0 +1,68 @@
+experiment_name: "cafodfa_cifar100_cnn_3block"
+algorithm:
+  name: "CaFo"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "CaFo_CNN"
+  params:
+    block_channels: [32, 128, 512]
+    activation: "ReLU"
+    use_batchnorm: true
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
+
+algorithm_params:
+  # --- Block Training (DFA) ---
+  train_blocks: true 
+  block_training_epochs: 200
+  block_optimizer_type: "Adam"
+  block_lr: 0.0001373784595532798
+  block_weight_decay: 2.938027938703532e-07
+
+  # --- Predictor Training (CE) ---
+  predictor_optimizer_type: "Adam"
+  predictor_lr: 0.0006677511008261821
+  predictor_weight_decay: 1.5702970884055385e-05
+  loss_type: "CrossEntropyLoss"
+  num_epochs_per_block: 1271
+  log_interval: 100
+  aggregation_method: "sum"
+
+
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss"
+  predictor_early_stopping_patience: 10
+  predictor_early_stopping_mode: "min"
+  predictor_early_stopping_min_delta: 0.001
+
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/cafodfa_cifar100_cnn_3block"
+  save_best_metric: "bp_val_accuracy"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

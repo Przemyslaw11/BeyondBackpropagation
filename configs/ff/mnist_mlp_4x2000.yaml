@@ -1,0 +1,56 @@
+experiment_name: "ff_hinton_mnist_mlp_4x2000"
+algorithm:
+  name: "FF"
+
+data:
+  name: "MNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+data_loader:
+  batch_size: 100
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "FF_MLP"
+  params:
+    input_dim: 784
+    hidden_dims: [2000, 2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+    norm_eps: 1.0e-8
+    bias_init: 0.0
+
+algorithm_params:
+  optimizer_type: "AdamW"
+  ff_learning_rate: 0.0005253511034001832
+  ff_weight_decay: 0.0004227844165066995
+  downstream_learning_rate: 0.0027075510107757122
+  downstream_weight_decay: 0.0035730744916099627
+  threshold: 2.0
+  peer_normalization_factor: 0.03
+  peer_momentum: 0.9
+
+training:
+  epochs: 100
+  log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "FF_Hinton/Val_Acc_Epoch"
+  early_stopping_patience: 20
+  early_stopping_mode: "max"
+  early_stopping_min_delta: 0.01
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/ff_hinton_mnist_mlp_4x2000_revised"
+
+monitoring: {enabled: true, energy_enabled: true, energy_interval_sec: 0.2}
+profiling: {enabled: true, verbose: false}
