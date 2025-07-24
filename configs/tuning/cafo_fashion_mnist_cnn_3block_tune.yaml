@@ -1,0 +1,40 @@
+experiment_name: "tune_cafo_fashion_mnist_cnn_3block"
+algorithm: 
+  name: CaFo
+data: { name: "FashionMNIST", root: "./data", val_split: 0.1, num_classes: 10, input_channels: 1, image_size: 28 }
+data_loader: { batch_size: 128, num_workers: 0, pin_memory: false }
+model:
+  name: "CaFo_CNN"
+  params: { block_channels: [32, 128, 512], activation: "ReLU", use_batchnorm: true, kernel_size: 3, pool_kernel_size: 2, pool_stride: 2 }
+
+algorithm_params:
+  train_blocks: false
+  predictor_optimizer_type: "Adam"
+  predictor_lr: 0.001
+  predictor_weight_decay: 0.0
+  loss_type: "CrossEntropyLoss"
+  num_epochs_per_block: 500
+  log_interval: 9999
+  aggregation_method: "sum"
+
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss"
+  predictor_early_stopping_patience: 8 
+  predictor_early_stopping_mode: "min"
+  predictor_early_stopping_min_delta: 0.001
+
+logging: { level: "INFO", wandb: { use_wandb: false } }
+checkpointing: { checkpoint_dir: null }
+monitoring: { enabled: false, energy_enabled: false }
+profiling: { enabled: false }
+
+tuning:
+  enabled: true
+  n_trials: 50
+  direction: "maximize"
+  metric: "val_accuracy"
+  sampler: "TPE"
+  pruner: "None"
+  cafo_predictor_lr_range: [2.0e-4, 5.0e-3]
+  cafo_predictor_wd_range: [1.0e-7, 1.0e-4]
+  cafo_epochs_per_block_range: [80, 500]

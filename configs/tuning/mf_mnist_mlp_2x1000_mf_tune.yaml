@@ -1,0 +1,52 @@
+experiment_name: tune_mf_mnist_mlp_2x1000
+algorithm:
+  name: MF
+data:
+  name: MNIST
+  root: ./data
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+data_loader:
+  batch_size: 128
+  num_workers: 0
+  pin_memory: false
+model:
+  name: MF_MLP
+  params:
+    hidden_dims:
+    - 1000
+    - 1000
+    activation: ReLU
+    bias: true
+algorithm_params:
+  optimizer_type: Adam
+  lr: 0.0001329291894316216
+  weight_decay: 0.0
+  epochs_per_layer: 20
+  log_interval: 9999
+logging:
+  level: INFO
+  wandb:
+    use_wandb: false
+checkpointing:
+  checkpoint_dir: null
+monitoring:
+  enabled: false
+  energy_enabled: false
+profiling:
+  enabled: false
+tuning:
+  enabled: true
+  n_trials: 1
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: None
+  mf_lr_range:
+  - 1.0e-05
+  - 0.01
+  mf_epochs_per_layer_range:
+  - 5
+  - 20

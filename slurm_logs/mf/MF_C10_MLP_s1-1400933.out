@@ -1,0 +1,926 @@
+#####################################################################
+Job ID: 1400933
+Job Name: MF_C10_MLP_s1
+Running on host: t0045
+Executing command in: /net/tscratch/people/plgspyra/BeyondBackpropagation
+Using config file: configs/mf/cifar10_mlp_3x2000.yaml
+Allocated GPU: 0
+#####################################################################
+Derived Experiment Name: cifar10_mlp_3x2000
+Loading modules...
+Modules loaded:
+Activating virtual environment...
+Checking PyTorch CUDA...
+PyTorch version: 2.4.0+cu121
+CUDA available: True
+CUDA version: 12.1
+cuDNN version: 90100
+Running the experiment script...
+Loading and merging configuration from: configs/mf/cifar10_mlp_3x2000.yaml
+Configuration loaded and merged successfully:
+{'algorithm': {'name': 'MF'},
+ 'algorithm_params': {'epochs_per_layer': 15,
+                      'log_interval': 9999,
+                      'lr': 0.0003241756767272183,
+                      'mf_early_stopping_enabled': True,
+                      'mf_early_stopping_min_delta': 0.0001,
+                      'mf_early_stopping_patience': 4,
+                      'optimizer_type': 'Adam',
+                      'weight_decay': 0.0},
+ 'carbon_tracker': {'country_iso_code': 'POL',
+                    'enabled': True,
+                    'mode': 'offline',
+                    'output_dir': 'results/carbon'},
+ 'checkpointing': {'checkpoint_dir': 'checkpoints/mf_cifar10_mlp_3x2000',
+                   'save_best_metric': 'bp_val_accuracy'},
+ 'data': {'download': True,
+          'image_size': 32,
+          'input_channels': 3,
+          'name': 'CIFAR10',
+          'num_classes': 10,
+          'root': './data',
+          'val_split': 0.1},
+ 'data_loader': {'batch_size': 128, 'num_workers': 4, 'pin_memory': True},
+ 'experiment_name': 'mf_cifar10_mlp_3x2000',
+ 'general': {'device': 'auto', 'seed': 42},
+ 'logging': {'level': 'INFO',
+             'wandb': {'entity': 'przspyra11',
+                       'project': 'BeyondBackpropagation',
+                       'use_wandb': True}},
+ 'model': {'name': 'MF_MLP',
+           'params': {'activation': 'ReLU',
+                      'bias': True,
+                      'hidden_dims': [2000, 2000, 2000]}},
+ 'monitoring': {'enabled': True,
+                'energy_enabled': True,
+                'energy_interval_sec': 0.2},
+ 'optimizer': {'lr': 0.001, 'type': 'AdamW', 'weight_decay': 0.0001},
+ 'profiling': {'enabled': True, 'verbose': False},
+ 'training': {'criterion': 'CrossEntropyLoss',
+              'early_stopping_enabled': True,
+              'early_stopping_metric': 'bp_val_loss',
+              'early_stopping_min_delta': 0.0,
+              'early_stopping_mode': 'min',
+              'early_stopping_patience': 20,
+              'epochs': 100,
+              'log_interval': 100},
+ 'tuning': {'direction': 'maximize',
+            'enabled': False,
+            'lr_range': [1e-05, 0.01],
+            'metric': 'val_accuracy',
+            'n_trials': 50,
+            'pruner': 'Median',
+            'sampler': 'TPE',
+            'wd_range': [1e-06, 0.001]}}
+2025-05-07 23:49:53,877 - root - INFO - Logging to file: results/mf_cifar10_mlp_3x2000/mf_cifar10_mlp_3x2000_run.log
+2025-05-07 23:49:53,879 - root - INFO - Root logger setup complete. Level: INFO
+2025-05-07 23:49:53,879 - src.utils.logging_utils - INFO - 
+--- Starting Experiment ---
+2025-05-07 23:49:53,879 - src.utils.logging_utils - INFO - Found EXPERIMENT_SEED environment variable: 42. Overriding config seed (42).
+2025-05-07 23:49:53,926 - src.utils.helpers - INFO - Set random seed to 42 (including CUDA)
+2025-05-07 23:49:53,927 - src.utils.logging_utils - INFO - Using random seed: 42
+2025-05-07 23:49:53,927 - src.utils.logging_utils - INFO - Using device: cuda (Preference: 'auto')
+2025-05-07 23:49:55,143 - src.utils.logging_utils - INFO - Weights & Biases run initialized: https://wandb.ai/przspyra11/BeyondBackpropagation/runs/gi1128n0
+2025-05-07 23:49:55,149 - src.utils.monitoring - INFO - NVML initialized successfully.
+2025-05-07 23:49:55,150 - src.utils.monitoring - INFO - NVIDIA Driver Version: 570.86.15
+2025-05-07 23:49:55,150 - src.utils.monitoring - INFO - NVML version query (nvmlSystemGetNvmlVersion) not available in this pynvml library version.
+2025-05-07 23:49:55,158 - src.utils.logging_utils - INFO - NVML active for GPU 0.
+2025-05-07 23:49:55,159 - src.utils.logging_utils - INFO - Initial GPU Mem: 336.62 MiB Used / 40960.00 MiB Total
+2025-05-07 23:49:55,159 - src.utils.logging_utils - INFO - GPU Energy monitor initialized (Interval: 0.2s).
+2025-05-07 23:49:55,159 - src.utils.codecarbon_utils - INFO - Initializing CodeCarbon OfflineEmissionsTracker. Outputting to results/carbon/mf_cifar10_mlp_3x2000_carbon.csv
+2025-05-07 23:49:56,125 - src.utils.codecarbon_utils - INFO - CodeCarbon tracker started.
+2025-05-07 23:49:56,126 - src.data_utils.datasets - INFO - Loading dataset: CIFAR10 from ./data
+Files already downloaded and verified
+Files already downloaded and verified
+2025-05-07 23:49:57,735 - src.data_utils.datasets - INFO - Splitting training data randomly: 45000 train / 5000 validation samples.
+2025-05-07 23:49:57,763 - src.data_utils.datasets - INFO - Applied training transforms to train subset and test transforms to validation subset.
+2025-05-07 23:49:57,763 - src.data_utils.datasets - INFO - DataLoaders created: Train (351 batches, 45000 samples), Validation (20 batches, 5000 samples), Test (40 batches, 10000 samples)
+2025-05-07 23:49:57,763 - src.utils.logging_utils - INFO - Dataloaders created.
+2025-05-07 23:49:57,763 - src.utils.logging_utils - INFO - Getting architecture: mf_mlp (Algo: MF)
+2025-05-07 23:49:57,900 - src.architectures.mf_mlp - INFO - Initialized MF_MLP with 3 hidden layers.
+2025-05-07 23:49:57,903 - src.architectures.mf_mlp - INFO - Feedforward Layer dimensions (W): 3072 -> 2000 -> 2000 -> 2000 -> 10
+2025-05-07 23:49:57,903 - src.architectures.mf_mlp - INFO - Created 4 projection matrices (M_0 to M_3).
+2025-05-07 23:49:57,903 - src.utils.logging_utils - INFO - Model 'MF_MLP' (Algo: MF) created.
+2025-05-07 23:49:58,146 - src.utils.logging_utils - INFO - Model 'MF_MLP' on cuda.
+2025-05-07 23:49:58,147 - src.utils.logging_utils - INFO - Model trainable parameters: 14,260,730
+2025-05-07 23:49:58,147 - src.utils.logging_utils - INFO - Model total parameters: 14,260,730
+2025-05-07 23:49:58,812 - src.utils.logging_utils - INFO - Profiling FLOPs...
+2025-05-07 23:49:58,875 - src.utils.profiling - INFO - Estimated Total Forward Pass FLOPs (via torch.profiler): 0.0283 GFLOPs
+2025-05-07 23:49:58,875 - src.utils.logging_utils - INFO - Estimated Forward Pass GFLOPs: 0.0283 G
+2025-05-07 23:49:58,875 - src.utils.logging_utils - INFO - Algorithm 'mf' is BP-free, Est. BP Update GFLOPs is N/A.
+2025-05-07 23:49:58,875 - src.utils.logging_utils - INFO - 
+2025-05-07 23:49:58,875 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 0) ---
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   initial_gpu_mem_used_mib: 336.6250
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   codecarbon_enabled: True
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   codecarbon_mode: offline
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   codecarbon_country_iso: POL
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   model_parameters_trainable: 14260730
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   model_parameters_total: 14260730
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   estimated_fwd_gflops: 0.0283
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO -   estimated_bp_update_gflops: nan
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:49:58,876 - src.utils.logging_utils - INFO - 
+2025-05-07 23:49:58,877 - src.utils.logging_utils - INFO - Starting training phase...
+2025-05-07 23:49:58,877 - src.utils.monitoring - INFO - Started energy monitoring for GPU 0 (interval: 0.2s).
+2025-05-07 23:49:58,877 - src.algorithms.mf - INFO - Starting layer-wise MF training for MLP with 3 W-layers and 4 M-matrices.
+2025-05-07 23:49:58,974 - src.algorithms.mf - INFO - --- Starting MF training for Layer_W1_M1 ---
+2025-05-07 23:50:03,454 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:03,456 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 351) ---
+2025-05-07 23:50:03,456 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.9412
+2025-05-07 23:50:03,456 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1068.0000
+2025-05-07 23:50:03,457 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:03,457 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:03,458 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 1/15 - Train Loss: 1.869890, Peak Mem: 1068.0 MiB
+2025-05-07 23:50:03,458 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:03,458 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 351) ---
+2025-05-07 23:50:03,458 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.8699
+2025-05-07 23:50:03,458 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1068.0000
+2025-05-07 23:50:03,458 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:03,458 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:03,752 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 1/15 - Val Local Loss: 1.640486
+2025-05-07 23:50:03,752 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:03,752 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 351) ---
+2025-05-07 23:50:03,752 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.6405
+2025-05-07 23:50:03,753 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:03,753 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:08,255 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:08,256 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 702) ---
+2025-05-07 23:50:08,256 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.6582
+2025-05-07 23:50:08,256 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:08,256 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:08,256 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:08,257 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 2/15 - Train Loss: 1.669970, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:08,257 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:08,257 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 702) ---
+2025-05-07 23:50:08,257 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.6700
+2025-05-07 23:50:08,257 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:08,258 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:08,258 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:08,499 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 2/15 - Val Local Loss: 1.518694
+2025-05-07 23:50:08,501 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:08,501 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 702) ---
+2025-05-07 23:50:08,501 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.5187
+2025-05-07 23:50:08,501 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:08,502 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:12,925 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:12,925 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1053) ---
+2025-05-07 23:50:12,926 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.7725
+2025-05-07 23:50:12,926 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:12,926 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:12,926 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:12,928 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 3/15 - Train Loss: 1.602641, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:12,928 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:12,928 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1053) ---
+2025-05-07 23:50:12,928 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.6026
+2025-05-07 23:50:12,928 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:12,928 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:12,928 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:13,163 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 3/15 - Val Local Loss: 1.495266
+2025-05-07 23:50:13,164 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:13,164 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1053) ---
+2025-05-07 23:50:13,164 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.4953
+2025-05-07 23:50:13,165 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:13,165 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:17,569 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:17,571 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1404) ---
+2025-05-07 23:50:17,571 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.5629
+2025-05-07 23:50:17,571 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:17,571 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:17,571 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:17,573 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 4/15 - Train Loss: 1.572929, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:17,573 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:17,573 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1404) ---
+2025-05-07 23:50:17,573 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.5729
+2025-05-07 23:50:17,573 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:17,574 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:17,574 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:17,810 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 4/15 - Val Local Loss: 1.471772
+2025-05-07 23:50:17,812 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:17,812 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1404) ---
+2025-05-07 23:50:17,812 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.4718
+2025-05-07 23:50:17,812 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:17,812 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:22,215 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:22,216 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1755) ---
+2025-05-07 23:50:22,217 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.4123
+2025-05-07 23:50:22,217 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:22,217 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:22,217 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:22,218 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 5/15 - Train Loss: 1.550216, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:22,219 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:22,219 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1755) ---
+2025-05-07 23:50:22,219 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.5502
+2025-05-07 23:50:22,219 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:22,219 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:22,219 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:22,456 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 5/15 - Val Local Loss: 1.450886
+2025-05-07 23:50:22,457 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:22,457 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1755) ---
+2025-05-07 23:50:22,457 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.4509
+2025-05-07 23:50:22,458 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:22,458 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:26,846 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:26,847 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2106) ---
+2025-05-07 23:50:26,847 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.7187
+2025-05-07 23:50:26,848 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:26,848 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:26,848 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:26,849 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 6/15 - Train Loss: 1.531528, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:26,849 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:26,849 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2106) ---
+2025-05-07 23:50:26,849 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.5315
+2025-05-07 23:50:26,849 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:26,849 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:26,849 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:27,084 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 6/15 - Val Local Loss: 1.412191
+2025-05-07 23:50:27,085 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:27,085 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2106) ---
+2025-05-07 23:50:27,085 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.4122
+2025-05-07 23:50:27,085 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:27,085 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:31,452 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:31,454 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2457) ---
+2025-05-07 23:50:31,454 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.4451
+2025-05-07 23:50:31,454 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:31,455 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:31,455 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:31,456 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 7/15 - Train Loss: 1.517780, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:31,457 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:31,457 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2457) ---
+2025-05-07 23:50:31,457 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.5178
+2025-05-07 23:50:31,457 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:31,457 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:31,458 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:31,699 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 7/15 - Val Local Loss: 1.463431
+2025-05-07 23:50:31,700 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:31,700 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2457) ---
+2025-05-07 23:50:31,701 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.4634
+2025-05-07 23:50:31,701 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:31,701 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:36,080 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:36,081 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2808) ---
+2025-05-07 23:50:36,082 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.3828
+2025-05-07 23:50:36,082 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:36,082 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:36,082 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:36,083 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 8/15 - Train Loss: 1.504585, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:36,083 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:36,083 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2808) ---
+2025-05-07 23:50:36,083 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.5046
+2025-05-07 23:50:36,083 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:36,083 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:36,083 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:36,326 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 8/15 - Val Local Loss: 1.397020
+2025-05-07 23:50:36,328 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:36,328 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2808) ---
+2025-05-07 23:50:36,328 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3970
+2025-05-07 23:50:36,328 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:36,328 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:40,711 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:40,712 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3159) ---
+2025-05-07 23:50:40,713 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.4739
+2025-05-07 23:50:40,713 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:40,713 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:40,714 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:40,715 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 9/15 - Train Loss: 1.492533, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:40,716 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:40,716 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3159) ---
+2025-05-07 23:50:40,716 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4925
+2025-05-07 23:50:40,716 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:40,716 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:40,716 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:40,955 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 9/15 - Val Local Loss: 1.412016
+2025-05-07 23:50:40,956 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:40,956 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3159) ---
+2025-05-07 23:50:40,957 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.4120
+2025-05-07 23:50:40,957 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:40,957 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:45,356 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:45,358 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3510) ---
+2025-05-07 23:50:45,358 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.5112
+2025-05-07 23:50:45,358 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:45,358 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:45,359 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:45,360 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 10/15 - Train Loss: 1.480249, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:45,360 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:45,360 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3510) ---
+2025-05-07 23:50:45,360 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4802
+2025-05-07 23:50:45,361 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:45,361 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:45,361 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:45,602 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 10/15 - Val Local Loss: 1.368411
+2025-05-07 23:50:45,604 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:45,604 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3510) ---
+2025-05-07 23:50:45,604 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3684
+2025-05-07 23:50:45,604 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:45,604 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:50,012 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:50,013 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3861) ---
+2025-05-07 23:50:50,014 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.5208
+2025-05-07 23:50:50,014 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:50,014 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:50,014 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:50,015 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 11/15 - Train Loss: 1.466129, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:50,015 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:50,015 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3861) ---
+2025-05-07 23:50:50,015 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4661
+2025-05-07 23:50:50,015 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:50,015 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:50,015 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:50,252 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 11/15 - Val Local Loss: 1.364335
+2025-05-07 23:50:50,254 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:50,254 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3861) ---
+2025-05-07 23:50:50,254 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3643
+2025-05-07 23:50:50,254 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:50,254 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:54,671 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:54,673 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4212) ---
+2025-05-07 23:50:54,674 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.2602
+2025-05-07 23:50:54,675 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:54,677 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:54,678 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:54,680 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 12/15 - Train Loss: 1.451620, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:54,681 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:54,683 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4212) ---
+2025-05-07 23:50:54,684 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4516
+2025-05-07 23:50:54,685 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:54,686 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:54,688 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:54,925 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 12/15 - Val Local Loss: 1.383291
+2025-05-07 23:50:54,926 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:54,928 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4212) ---
+2025-05-07 23:50:54,929 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3833
+2025-05-07 23:50:54,929 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:54,929 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:59,433 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:59,435 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4563) ---
+2025-05-07 23:50:59,435 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.3854
+2025-05-07 23:50:59,435 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:50:59,435 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:59,435 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:59,436 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 13/15 - Train Loss: 1.449514, Peak Mem: 1072.0 MiB
+2025-05-07 23:50:59,436 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:59,437 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4563) ---
+2025-05-07 23:50:59,437 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4495
+2025-05-07 23:50:59,437 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:50:59,437 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:59,437 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:59,675 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 13/15 - Val Local Loss: 1.345930
+2025-05-07 23:50:59,676 - src.utils.logging_utils - INFO - 
+2025-05-07 23:50:59,676 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4563) ---
+2025-05-07 23:50:59,676 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3459
+2025-05-07 23:50:59,677 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:50:59,677 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:04,055 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:04,057 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4914) ---
+2025-05-07 23:51:04,059 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.6262
+2025-05-07 23:51:04,060 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:51:04,062 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:04,064 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:04,066 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 14/15 - Train Loss: 1.436869, Peak Mem: 1072.0 MiB
+2025-05-07 23:51:04,067 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:04,068 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4914) ---
+2025-05-07 23:51:04,069 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4369
+2025-05-07 23:51:04,071 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:51:04,072 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:04,073 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:04,310 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 14/15 - Val Local Loss: 1.387157
+2025-05-07 23:51:04,311 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:04,313 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4914) ---
+2025-05-07 23:51:04,314 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3872
+2025-05-07 23:51:04,315 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:04,317 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,703 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,705 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5265) ---
+2025-05-07 23:51:08,705 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_Batch: 1.5723
+2025-05-07 23:51:08,705 - src.utils.logging_utils - INFO -   Layer_W1_M1/GPU_Mem_Used_MiB_Batch: 1072.0000
+2025-05-07 23:51:08,705 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:08,705 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,706 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 15/15 - Train Loss: 1.431103, Peak Mem: 1072.0 MiB
+2025-05-07 23:51:08,706 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,706 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5265) ---
+2025-05-07 23:51:08,706 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_EpochAvg: 1.4311
+2025-05-07 23:51:08,707 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB: 1072.0000
+2025-05-07 23:51:08,707 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:08,707 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,940 - src.algorithms.mf - INFO - Layer_W1_M1 Epoch 15/15 - Val Local Loss: 1.344700
+2025-05-07 23:51:08,941 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5265) ---
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO -   Layer_W1_M1/Val_LocalLoss_Epoch: 1.3447
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5265) ---
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO -   Layer_W1_M1/Train_Loss_LayerAvg: 1.4311
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO -   Layer_W1_M1/Peak_GPU_Mem_Layer_MiB: 1072.0000
+2025-05-07 23:51:08,942 - src.utils.logging_utils - INFO -   Layer_W1_M1/Epochs_Trained: 15
+2025-05-07 23:51:08,943 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:08,943 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:09,024 - src.algorithms.mf - INFO - --- Starting MF training for Layer_W2_M2 ---
+2025-05-07 23:51:13,399 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:13,401 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5616) ---
+2025-05-07 23:51:13,401 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.3228
+2025-05-07 23:51:13,401 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:13,401 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:13,401 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:13,402 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 1/15 - Train Loss: 1.506391, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:13,402 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:13,402 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5616) ---
+2025-05-07 23:51:13,402 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.5064
+2025-05-07 23:51:13,402 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:13,402 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:13,403 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:13,655 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 1/15 - Val Local Loss: 1.275197
+2025-05-07 23:51:13,656 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:13,656 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5616) ---
+2025-05-07 23:51:13,656 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.2752
+2025-05-07 23:51:13,656 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:13,657 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:18,108 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:18,110 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5967) ---
+2025-05-07 23:51:18,110 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.3155
+2025-05-07 23:51:18,110 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:18,110 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:18,110 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:18,111 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 2/15 - Train Loss: 1.331418, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:18,111 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:18,111 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5967) ---
+2025-05-07 23:51:18,111 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.3314
+2025-05-07 23:51:18,111 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:18,111 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:18,112 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:18,351 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 2/15 - Val Local Loss: 1.236585
+2025-05-07 23:51:18,352 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:18,352 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5967) ---
+2025-05-07 23:51:18,353 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.2366
+2025-05-07 23:51:18,353 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:18,353 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:22,767 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:22,768 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6318) ---
+2025-05-07 23:51:22,769 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.3016
+2025-05-07 23:51:22,769 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:22,769 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:22,769 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:22,770 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 3/15 - Train Loss: 1.285296, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:22,770 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:22,770 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6318) ---
+2025-05-07 23:51:22,770 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.2853
+2025-05-07 23:51:22,770 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:22,770 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:22,770 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:23,011 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 3/15 - Val Local Loss: 1.220710
+2025-05-07 23:51:23,012 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:23,012 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6318) ---
+2025-05-07 23:51:23,012 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.2207
+2025-05-07 23:51:23,012 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:23,013 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:27,406 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:27,408 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6669) ---
+2025-05-07 23:51:27,408 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.2067
+2025-05-07 23:51:27,408 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:27,408 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:27,408 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:27,409 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 4/15 - Train Loss: 1.254176, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:27,409 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:27,409 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6669) ---
+2025-05-07 23:51:27,409 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.2542
+2025-05-07 23:51:27,409 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:27,410 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:27,410 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:27,652 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 4/15 - Val Local Loss: 1.205509
+2025-05-07 23:51:27,653 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:27,653 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6669) ---
+2025-05-07 23:51:27,653 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.2055
+2025-05-07 23:51:27,653 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:27,653 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:32,112 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:32,113 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7020) ---
+2025-05-07 23:51:32,114 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.2579
+2025-05-07 23:51:32,114 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:32,114 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:32,114 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:32,115 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 5/15 - Train Loss: 1.233318, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:32,115 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:32,115 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7020) ---
+2025-05-07 23:51:32,115 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.2333
+2025-05-07 23:51:32,115 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:32,115 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:32,115 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:32,357 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 5/15 - Val Local Loss: 1.165611
+2025-05-07 23:51:32,358 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:32,358 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7020) ---
+2025-05-07 23:51:32,358 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1656
+2025-05-07 23:51:32,359 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:32,359 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:36,885 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:36,886 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7371) ---
+2025-05-07 23:51:36,886 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.2267
+2025-05-07 23:51:36,886 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:36,886 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:36,886 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:36,887 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 6/15 - Train Loss: 1.216692, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:36,888 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:36,888 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7371) ---
+2025-05-07 23:51:36,888 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.2167
+2025-05-07 23:51:36,888 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:36,888 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:36,888 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:37,127 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 6/15 - Val Local Loss: 1.158877
+2025-05-07 23:51:37,129 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:37,129 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7371) ---
+2025-05-07 23:51:37,129 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1589
+2025-05-07 23:51:37,129 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:37,129 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:41,549 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:41,550 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7722) ---
+2025-05-07 23:51:41,550 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.1134
+2025-05-07 23:51:41,550 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:41,550 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:41,551 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:41,551 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 7/15 - Train Loss: 1.192795, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:41,552 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:41,552 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7722) ---
+2025-05-07 23:51:41,552 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1928
+2025-05-07 23:51:41,552 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:41,552 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:41,552 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:41,789 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 7/15 - Val Local Loss: 1.193869
+2025-05-07 23:51:41,791 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:41,791 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7722) ---
+2025-05-07 23:51:41,791 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1939
+2025-05-07 23:51:41,791 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:41,791 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:46,310 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:46,311 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8073) ---
+2025-05-07 23:51:46,311 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.3279
+2025-05-07 23:51:46,311 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:46,312 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:46,312 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:46,313 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 8/15 - Train Loss: 1.182998, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:46,313 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:46,313 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8073) ---
+2025-05-07 23:51:46,313 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1830
+2025-05-07 23:51:46,313 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:46,313 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:46,313 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:46,552 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 8/15 - Val Local Loss: 1.155197
+2025-05-07 23:51:46,553 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:46,553 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8073) ---
+2025-05-07 23:51:46,553 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1552
+2025-05-07 23:51:46,553 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:46,553 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:51,098 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:51,100 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8424) ---
+2025-05-07 23:51:51,100 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.2081
+2025-05-07 23:51:51,100 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:51,100 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:51,101 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:51,102 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 9/15 - Train Loss: 1.163263, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:51,103 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:51,103 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8424) ---
+2025-05-07 23:51:51,103 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1633
+2025-05-07 23:51:51,103 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:51,103 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:51,104 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:51,342 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 9/15 - Val Local Loss: 1.162086
+2025-05-07 23:51:51,343 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:51,344 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8424) ---
+2025-05-07 23:51:51,344 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1621
+2025-05-07 23:51:51,344 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:51,344 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:55,836 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:55,837 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8775) ---
+2025-05-07 23:51:55,838 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.1527
+2025-05-07 23:51:55,838 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:51:55,838 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:55,838 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:55,839 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 10/15 - Train Loss: 1.153761, Peak Mem: 1104.0 MiB
+2025-05-07 23:51:55,839 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:55,839 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8775) ---
+2025-05-07 23:51:55,839 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1538
+2025-05-07 23:51:55,839 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:51:55,839 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:55,839 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:56,077 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 10/15 - Val Local Loss: 1.172746
+2025-05-07 23:51:56,079 - src.utils.logging_utils - INFO - 
+2025-05-07 23:51:56,079 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8775) ---
+2025-05-07 23:51:56,079 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1727
+2025-05-07 23:51:56,079 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:51:56,079 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:00,529 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:00,530 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9126) ---
+2025-05-07 23:52:00,530 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.0853
+2025-05-07 23:52:00,530 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:52:00,530 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:00,530 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:00,531 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 11/15 - Train Loss: 1.139549, Peak Mem: 1104.0 MiB
+2025-05-07 23:52:00,531 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:00,532 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9126) ---
+2025-05-07 23:52:00,532 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1395
+2025-05-07 23:52:00,532 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:52:00,532 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:00,532 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:00,799 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 11/15 - Val Local Loss: 1.139105
+2025-05-07 23:52:00,801 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:00,801 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9126) ---
+2025-05-07 23:52:00,801 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1391
+2025-05-07 23:52:00,801 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:00,801 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:05,208 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:05,209 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9477) ---
+2025-05-07 23:52:05,209 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.2366
+2025-05-07 23:52:05,209 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:52:05,209 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:05,209 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:05,210 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 12/15 - Train Loss: 1.127050, Peak Mem: 1104.0 MiB
+2025-05-07 23:52:05,210 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:05,210 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9477) ---
+2025-05-07 23:52:05,211 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1271
+2025-05-07 23:52:05,211 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:52:05,211 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:05,211 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:05,446 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 12/15 - Val Local Loss: 1.141447
+2025-05-07 23:52:05,447 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:05,447 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9477) ---
+2025-05-07 23:52:05,447 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1414
+2025-05-07 23:52:05,448 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:05,448 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:09,884 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:09,885 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9828) ---
+2025-05-07 23:52:09,885 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.1023
+2025-05-07 23:52:09,885 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:52:09,886 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:09,886 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:09,886 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 13/15 - Train Loss: 1.112355, Peak Mem: 1104.0 MiB
+2025-05-07 23:52:09,887 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:09,887 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9828) ---
+2025-05-07 23:52:09,887 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1124
+2025-05-07 23:52:09,887 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:52:09,887 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:09,887 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:10,124 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 13/15 - Val Local Loss: 1.141126
+2025-05-07 23:52:10,125 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:10,125 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 9828) ---
+2025-05-07 23:52:10,125 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1411
+2025-05-07 23:52:10,126 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:10,126 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:14,550 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:14,551 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10179) ---
+2025-05-07 23:52:14,551 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 1.1757
+2025-05-07 23:52:14,551 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:52:14,551 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:14,551 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:14,552 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 14/15 - Train Loss: 1.106020, Peak Mem: 1104.0 MiB
+2025-05-07 23:52:14,552 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:14,552 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10179) ---
+2025-05-07 23:52:14,553 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.1060
+2025-05-07 23:52:14,553 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:52:14,553 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:14,553 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:14,788 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 14/15 - Val Local Loss: 1.133733
+2025-05-07 23:52:14,789 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:14,789 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10179) ---
+2025-05-07 23:52:14,790 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1337
+2025-05-07 23:52:14,790 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:14,790 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,332 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,333 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10530) ---
+2025-05-07 23:52:19,335 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_Batch: 0.9391
+2025-05-07 23:52:19,336 - src.utils.logging_utils - INFO -   Layer_W2_M2/GPU_Mem_Used_MiB_Batch: 1104.0000
+2025-05-07 23:52:19,337 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:19,338 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,340 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 15/15 - Train Loss: 1.092202, Peak Mem: 1104.0 MiB
+2025-05-07 23:52:19,341 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,341 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10530) ---
+2025-05-07 23:52:19,341 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_EpochAvg: 1.0922
+2025-05-07 23:52:19,342 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB: 1104.0000
+2025-05-07 23:52:19,342 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:19,342 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,578 - src.algorithms.mf - INFO - Layer_W2_M2 Epoch 15/15 - Val Local Loss: 1.124017
+2025-05-07 23:52:19,580 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,581 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10530) ---
+2025-05-07 23:52:19,582 - src.utils.logging_utils - INFO -   Layer_W2_M2/Val_LocalLoss_Epoch: 1.1240
+2025-05-07 23:52:19,583 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:19,584 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,586 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,587 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10530) ---
+2025-05-07 23:52:19,587 - src.utils.logging_utils - INFO -   Layer_W2_M2/Train_Loss_LayerAvg: 1.0922
+2025-05-07 23:52:19,587 - src.utils.logging_utils - INFO -   Layer_W2_M2/Peak_GPU_Mem_Layer_MiB: 1104.0000
+2025-05-07 23:52:19,587 - src.utils.logging_utils - INFO -   Layer_W2_M2/Epochs_Trained: 15
+2025-05-07 23:52:19,587 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:19,587 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:19,678 - src.algorithms.mf - INFO - --- Starting MF training for Layer_W3_M3 ---
+2025-05-07 23:52:24,160 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:24,162 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10881) ---
+2025-05-07 23:52:24,162 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 1.2035
+2025-05-07 23:52:24,162 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:24,162 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:24,162 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:24,163 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 1/15 - Train Loss: 1.189325, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:24,163 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:24,163 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10881) ---
+2025-05-07 23:52:24,163 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 1.1893
+2025-05-07 23:52:24,163 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:24,163 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:24,164 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:24,401 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 1/15 - Val Local Loss: 1.131480
+2025-05-07 23:52:24,403 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:24,403 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 10881) ---
+2025-05-07 23:52:24,403 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1315
+2025-05-07 23:52:24,403 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:24,403 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:28,831 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:28,832 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11232) ---
+2025-05-07 23:52:28,833 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 1.0914
+2025-05-07 23:52:28,833 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:28,833 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:28,833 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:28,834 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 2/15 - Train Loss: 1.067652, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:28,834 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:28,834 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11232) ---
+2025-05-07 23:52:28,834 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 1.0677
+2025-05-07 23:52:28,834 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:28,834 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:28,834 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:29,069 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 2/15 - Val Local Loss: 1.125164
+2025-05-07 23:52:29,070 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:29,071 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11232) ---
+2025-05-07 23:52:29,071 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1252
+2025-05-07 23:52:29,071 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:29,071 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:33,461 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:33,463 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11583) ---
+2025-05-07 23:52:33,463 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 1.0421
+2025-05-07 23:52:33,463 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:33,463 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:33,463 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:33,465 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 3/15 - Train Loss: 1.037328, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:33,465 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:33,466 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11583) ---
+2025-05-07 23:52:33,466 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 1.0373
+2025-05-07 23:52:33,466 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:33,466 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:33,466 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:33,703 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 3/15 - Val Local Loss: 1.127574
+2025-05-07 23:52:33,705 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:33,705 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11583) ---
+2025-05-07 23:52:33,705 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1276
+2025-05-07 23:52:33,705 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:33,705 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:38,167 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:38,168 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11934) ---
+2025-05-07 23:52:38,168 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 1.0759
+2025-05-07 23:52:38,168 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:38,168 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:38,168 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:38,169 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 4/15 - Train Loss: 1.020229, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:38,169 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:38,169 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11934) ---
+2025-05-07 23:52:38,169 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 1.0202
+2025-05-07 23:52:38,169 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:38,170 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:38,170 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:38,410 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 4/15 - Val Local Loss: 1.123032
+2025-05-07 23:52:38,411 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:38,411 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 11934) ---
+2025-05-07 23:52:38,411 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1230
+2025-05-07 23:52:38,412 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:38,412 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:42,826 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:42,828 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12285) ---
+2025-05-07 23:52:42,828 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 0.9415
+2025-05-07 23:52:42,828 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:42,829 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:42,829 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:42,830 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 5/15 - Train Loss: 1.000850, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:42,830 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:42,830 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12285) ---
+2025-05-07 23:52:42,830 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 1.0009
+2025-05-07 23:52:42,830 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:42,830 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:42,830 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:43,065 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 5/15 - Val Local Loss: 1.140446
+2025-05-07 23:52:43,066 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:43,067 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12285) ---
+2025-05-07 23:52:43,067 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1404
+2025-05-07 23:52:43,067 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:43,067 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:47,458 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:47,460 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12636) ---
+2025-05-07 23:52:47,460 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 0.8769
+2025-05-07 23:52:47,460 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:47,460 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:47,460 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:47,461 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 6/15 - Train Loss: 0.985724, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:47,461 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:47,461 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12636) ---
+2025-05-07 23:52:47,462 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 0.9857
+2025-05-07 23:52:47,462 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:47,462 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:47,462 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:47,699 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 6/15 - Val Local Loss: 1.136403
+2025-05-07 23:52:47,701 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:47,701 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12636) ---
+2025-05-07 23:52:47,701 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1364
+2025-05-07 23:52:47,701 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:47,701 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:52,134 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:52,136 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12987) ---
+2025-05-07 23:52:52,138 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 0.9414
+2025-05-07 23:52:52,140 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:52,144 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:52,147 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:52,150 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 7/15 - Train Loss: 0.970416, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:52,152 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:52,155 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12987) ---
+2025-05-07 23:52:52,157 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 0.9704
+2025-05-07 23:52:52,159 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:52,162 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:52,164 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:52,408 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 7/15 - Val Local Loss: 1.144938
+2025-05-07 23:52:52,410 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:52,413 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 12987) ---
+2025-05-07 23:52:52,413 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1449
+2025-05-07 23:52:52,413 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:52,413 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:56,837 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:56,839 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 13338) ---
+2025-05-07 23:52:56,841 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_Batch: 1.0157
+2025-05-07 23:52:56,845 - src.utils.logging_utils - INFO -   Layer_W3_M3/GPU_Mem_Used_MiB_Batch: 1120.0000
+2025-05-07 23:52:56,847 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:56,850 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:56,853 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 8/15 - Train Loss: 0.961692, Peak Mem: 1120.0 MiB
+2025-05-07 23:52:56,855 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:56,858 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 13338) ---
+2025-05-07 23:52:56,860 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_EpochAvg: 0.9617
+2025-05-07 23:52:56,862 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Epoch_MiB: 1120.0000
+2025-05-07 23:52:56,864 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:56,867 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:57,108 - src.algorithms.mf - INFO - Layer_W3_M3 Epoch 8/15 - Val Local Loss: 1.135529
+2025-05-07 23:52:57,110 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:57,110 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 13338) ---
+2025-05-07 23:52:57,110 - src.utils.logging_utils - INFO -   Layer_W3_M3/Val_LocalLoss_Epoch: 1.1355
+2025-05-07 23:52:57,111 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:57,111 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:57,111 - src.algorithms.mf - INFO - --- Layer_W3_M3: Early Stopping Triggered at Epoch 8! ---
+2025-05-07 23:52:57,111 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:57,111 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 13338) ---
+2025-05-07 23:52:57,111 - src.utils.logging_utils - INFO -   Layer_W3_M3/Train_Loss_LayerAvg: 0.9617
+2025-05-07 23:52:57,111 - src.utils.logging_utils - INFO -   Layer_W3_M3/Peak_GPU_Mem_Layer_MiB: 1120.0000
+2025-05-07 23:52:57,112 - src.utils.logging_utils - INFO -   Layer_W3_M3/Epochs_Trained: 8
+2025-05-07 23:52:57,112 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-07 23:52:57,112 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:57,193 - src.algorithms.mf - INFO - Finished all layer-wise MF training. Total Epochs Trained (Sum): 38
+2025-05-07 23:52:57,194 - src.utils.logging_utils - INFO - Received Peak GPU Memory (sampled during training): 1120.00 MiB
+2025-05-07 23:52:57,194 - src.utils.monitoring - INFO - Stopped energy monitoring for GPU 0.
+2025-05-07 23:52:57,195 - src.utils.logging_utils - INFO - Starting evaluation phase on test set...
+2025-05-07 23:52:57,195 - src.algorithms.mf - INFO - Evaluating MF (MF_MLP) using a_3 and M_3.
+2025-05-07 23:52:57,745 - src.algorithms.mf - INFO - MF Evaluation Results (MF_MLP, BP-style): Accuracy: 62.34%
+2025-05-07 23:52:57,747 - src.utils.logging_utils - INFO - Test Set Results: Acc: 62.34%, Loss: nan
+2025-05-07 23:52:57,747 - src.utils.logging_utils - INFO - Stopping CodeCarbon tracker...
+2025-05-07 23:52:58,291 - src.utils.logging_utils - INFO - CodeCarbon tracker stopped. Attempting to read from: results/carbon/mf_cifar10_mlp_3x2000_carbon.csv
+2025-05-07 23:52:58,796 - src.utils.logging_utils - INFO - Read emissions: 0.005938 kgCO2e (5.938 gCO2e) (attempt 1)
+2025-05-07 23:52:58,796 - src.utils.monitoring - INFO - Energy monitor for GPU 0 is not running.
+2025-05-07 23:52:58,796 - src.utils.logging_utils - INFO - Total GPU Energy (NVML Monitor): 11615.64 J (3.2266 Wh)
+2025-05-07 23:52:58,796 - src.utils.logging_utils - INFO - GPU Mem (End): 1120.00 MiB Used / 40960.00 MiB Total
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO - --- Final Summary Metrics (Step: 13339) ---
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/total_run_duration_sec: 183.8687
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/peak_gpu_mem_used_mib: 1120.0000
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/total_gpu_energy_joules: 11615.638155
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/total_gpu_energy_wh: 3.226566
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/training_duration_sec: 178.3181
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/Test_Accuracy: 62.3400
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/Test_Loss: nan
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/estimated_fwd_gflops: 0.0283
+2025-05-07 23:52:58,797 - src.utils.logging_utils - INFO -   final/estimated_bp_update_gflops: nan
+2025-05-07 23:52:58,798 - src.utils.logging_utils - INFO -   final/codecarbon_emissions_gCO2e: 5.938301
+2025-05-07 23:52:58,798 - src.utils.logging_utils - INFO - --- End Final Summary ---
+2025-05-07 23:52:58,798 - src.utils.logging_utils - INFO - 
+2025-05-07 23:52:58,798 - src.utils.logging_utils - INFO - Total run duration: 00:03:03
+2025-05-07 23:52:58,798 - src.utils.logging_utils - INFO - --> Final Calculated Emissions: 5.938 gCO2e
+2025-05-07 23:52:59,848 - src.utils.logging_utils - INFO - W&B run finished.
+2025-05-07 23:52:59,850 - src.utils.monitoring - INFO - NVML shut down successfully.
+2025-05-07 23:52:59,933 - src.utils.logging_utils - INFO - 
+--- Experiment Finished ---
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO - Results:
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO - {'codecarbon_country_iso': 'POL',
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'codecarbon_csv_path': 'results/carbon/mf_cifar10_mlp_3x2000_carbon.csv',
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'codecarbon_emissions_gCO2e': 5.9383013722092,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'codecarbon_enabled': True,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'codecarbon_mode': 'offline',
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'estimated_bp_update_gflops': nan,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'estimated_fwd_gflops': 0.028328,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'peak_gpu_mem_used_mib': 1120.0,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'test_accuracy': 62.339999999999996,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'test_loss': nan,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'total_gpu_energy_joules': 11615.638155071158,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'total_gpu_energy_wh': 3.2265661541864326,
+2025-05-07 23:52:59,934 - src.utils.logging_utils - INFO -  'total_run_duration_sec': 183.86874675750732,
+2025-05-07 23:52:59,935 - src.utils.logging_utils - INFO -  'training_duration_sec': 178.31813716888428}
+2025-05-07 23:52:59,935 - src.utils.logging_utils - INFO - 
+--- Experiment Finished Successfully ---
+Deactivating virtual environment...
+#####################################################################
+Job finished with exit code 0 at Wed May  7 23:53:02 CEST 2025
+#####################################################################

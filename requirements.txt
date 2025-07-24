@@ -1,0 +1,19 @@
+# File: requirements.txt (Updated)
+# Core ML/DL Framework
+torch==2.4.0       # Latest stable version (check PyTorch website if needed)
+torchvision==0.19.0 # Version compatible with torch 2.4.0
+
+# Monitoring & Profiling
+pynvml             # Allow latest compatible
+
+# Experiment Tracking & Hyperparameter Optimization
+wandb              # Allow latest compatible
+optuna             # Allow latest compatible
+
+# Configuration & Utilities
+PyYAML>=6.0        # Keep requirement, allow updates
+numpy>=1.21.0      # Keep requirement, allow updates
+scikit-learn       # Allow latest compatible
+tqdm               # Allow latest compatible
+
+codecarbon         # Add CodeCarbon library

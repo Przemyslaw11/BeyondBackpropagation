@@ -1,0 +1,1224 @@
+#####################################################################
+Job ID: 1401757
+Job Name: BP_MF_C100_MLP_s5
+Running on host: t0010
+Executing command in: /net/tscratch/people/plgspyra/BeyondBackpropagation
+Using config file: configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml
+Allocated GPU: 0
+#####################################################################
+Derived Experiment Name: cifar100_mlp_3x2000_bp
+Loading modules...
+Modules loaded:
+Activating virtual environment...
+Checking PyTorch CUDA...
+PyTorch version: 2.4.0+cu121
+CUDA available: True
+CUDA version: 12.1
+cuDNN version: 90100
+Running the experiment script...
+Loading and merging configuration from: configs/bp_baselines/cifar100_mlp_3x2000_bp.yaml
+Configuration loaded and merged successfully:
+{'algorithm': {'name': 'BP'},
+ 'algorithm_params': {'mf_early_stopping_enabled': False,
+                      'mf_early_stopping_min_delta': 0.0001,
+                      'mf_early_stopping_patience': 10},
+ 'carbon_tracker': {'country_iso_code': 'POL',
+                    'enabled': True,
+                    'mode': 'offline',
+                    'output_dir': 'results/carbon'},
+ 'checkpointing': {'checkpoint_dir': 'checkpoints/bp_cifar100_mlp_3x2000',
+                   'save_best_metric': 'bp_val_accuracy'},
+ 'data': {'download': True,
+          'image_size': 32,
+          'input_channels': 3,
+          'name': 'CIFAR100',
+          'num_classes': 100,
+          'root': './data',
+          'val_split': 0.1},
+ 'data_loader': {'batch_size': 128, 'num_workers': 4, 'pin_memory': True},
+ 'experiment_name': 'bp_cifar100_mlp_3x2000',
+ 'general': {'device': 'auto', 'seed': 42},
+ 'logging': {'level': 'INFO',
+             'wandb': {'entity': 'przspyra11',
+                       'project': 'BeyondBackpropagation',
+                       'use_wandb': True}},
+ 'model': {'name': 'MF_MLP',
+           'params': {'activation': 'ReLU',
+                      'bias': True,
+                      'hidden_dims': [2000, 2000, 2000]}},
+ 'monitoring': {'enabled': True,
+                'energy_enabled': True,
+                'energy_interval_sec': 0.2},
+ 'optimizer': {'lr': 0.00010362161015212055,
+               'type': 'AdamW',
+               'weight_decay': 9.105881789069153e-06},
+ 'profiling': {'enabled': True, 'verbose': False},
+ 'training': {'criterion': 'CrossEntropyLoss',
+              'early_stopping_enabled': True,
+              'early_stopping_metric': 'bp_val_loss',
+              'early_stopping_min_delta': 0.0,
+              'early_stopping_mode': 'min',
+              'early_stopping_patience': 5,
+              'epochs': 100,
+              'log_interval': 100},
+ 'tuning': {'direction': 'maximize',
+            'enabled': True,
+            'lr_range': [1e-05, 0.01],
+            'metric': 'val_accuracy',
+            'n_trials': 10,
+            'num_epochs': 15,
+            'pruner': 'Median',
+            'sampler': 'TPE',
+            'wd_range': [1e-06, 0.001]}}
+2025-05-08 04:15:09,931 - root - INFO - Logging to file: results/bp_cifar100_mlp_3x2000/bp_cifar100_mlp_3x2000_run.log
+2025-05-08 04:15:09,932 - root - INFO - Root logger setup complete. Level: INFO
+2025-05-08 04:15:09,934 - src.utils.logging_utils - INFO - 
+--- Starting Experiment ---
+2025-05-08 04:15:09,935 - src.utils.logging_utils - INFO - Found EXPERIMENT_SEED environment variable: 46. Overriding config seed (42).
+2025-05-08 04:15:10,002 - src.utils.helpers - INFO - Set random seed to 46 (including CUDA)
+2025-05-08 04:15:10,003 - src.utils.logging_utils - INFO - Using random seed: 46
+2025-05-08 04:15:10,003 - src.utils.logging_utils - INFO - Using device: cuda (Preference: 'auto')
+2025-05-08 04:15:11,371 - src.utils.logging_utils - INFO - Weights & Biases run initialized: https://wandb.ai/przspyra11/BeyondBackpropagation/runs/p3f97qsh
+2025-05-08 04:15:11,377 - src.utils.monitoring - INFO - NVML initialized successfully.
+2025-05-08 04:15:11,379 - src.utils.monitoring - INFO - NVIDIA Driver Version: 570.86.15
+2025-05-08 04:15:11,379 - src.utils.monitoring - INFO - NVML version query (nvmlSystemGetNvmlVersion) not available in this pynvml library version.
+2025-05-08 04:15:11,386 - src.utils.logging_utils - INFO - NVML active for GPU 0.
+2025-05-08 04:15:11,386 - src.utils.logging_utils - INFO - Initial GPU Mem: 336.62 MiB Used / 40960.00 MiB Total
+2025-05-08 04:15:11,386 - src.utils.logging_utils - INFO - GPU Energy monitor initialized (Interval: 0.2s).
+2025-05-08 04:15:11,387 - src.utils.codecarbon_utils - INFO - Initializing CodeCarbon OfflineEmissionsTracker. Outputting to results/carbon/bp_cifar100_mlp_3x2000_carbon.csv
+2025-05-08 04:15:12,176 - src.utils.codecarbon_utils - INFO - CodeCarbon tracker started.
+2025-05-08 04:15:12,177 - src.data_utils.datasets - INFO - Loading dataset: CIFAR100 from ./data
+Files already downloaded and verified
+Files already downloaded and verified
+2025-05-08 04:15:13,560 - src.data_utils.datasets - INFO - Splitting training data randomly: 45000 train / 5000 validation samples.
+2025-05-08 04:15:13,577 - src.data_utils.datasets - INFO - Applied training transforms to train subset and test transforms to validation subset.
+2025-05-08 04:15:13,578 - src.data_utils.datasets - INFO - DataLoaders created: Train (351 batches, 45000 samples), Validation (20 batches, 5000 samples), Test (40 batches, 10000 samples)
+2025-05-08 04:15:13,578 - src.utils.logging_utils - INFO - Dataloaders created.
+2025-05-08 04:15:13,578 - src.utils.logging_utils - INFO - Getting architecture: mf_mlp (Algo: BP)
+2025-05-08 04:15:13,723 - src.architectures.mf_mlp - INFO - Initialized MF_MLP with 3 hidden layers.
+2025-05-08 04:15:13,725 - src.architectures.mf_mlp - INFO - Feedforward Layer dimensions (W): 3072 -> 2000 -> 2000 -> 2000 -> 100
+2025-05-08 04:15:13,726 - src.architectures.mf_mlp - INFO - Created 4 projection matrices (M_0 to M_3).
+2025-05-08 04:15:13,726 - src.utils.logging_utils - INFO - Using standard forward pass of MF_MLP for BP baseline.
+2025-05-08 04:15:13,726 - src.utils.logging_utils - INFO - Model 'MF_MLP' (Algo: BP) created.
+2025-05-08 04:15:13,898 - src.utils.logging_utils - INFO - Model 'MF_MLP' on cuda.
+2025-05-08 04:15:13,899 - src.utils.logging_utils - INFO - Model trainable parameters: 15,257,300
+2025-05-08 04:15:13,899 - src.utils.logging_utils - INFO - Model total parameters: 15,257,300
+2025-05-08 04:15:14,255 - src.utils.logging_utils - INFO - Profiling FLOPs...
+2025-05-08 04:15:14,324 - src.utils.profiling - INFO - Estimated Total Forward Pass FLOPs (via torch.profiler): 0.0287 GFLOPs
+2025-05-08 04:15:14,324 - src.utils.logging_utils - INFO - Estimated Forward Pass GFLOPs: 0.0287 G
+2025-05-08 04:15:14,324 - src.utils.logging_utils - INFO - Estimated BP Update Cycle GFLOPs (Fwd+Bwd ~3x Fwd): 0.0861 G
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 0) ---
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO -   initial_gpu_mem_used_mib: 336.6250
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO -   codecarbon_enabled: True
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO -   codecarbon_mode: offline
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO -   codecarbon_country_iso: POL
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO -   model_parameters_trainable: 15257300
+2025-05-08 04:15:14,325 - src.utils.logging_utils - INFO -   model_parameters_total: 15257300
+2025-05-08 04:15:14,326 - src.utils.logging_utils - INFO -   estimated_fwd_gflops: 0.0287
+2025-05-08 04:15:14,326 - src.utils.logging_utils - INFO -   estimated_bp_update_gflops: 0.0861
+2025-05-08 04:15:14,326 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:14,326 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:14,326 - src.utils.logging_utils - INFO - Starting training phase...
+2025-05-08 04:15:14,327 - src.utils.monitoring - INFO - Started energy monitoring for GPU 0 (interval: 0.2s).
+2025-05-08 04:15:14,327 - src.baselines.bp - INFO - Starting standard Backpropagation training.
+2025-05-08 04:15:14,328 - src.baselines.bp - INFO - BP Training using optimizer config: {'type': 'AdamW', 'lr': 0.00010362161015212055, 'weight_decay': 9.105881789069153e-06}
+2025-05-08 04:15:14,328 - src.baselines.bp - INFO - Early stopping enabled: Metric='bp_val_loss', Patience=5, Mode='min', MinDelta=0.0
+2025-05-08 04:15:14,329 - src.baselines.bp - INFO - Using optimizer: AdamW with params: {'lr': 0.00010362161015212055, 'weight_decay': 9.105881789069153e-06}
+2025-05-08 04:15:15,669 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:15,670 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 100) ---
+2025-05-08 04:15:15,670 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 4.0320
+2025-05-08 04:15:15,670 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 13.2812
+2025-05-08 04:15:15,670 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:15,670 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:15,671 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:16,914 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:16,916 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 200) ---
+2025-05-08 04:15:16,916 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.7580
+2025-05-08 04:15:16,916 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 13.2812
+2025-05-08 04:15:16,916 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:16,916 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:16,916 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:18,150 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:18,151 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 300) ---
+2025-05-08 04:15:18,151 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.7255
+2025-05-08 04:15:18,151 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 11.7188
+2025-05-08 04:15:18,152 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:18,152 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:18,152 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:18,805 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:18,806 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 351) ---
+2025-05-08 04:15:18,806 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.7571
+2025-05-08 04:15:18,806 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 10.1562
+2025-05-08 04:15:18,806 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:18,806 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:18,807 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:19,111 - src.baselines.bp - INFO - Epoch 1: New best checkpoint metric (bp_val_accuracy): 15.9000
+2025-05-08 04:15:20,307 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 1, Metric: 15.9000)
+2025-05-08 04:15:20,308 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:20,308 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 351) ---
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.8836
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 11.4517
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.5787
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 15.9000
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.9792
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 1
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:20,309 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:20,310 - src.baselines.bp - INFO - BP Epoch 1/100 | LR: 0.000104 | Train Loss: 3.8836, Acc: 11.45% | Val Loss: 3.5787, Acc: 15.90% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 451) ---
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.4848
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 17.9688
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:21,584 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 551) ---
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.6158
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 12.5000
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:22,833 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 651) ---
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.4045
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 15.6250
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:24,080 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:24,725 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:24,726 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 702) ---
+2025-05-08 04:15:24,726 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.3677
+2025-05-08 04:15:24,726 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 22.6562
+2025-05-08 04:15:24,726 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:24,726 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:24,726 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:24,962 - src.baselines.bp - INFO - Epoch 2: New best checkpoint metric (bp_val_accuracy): 19.0000
+2025-05-08 04:15:26,074 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 2, Metric: 19.0000)
+2025-05-08 04:15:26,075 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 702) ---
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.5539
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 16.5954
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.4052
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 19.0000
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.7654
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 2
+2025-05-08 04:15:26,076 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:26,077 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:26,077 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:26,077 - src.baselines.bp - INFO - BP Epoch 2/100 | LR: 0.000104 | Train Loss: 3.5539, Acc: 16.60% | Val Loss: 3.4052, Acc: 19.00% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:27,348 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:27,348 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 802) ---
+2025-05-08 04:15:27,348 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.4442
+2025-05-08 04:15:27,348 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 16.4062
+2025-05-08 04:15:27,348 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:27,349 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:27,349 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:28,598 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:28,599 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 902) ---
+2025-05-08 04:15:28,599 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2759
+2025-05-08 04:15:28,600 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 17.9688
+2025-05-08 04:15:28,600 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:28,600 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:28,600 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:29,854 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:29,856 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1002) ---
+2025-05-08 04:15:29,856 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2633
+2025-05-08 04:15:29,856 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 21.0938
+2025-05-08 04:15:29,856 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:29,856 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:29,856 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:30,486 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:30,488 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1053) ---
+2025-05-08 04:15:30,488 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.3439
+2025-05-08 04:15:30,488 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 20.3125
+2025-05-08 04:15:30,488 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:30,488 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:30,488 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:30,723 - src.baselines.bp - INFO - Epoch 3: New best checkpoint metric (bp_val_accuracy): 21.3400
+2025-05-08 04:15:31,763 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 3, Metric: 21.3400)
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1053) ---
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.4055
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 19.0594
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.3148
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 21.3400
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.6867
+2025-05-08 04:15:31,764 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:31,765 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 3
+2025-05-08 04:15:31,765 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:31,765 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:31,765 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:31,765 - src.baselines.bp - INFO - BP Epoch 3/100 | LR: 0.000104 | Train Loss: 3.4055, Acc: 19.06% | Val Loss: 3.3148, Acc: 21.34% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:33,037 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:33,038 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1153) ---
+2025-05-08 04:15:33,038 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2080
+2025-05-08 04:15:33,038 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 22.6562
+2025-05-08 04:15:33,038 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:33,038 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:33,038 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:34,281 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:34,282 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1253) ---
+2025-05-08 04:15:34,282 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2858
+2025-05-08 04:15:34,282 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 20.3125
+2025-05-08 04:15:34,282 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:34,282 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:34,282 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:35,530 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:35,531 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1353) ---
+2025-05-08 04:15:35,531 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.5432
+2025-05-08 04:15:35,531 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 14.8438
+2025-05-08 04:15:35,531 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:35,531 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:35,531 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:36,174 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:36,194 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1404) ---
+2025-05-08 04:15:36,194 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.1984
+2025-05-08 04:15:36,194 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 20.3125
+2025-05-08 04:15:36,194 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:36,195 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:36,195 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:36,435 - src.baselines.bp - INFO - Epoch 4: New best checkpoint metric (bp_val_accuracy): 22.1800
+2025-05-08 04:15:36,805 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 4, Metric: 22.1800)
+2025-05-08 04:15:36,806 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:36,806 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1404) ---
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.3075
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 20.8066
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.2456
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 22.1800
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.0412
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 4
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:36,807 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:36,808 - src.baselines.bp - INFO - BP Epoch 4/100 | LR: 0.000104 | Train Loss: 3.3075, Acc: 20.81% | Val Loss: 3.2456, Acc: 22.18% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:38,089 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:38,091 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1504) ---
+2025-05-08 04:15:38,091 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.1882
+2025-05-08 04:15:38,091 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 22.6562
+2025-05-08 04:15:38,091 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:38,091 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:38,091 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:39,341 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:39,342 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1604) ---
+2025-05-08 04:15:39,342 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8362
+2025-05-08 04:15:39,342 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.9062
+2025-05-08 04:15:39,343 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:39,343 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:39,343 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:40,589 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:40,590 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1704) ---
+2025-05-08 04:15:40,590 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.0892
+2025-05-08 04:15:40,590 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 25.7812
+2025-05-08 04:15:40,590 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:40,590 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:40,590 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1755) ---
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2348
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 22.6562
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:41,224 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:41,466 - src.baselines.bp - INFO - Epoch 5: New best checkpoint metric (bp_val_accuracy): 24.0600
+2025-05-08 04:15:41,871 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 5, Metric: 24.0600)
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1755) ---
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.2161
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 22.2400
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.1734
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 24.0600
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.0649
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:41,873 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 5
+2025-05-08 04:15:41,874 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:41,874 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:41,874 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:41,874 - src.baselines.bp - INFO - BP Epoch 5/100 | LR: 0.000104 | Train Loss: 3.2161, Acc: 22.24% | Val Loss: 3.1734, Acc: 24.06% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:43,147 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:43,148 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1855) ---
+2025-05-08 04:15:43,148 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9817
+2025-05-08 04:15:43,148 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 26.5625
+2025-05-08 04:15:43,149 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:43,149 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:43,149 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:44,394 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:44,396 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 1955) ---
+2025-05-08 04:15:44,397 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.0173
+2025-05-08 04:15:44,398 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 24.2188
+2025-05-08 04:15:44,399 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:44,401 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:44,402 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2055) ---
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2916
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 17.9688
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:45,638 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:46,288 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:46,289 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2106) ---
+2025-05-08 04:15:46,289 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.1931
+2025-05-08 04:15:46,289 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 17.1875
+2025-05-08 04:15:46,289 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:46,289 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:46,289 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:46,531 - src.baselines.bp - INFO - Epoch 6: New best checkpoint metric (bp_val_accuracy): 24.4000
+2025-05-08 04:15:46,873 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 6, Metric: 24.4000)
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2106) ---
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.1390
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 23.4531
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.1309
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 24.4000
+2025-05-08 04:15:46,875 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.0003
+2025-05-08 04:15:46,876 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:46,876 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 6
+2025-05-08 04:15:46,876 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:46,876 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:46,876 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:46,876 - src.baselines.bp - INFO - BP Epoch 6/100 | LR: 0.000104 | Train Loss: 3.1390, Acc: 23.45% | Val Loss: 3.1309, Acc: 24.40% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:48,159 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:48,161 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2206) ---
+2025-05-08 04:15:48,161 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.1987
+2025-05-08 04:15:48,161 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 22.6562
+2025-05-08 04:15:48,161 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:48,161 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:48,161 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:49,413 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:49,414 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2306) ---
+2025-05-08 04:15:49,414 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.0945
+2025-05-08 04:15:49,414 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 21.0938
+2025-05-08 04:15:49,414 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:49,414 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:49,414 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:50,665 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:50,665 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2406) ---
+2025-05-08 04:15:50,666 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9852
+2025-05-08 04:15:50,666 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 26.5625
+2025-05-08 04:15:50,666 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:50,666 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:50,666 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:51,311 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:51,312 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2457) ---
+2025-05-08 04:15:51,312 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.1271
+2025-05-08 04:15:51,312 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 23.4375
+2025-05-08 04:15:51,313 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:51,313 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:51,313 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:51,814 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:51,816 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2457) ---
+2025-05-08 04:15:51,817 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.0727
+2025-05-08 04:15:51,819 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 24.9021
+2025-05-08 04:15:51,820 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.1045
+2025-05-08 04:15:51,821 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 24.1800
+2025-05-08 04:15:51,822 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9376
+2025-05-08 04:15:51,823 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:51,824 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 7
+2025-05-08 04:15:51,824 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:51,824 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:51,824 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:51,824 - src.baselines.bp - INFO - BP Epoch 7/100 | LR: 0.000104 | Train Loss: 3.0727, Acc: 24.90% | Val Loss: 3.1045, Acc: 24.18% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:15:53,107 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:53,108 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2557) ---
+2025-05-08 04:15:53,108 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9788
+2025-05-08 04:15:53,108 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.1250
+2025-05-08 04:15:53,108 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:53,108 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:53,109 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:54,360 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:54,362 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2657) ---
+2025-05-08 04:15:54,364 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9544
+2025-05-08 04:15:54,365 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 25.7812
+2025-05-08 04:15:54,366 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:54,367 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:54,369 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:55,613 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:55,662 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2757) ---
+2025-05-08 04:15:55,664 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.0728
+2025-05-08 04:15:55,665 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.1250
+2025-05-08 04:15:55,666 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:55,668 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:55,669 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:56,269 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:56,270 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2808) ---
+2025-05-08 04:15:56,271 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.2573
+2025-05-08 04:15:56,271 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 16.4062
+2025-05-08 04:15:56,271 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:56,271 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:56,271 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:56,513 - src.baselines.bp - INFO - Epoch 8: New best checkpoint metric (bp_val_accuracy): 25.6800
+2025-05-08 04:15:56,849 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 8, Metric: 25.6800)
+2025-05-08 04:15:56,850 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:56,850 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2808) ---
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 3.0158
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 25.9638
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.0596
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 25.6800
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.0258
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 8
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:56,851 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:56,852 - src.baselines.bp - INFO - BP Epoch 8/100 | LR: 0.000104 | Train Loss: 3.0158, Acc: 25.96% | Val Loss: 3.0596, Acc: 25.68% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:15:58,127 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:58,128 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 2908) ---
+2025-05-08 04:15:58,128 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.1422
+2025-05-08 04:15:58,128 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 25.0000
+2025-05-08 04:15:58,128 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:58,129 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:58,129 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:59,383 - src.utils.logging_utils - INFO - 
+2025-05-08 04:15:59,384 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3008) ---
+2025-05-08 04:15:59,384 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9886
+2025-05-08 04:15:59,385 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 26.5625
+2025-05-08 04:15:59,385 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:15:59,385 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:15:59,385 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:00,636 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:00,636 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3108) ---
+2025-05-08 04:16:00,636 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9065
+2025-05-08 04:16:00,637 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.8125
+2025-05-08 04:16:00,637 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:00,637 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:00,637 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:01,285 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:01,286 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3159) ---
+2025-05-08 04:16:01,286 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.0298
+2025-05-08 04:16:01,286 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.9062
+2025-05-08 04:16:01,286 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:01,287 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:01,287 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:01,776 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3159) ---
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.9513
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 26.9008
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.0406
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 25.5800
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9241
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 9
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:01,778 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:01,779 - src.baselines.bp - INFO - BP Epoch 9/100 | LR: 0.000104 | Train Loss: 2.9513, Acc: 26.90% | Val Loss: 3.0406, Acc: 25.58% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:03,056 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:03,057 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3259) ---
+2025-05-08 04:16:03,057 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7862
+2025-05-08 04:16:03,057 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.0312
+2025-05-08 04:16:03,058 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:03,058 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:03,058 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:04,308 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:04,309 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3359) ---
+2025-05-08 04:16:04,309 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 3.0430
+2025-05-08 04:16:04,309 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 22.6562
+2025-05-08 04:16:04,309 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:04,309 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:04,309 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3459) ---
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8155
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.0312
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:05,556 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:06,214 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:06,215 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3510) ---
+2025-05-08 04:16:06,215 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9035
+2025-05-08 04:16:06,215 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 27.3438
+2025-05-08 04:16:06,215 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:06,215 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:06,216 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:06,458 - src.baselines.bp - INFO - Epoch 10: New best checkpoint metric (bp_val_accuracy): 26.3200
+2025-05-08 04:16:06,791 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 10, Metric: 26.3200)
+2025-05-08 04:16:06,792 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3510) ---
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.8998
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 27.8223
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.0276
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 26.3200
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.0136
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 10
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:06,793 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:06,794 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:06,794 - src.baselines.bp - INFO - BP Epoch 10/100 | LR: 0.000104 | Train Loss: 2.8998, Acc: 27.82% | Val Loss: 3.0276, Acc: 26.32% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:16:08,072 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:08,073 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3610) ---
+2025-05-08 04:16:08,073 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8781
+2025-05-08 04:16:08,073 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.1250
+2025-05-08 04:16:08,073 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:08,073 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:08,073 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:09,323 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:09,324 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3710) ---
+2025-05-08 04:16:09,324 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8963
+2025-05-08 04:16:09,324 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.9062
+2025-05-08 04:16:09,324 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:09,324 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:09,324 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:10,572 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:10,572 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3810) ---
+2025-05-08 04:16:10,572 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8028
+2025-05-08 04:16:10,572 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.8125
+2025-05-08 04:16:10,572 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:10,573 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:10,573 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:11,221 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:11,222 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3861) ---
+2025-05-08 04:16:11,222 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8094
+2025-05-08 04:16:11,222 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 31.2500
+2025-05-08 04:16:11,222 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:11,222 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:11,222 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:11,461 - src.baselines.bp - INFO - Epoch 11: New best checkpoint metric (bp_val_accuracy): 27.1800
+2025-05-08 04:16:11,802 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 11, Metric: 27.1800)
+2025-05-08 04:16:11,803 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:11,803 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3861) ---
+2025-05-08 04:16:11,803 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.8439
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 29.1912
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 3.0123
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 27.1800
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 5.0092
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 11
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:11,804 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:11,805 - src.baselines.bp - INFO - BP Epoch 11/100 | LR: 0.000104 | Train Loss: 2.8439, Acc: 29.19% | Val Loss: 3.0123, Acc: 27.18% | Peak Mem: 1192.0 MiB | Duration: 00:00:05
+2025-05-08 04:16:13,076 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:13,077 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 3961) ---
+2025-05-08 04:16:13,077 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8884
+2025-05-08 04:16:13,077 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 31.2500
+2025-05-08 04:16:13,078 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:13,078 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:13,078 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:14,324 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:14,326 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4061) ---
+2025-05-08 04:16:14,326 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.9426
+2025-05-08 04:16:14,326 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 27.3438
+2025-05-08 04:16:14,326 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:14,326 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:14,326 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:15,568 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:15,569 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4161) ---
+2025-05-08 04:16:15,569 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7140
+2025-05-08 04:16:15,569 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 33.5938
+2025-05-08 04:16:15,569 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:15,569 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:15,569 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:16,214 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:16,215 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4212) ---
+2025-05-08 04:16:16,215 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7359
+2025-05-08 04:16:16,215 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 29.6875
+2025-05-08 04:16:16,215 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:16,215 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:16,215 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:16,455 - src.baselines.bp - INFO - Epoch 12: New best checkpoint metric (bp_val_accuracy): 28.1200
+2025-05-08 04:16:16,790 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 12, Metric: 28.1200)
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4212) ---
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.7853
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 30.0770
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9779
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 28.1200
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9877
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 12
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:16,793 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:16,794 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:16,794 - src.baselines.bp - INFO - BP Epoch 12/100 | LR: 0.000104 | Train Loss: 2.7853, Acc: 30.08% | Val Loss: 2.9779, Acc: 28.12% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:18,079 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:18,080 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4312) ---
+2025-05-08 04:16:18,081 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7938
+2025-05-08 04:16:18,081 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 26.5625
+2025-05-08 04:16:18,081 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:18,082 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:18,082 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:19,330 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:19,331 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4412) ---
+2025-05-08 04:16:19,331 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7845
+2025-05-08 04:16:19,331 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.8125
+2025-05-08 04:16:19,332 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:19,332 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:19,332 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:20,581 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:20,582 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4512) ---
+2025-05-08 04:16:20,582 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8718
+2025-05-08 04:16:20,582 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 28.1250
+2025-05-08 04:16:20,582 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:20,582 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:20,582 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:21,233 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:21,234 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4563) ---
+2025-05-08 04:16:21,234 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.5814
+2025-05-08 04:16:21,234 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.8125
+2025-05-08 04:16:21,234 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:21,234 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:21,234 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:21,714 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:21,714 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4563) ---
+2025-05-08 04:16:21,714 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.7379
+2025-05-08 04:16:21,714 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 31.0742
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9870
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 27.7000
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9198
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 13
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:21,715 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:21,715 - src.baselines.bp - INFO - BP Epoch 13/100 | LR: 0.000104 | Train Loss: 2.7379, Acc: 31.07% | Val Loss: 2.9870, Acc: 27.70% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:22,992 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:22,993 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4663) ---
+2025-05-08 04:16:22,993 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7560
+2025-05-08 04:16:22,993 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 31.2500
+2025-05-08 04:16:22,993 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:22,993 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:22,993 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:24,238 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:24,240 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4763) ---
+2025-05-08 04:16:24,240 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7696
+2025-05-08 04:16:24,240 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 27.3438
+2025-05-08 04:16:24,240 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:24,240 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:24,240 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:25,486 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:25,486 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4863) ---
+2025-05-08 04:16:25,486 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7386
+2025-05-08 04:16:25,486 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 29.6875
+2025-05-08 04:16:25,487 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:25,487 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:25,487 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:26,129 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:26,131 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4914) ---
+2025-05-08 04:16:26,131 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8082
+2025-05-08 04:16:26,131 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 31.2500
+2025-05-08 04:16:26,131 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:26,131 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:26,131 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:26,626 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:26,626 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 4914) ---
+2025-05-08 04:16:26,626 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.6758
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 32.4942
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9648
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 28.0200
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9102
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 14
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:26,627 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:26,628 - src.baselines.bp - INFO - BP Epoch 14/100 | LR: 0.000104 | Train Loss: 2.6758, Acc: 32.49% | Val Loss: 2.9648, Acc: 28.02% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:27,901 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:27,902 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5014) ---
+2025-05-08 04:16:27,902 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.7014
+2025-05-08 04:16:27,902 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 32.8125
+2025-05-08 04:16:27,902 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:27,903 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:27,903 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:29,145 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:29,147 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5114) ---
+2025-05-08 04:16:29,147 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8522
+2025-05-08 04:16:29,147 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 31.2500
+2025-05-08 04:16:29,147 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:29,147 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:29,147 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:30,391 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:30,392 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5214) ---
+2025-05-08 04:16:30,392 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8672
+2025-05-08 04:16:30,392 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 23.4375
+2025-05-08 04:16:30,392 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:30,392 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:30,392 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:31,036 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:31,037 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5265) ---
+2025-05-08 04:16:31,037 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.6500
+2025-05-08 04:16:31,037 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 30.4688
+2025-05-08 04:16:31,037 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:31,037 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:31,037 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:31,278 - src.baselines.bp - INFO - Epoch 15: New best checkpoint metric (bp_val_accuracy): 28.9400
+2025-05-08 04:16:31,621 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 15, Metric: 28.9400)
+2025-05-08 04:16:31,623 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:31,623 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5265) ---
+2025-05-08 04:16:31,623 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.6282
+2025-05-08 04:16:31,623 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 33.2243
+2025-05-08 04:16:31,623 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9423
+2025-05-08 04:16:31,623 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 28.9400
+2025-05-08 04:16:31,624 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9951
+2025-05-08 04:16:31,624 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:31,624 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 15
+2025-05-08 04:16:31,624 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:31,624 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:31,624 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:31,624 - src.baselines.bp - INFO - BP Epoch 15/100 | LR: 0.000104 | Train Loss: 2.6282, Acc: 33.22% | Val Loss: 2.9423, Acc: 28.94% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:32,902 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:32,904 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5365) ---
+2025-05-08 04:16:32,904 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.6289
+2025-05-08 04:16:32,904 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 38.2812
+2025-05-08 04:16:32,904 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:32,904 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:32,904 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:34,147 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:34,148 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5465) ---
+2025-05-08 04:16:34,148 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.5896
+2025-05-08 04:16:34,148 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 33.5938
+2025-05-08 04:16:34,148 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:34,148 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:34,148 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:35,398 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:35,399 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5565) ---
+2025-05-08 04:16:35,399 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8648
+2025-05-08 04:16:35,399 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 30.4688
+2025-05-08 04:16:35,399 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:35,399 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:35,400 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:36,039 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:36,040 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5616) ---
+2025-05-08 04:16:36,040 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.4336
+2025-05-08 04:16:36,040 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 38.2812
+2025-05-08 04:16:36,040 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:36,040 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:36,040 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:36,506 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5616) ---
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.5757
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 34.1613
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9390
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 28.9200
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.8821
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:36,508 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 16
+2025-05-08 04:16:36,509 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:36,509 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:36,509 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:36,509 - src.baselines.bp - INFO - BP Epoch 16/100 | LR: 0.000104 | Train Loss: 2.5757, Acc: 34.16% | Val Loss: 2.9390, Acc: 28.92% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:37,776 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:37,778 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5716) ---
+2025-05-08 04:16:37,778 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.4486
+2025-05-08 04:16:37,778 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 42.9688
+2025-05-08 04:16:37,778 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:37,778 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:37,778 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:39,020 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:39,022 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5816) ---
+2025-05-08 04:16:39,022 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3579
+2025-05-08 04:16:39,022 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 42.9688
+2025-05-08 04:16:39,022 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:39,023 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:39,023 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:40,265 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:40,266 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5916) ---
+2025-05-08 04:16:40,266 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.5261
+2025-05-08 04:16:40,266 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 33.5938
+2025-05-08 04:16:40,266 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:40,266 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:40,266 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:40,910 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:40,911 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5967) ---
+2025-05-08 04:16:40,911 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.8402
+2025-05-08 04:16:40,912 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 26.5625
+2025-05-08 04:16:40,912 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:40,912 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:40,912 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:41,367 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:41,369 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 5967) ---
+2025-05-08 04:16:41,369 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.5247
+2025-05-08 04:16:41,369 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 35.1028
+2025-05-08 04:16:41,369 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9614
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 28.9200
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.8581
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 17
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:41,370 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:41,371 - src.baselines.bp - INFO - BP Epoch 17/100 | LR: 0.000104 | Train Loss: 2.5247, Acc: 35.10% | Val Loss: 2.9614, Acc: 28.92% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:42,641 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:42,641 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6067) ---
+2025-05-08 04:16:42,641 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.0925
+2025-05-08 04:16:42,641 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 46.8750
+2025-05-08 04:16:42,641 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:42,641 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:42,642 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:43,887 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:43,888 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6167) ---
+2025-05-08 04:16:43,888 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3822
+2025-05-08 04:16:43,888 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 35.1562
+2025-05-08 04:16:43,888 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:43,888 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:43,888 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:45,135 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:45,136 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6267) ---
+2025-05-08 04:16:45,136 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3295
+2025-05-08 04:16:45,137 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 42.9688
+2025-05-08 04:16:45,137 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:45,137 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:45,137 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:45,784 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:45,785 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6318) ---
+2025-05-08 04:16:45,785 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.5404
+2025-05-08 04:16:45,786 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 36.7188
+2025-05-08 04:16:45,786 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:45,786 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:45,786 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:46,024 - src.baselines.bp - INFO - Epoch 18: New best checkpoint metric (bp_val_accuracy): 29.7200
+2025-05-08 04:16:46,323 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 18, Metric: 29.7200)
+2025-05-08 04:16:46,324 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:46,324 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6318) ---
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.4730
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 36.2090
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9531
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 29.7200
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9534
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 18
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:46,325 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:46,326 - src.baselines.bp - INFO - BP Epoch 18/100 | LR: 0.000104 | Train Loss: 2.4730, Acc: 36.21% | Val Loss: 2.9531, Acc: 29.72% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:47,596 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:47,596 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6418) ---
+2025-05-08 04:16:47,596 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.5013
+2025-05-08 04:16:47,596 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 36.7188
+2025-05-08 04:16:47,596 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:47,597 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:47,597 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:48,843 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:48,844 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6518) ---
+2025-05-08 04:16:48,844 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.6400
+2025-05-08 04:16:48,844 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 35.1562
+2025-05-08 04:16:48,844 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:48,844 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:48,844 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:50,084 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:50,085 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6618) ---
+2025-05-08 04:16:50,085 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.4993
+2025-05-08 04:16:50,085 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 43.7500
+2025-05-08 04:16:50,085 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:50,085 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:50,085 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:50,722 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:50,723 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6669) ---
+2025-05-08 04:16:50,723 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.4899
+2025-05-08 04:16:50,723 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 34.3750
+2025-05-08 04:16:50,723 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:50,723 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:50,724 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:51,175 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:51,175 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6669) ---
+2025-05-08 04:16:51,175 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.4235
+2025-05-08 04:16:51,175 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 37.4488
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9416
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 29.5600
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.8490
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 19
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:51,176 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:51,177 - src.baselines.bp - INFO - BP Epoch 19/100 | LR: 0.000104 | Train Loss: 2.4235, Acc: 37.45% | Val Loss: 2.9416, Acc: 29.56% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:52,451 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:52,452 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6769) ---
+2025-05-08 04:16:52,452 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3679
+2025-05-08 04:16:52,452 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 38.2812
+2025-05-08 04:16:52,452 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:52,452 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:52,452 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:53,703 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:53,704 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6869) ---
+2025-05-08 04:16:53,704 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2064
+2025-05-08 04:16:53,704 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 44.5312
+2025-05-08 04:16:53,704 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:53,704 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:53,705 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 6969) ---
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.1677
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 44.5312
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:54,959 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:55,612 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:55,613 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7020) ---
+2025-05-08 04:16:55,614 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.6339
+2025-05-08 04:16:55,615 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 35.9375
+2025-05-08 04:16:55,617 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:55,618 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:55,619 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:56,075 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7020) ---
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.3717
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 38.3035
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9386
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 29.6600
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.8980
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 20
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:16:56,077 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:56,078 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:56,078 - src.baselines.bp - INFO - BP Epoch 20/100 | LR: 0.000104 | Train Loss: 2.3717, Acc: 38.30% | Val Loss: 2.9386, Acc: 29.66% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:16:57,352 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:57,353 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7120) ---
+2025-05-08 04:16:57,353 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3557
+2025-05-08 04:16:57,353 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 39.0625
+2025-05-08 04:16:57,354 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:57,354 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:57,354 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7220) ---
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2056
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 40.6250
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:58,595 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:59,841 - src.utils.logging_utils - INFO - 
+2025-05-08 04:16:59,842 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7320) ---
+2025-05-08 04:16:59,842 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3777
+2025-05-08 04:16:59,842 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 40.6250
+2025-05-08 04:16:59,842 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:16:59,842 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:16:59,842 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:00,488 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:00,489 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7371) ---
+2025-05-08 04:17:00,489 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2139
+2025-05-08 04:17:00,489 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 38.2812
+2025-05-08 04:17:00,489 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:00,489 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:00,489 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:00,728 - src.baselines.bp - INFO - Epoch 21: New best checkpoint metric (bp_val_accuracy): 29.7600
+2025-05-08 04:17:01,036 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 21, Metric: 29.7600)
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7371) ---
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.3174
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 39.4587
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9516
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 29.7600
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9595
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 21
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:17:01,038 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:01,039 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:01,039 - src.baselines.bp - INFO - BP Epoch 21/100 | LR: 0.000104 | Train Loss: 2.3174, Acc: 39.46% | Val Loss: 2.9516, Acc: 29.76% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:17:02,312 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:02,328 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7471) ---
+2025-05-08 04:17:02,329 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3646
+2025-05-08 04:17:02,329 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 39.8438
+2025-05-08 04:17:02,329 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:02,329 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:02,329 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:03,557 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:03,559 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7571) ---
+2025-05-08 04:17:03,559 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2083
+2025-05-08 04:17:03,559 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 42.9688
+2025-05-08 04:17:03,559 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:03,559 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:03,559 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:04,800 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:04,801 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7671) ---
+2025-05-08 04:17:04,801 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.1651
+2025-05-08 04:17:04,801 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 41.4062
+2025-05-08 04:17:04,801 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:04,801 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:04,802 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:05,432 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:05,433 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7722) ---
+2025-05-08 04:17:05,434 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.4508
+2025-05-08 04:17:05,434 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 37.5000
+2025-05-08 04:17:05,434 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:05,434 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:05,434 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:05,677 - src.baselines.bp - INFO - Epoch 22: New best checkpoint metric (bp_val_accuracy): 30.7000
+2025-05-08 04:17:05,987 - src.utils.helpers - INFO - Saved best model state_dict to checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth (Epoch 22, Metric: 30.7000)
+2025-05-08 04:17:05,987 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:05,987 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7722) ---
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.2667
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 40.5449
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9559
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 30.7000
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.9483
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 22
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:05,988 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:05,989 - src.baselines.bp - INFO - BP Epoch 22/100 | LR: 0.000104 | Train Loss: 2.2667, Acc: 40.54% | Val Loss: 2.9559, Acc: 30.70% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:17:07,245 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:07,252 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7822) ---
+2025-05-08 04:17:07,252 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2336
+2025-05-08 04:17:07,252 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 41.4062
+2025-05-08 04:17:07,252 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:07,252 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:07,252 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:08,485 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:08,486 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 7922) ---
+2025-05-08 04:17:08,486 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.0553
+2025-05-08 04:17:08,486 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 45.3125
+2025-05-08 04:17:08,486 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:08,486 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:08,487 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:09,727 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:09,728 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8022) ---
+2025-05-08 04:17:09,728 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2676
+2025-05-08 04:17:09,729 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 34.3750
+2025-05-08 04:17:09,729 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:09,729 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:09,729 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:10,362 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:10,363 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8073) ---
+2025-05-08 04:17:10,363 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.5480
+2025-05-08 04:17:10,363 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 37.5000
+2025-05-08 04:17:10,363 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:10,363 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:10,363 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:10,861 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:10,862 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8073) ---
+2025-05-08 04:17:10,862 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.2157
+2025-05-08 04:17:10,862 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 41.6756
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9702
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 30.3600
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.8718
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 23
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:10,863 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:10,863 - src.baselines.bp - INFO - BP Epoch 23/100 | LR: 0.000104 | Train Loss: 2.2157, Acc: 41.68% | Val Loss: 2.9702, Acc: 30.36% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:17:12,142 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:12,144 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8173) ---
+2025-05-08 04:17:12,144 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.1932
+2025-05-08 04:17:12,144 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 39.8438
+2025-05-08 04:17:12,144 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:12,145 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:12,145 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:13,392 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:13,394 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8273) ---
+2025-05-08 04:17:13,394 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.3758
+2025-05-08 04:17:13,394 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 40.6250
+2025-05-08 04:17:13,394 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:13,395 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:13,395 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:14,648 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:14,650 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8373) ---
+2025-05-08 04:17:14,650 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.1321
+2025-05-08 04:17:14,650 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 39.8438
+2025-05-08 04:17:14,651 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:14,651 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:14,651 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:15,301 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:15,302 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8424) ---
+2025-05-08 04:17:15,302 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.0167
+2025-05-08 04:17:15,302 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 42.9688
+2025-05-08 04:17:15,302 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:15,302 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:15,302 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:15,732 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8424) ---
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Epoch: 2.1655
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Epoch: 43.2581
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Loss_Epoch: 2.9843
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Val_Acc_Epoch: 30.3000
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch_Duration_Sec: 4.8685
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Learning_Rate: 0.000104
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Epoch: 24
+2025-05-08 04:17:15,733 - src.utils.logging_utils - INFO -   BP_Baseline/Peak_GPU_Mem_Epoch_MiB: 1192.0000
+2025-05-08 04:17:15,734 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:15,734 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:15,734 - src.baselines.bp - INFO - BP Epoch 24/100 | LR: 0.000104 | Train Loss: 2.1655, Acc: 43.26% | Val Loss: 2.9843, Acc: 30.30% | Peak Mem: 1192.0 MiB | Duration: 00:00:04
+2025-05-08 04:17:17,007 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:17,009 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8524) ---
+2025-05-08 04:17:17,009 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.0369
+2025-05-08 04:17:17,009 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 51.5625
+2025-05-08 04:17:17,009 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:17,009 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:17,009 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:18,258 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:18,259 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8624) ---
+2025-05-08 04:17:18,259 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 1.9133
+2025-05-08 04:17:18,259 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 46.8750
+2025-05-08 04:17:18,259 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:18,260 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:18,260 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:19,510 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:19,512 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8724) ---
+2025-05-08 04:17:19,512 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.1484
+2025-05-08 04:17:19,512 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 38.2812
+2025-05-08 04:17:19,512 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:19,512 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:19,512 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:20,157 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:20,158 - src.utils.logging_utils - INFO - --- Metrics Log (Step: 8775) ---
+2025-05-08 04:17:20,158 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Loss_Batch: 2.2380
+2025-05-08 04:17:20,158 - src.utils.logging_utils - INFO -   BP_Baseline/Train_Acc_Batch: 46.8750
+2025-05-08 04:17:20,158 - src.utils.logging_utils - INFO -   BP_Baseline/GPU_Mem_Used_MiB_Batch: 1192.0000
+2025-05-08 04:17:20,158 - src.utils.logging_utils - INFO - --- End Metrics Log ---
+2025-05-08 04:17:20,158 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:20,598 - src.baselines.bp - INFO - --- Early Stopping Triggered ---
+2025-05-08 04:17:20,599 - src.baselines.bp - INFO - Metric 'bp_val_loss' did not improve for 5 epochs.
+2025-05-08 04:17:20,599 - src.baselines.bp - INFO - Stopping training at epoch 25.
+2025-05-08 04:17:20,599 - src.baselines.bp - INFO - Finished standard Backpropagation training. Total time: 00:02:06
+2025-05-08 04:17:20,600 - src.baselines.bp - INFO - Loading best model state from: checkpoints/bp_cifar100_mlp_3x2000/bp_bp_cifar100_mlp_3x2000_best.pth
+2025-05-08 04:17:20,689 - src.baselines.bp - INFO - Successfully loaded best model weights for final evaluation.
+2025-05-08 04:17:20,690 - src.utils.logging_utils - INFO - Received Peak GPU Memory (sampled during training): 1192.00 MiB
+2025-05-08 04:17:20,691 - src.utils.monitoring - INFO - Stopped energy monitoring for GPU 0.
+2025-05-08 04:17:20,691 - src.utils.logging_utils - INFO - Starting evaluation phase on test set...
+2025-05-08 04:17:21,238 - src.utils.logging_utils - INFO - Test Set Results: Acc: 29.51%, Loss: 2.9671
+2025-05-08 04:17:21,240 - src.utils.logging_utils - INFO - Stopping CodeCarbon tracker...
+2025-05-08 04:17:21,759 - src.utils.logging_utils - INFO - CodeCarbon tracker stopped. Attempting to read from: results/carbon/bp_cifar100_mlp_3x2000_carbon.csv
+2025-05-08 04:17:22,263 - src.utils.logging_utils - INFO - Read emissions: 0.003838 kgCO2e (3.838 gCO2e) (attempt 1)
+2025-05-08 04:17:22,263 - src.utils.monitoring - INFO - Energy monitor for GPU 0 is not running.
+2025-05-08 04:17:22,263 - src.utils.logging_utils - INFO - Total GPU Energy (NVML Monitor): 9381.40 J (2.6059 Wh)
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO - GPU Mem (End): 1192.00 MiB Used / 40960.00 MiB Total
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO - --- Final Summary Metrics (Step: 8776) ---
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/total_run_duration_sec: 131.3046
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/peak_gpu_mem_used_mib: 1192.0000
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/total_gpu_energy_joules: 9381.395891
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/total_gpu_energy_wh: 2.605943
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/training_duration_sec: 126.3648
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/Test_Accuracy: 29.5100
+2025-05-08 04:17:22,264 - src.utils.logging_utils - INFO -   final/Test_Loss: 2.9671
+2025-05-08 04:17:22,265 - src.utils.logging_utils - INFO -   final/estimated_fwd_gflops: 0.0287
+2025-05-08 04:17:22,265 - src.utils.logging_utils - INFO -   final/estimated_bp_update_gflops: 0.0861
+2025-05-08 04:17:22,265 - src.utils.logging_utils - INFO -   final/codecarbon_emissions_gCO2e: 3.837622
+2025-05-08 04:17:22,265 - src.utils.logging_utils - INFO - --- End Final Summary ---
+2025-05-08 04:17:22,265 - src.utils.logging_utils - INFO - 
+2025-05-08 04:17:22,266 - src.utils.logging_utils - INFO - Total run duration: 00:02:11
+2025-05-08 04:17:22,266 - src.utils.logging_utils - INFO - --> Final Calculated Emissions: 3.838 gCO2e
+2025-05-08 04:17:23,986 - src.utils.logging_utils - INFO - W&B run finished.
+2025-05-08 04:17:23,989 - src.utils.monitoring - INFO - NVML shut down successfully.
+2025-05-08 04:17:24,070 - src.utils.logging_utils - INFO - 
+--- Experiment Finished ---
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO - Results:
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO - {'codecarbon_country_iso': 'POL',
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'codecarbon_csv_path': 'results/carbon/bp_cifar100_mlp_3x2000_carbon.csv',
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'codecarbon_emissions_gCO2e': 3.837622049148,
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'codecarbon_enabled': True,
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'codecarbon_mode': 'offline',
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'estimated_bp_update_gflops': 0.086064,
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'estimated_fwd_gflops': 0.028688,
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'peak_gpu_mem_used_mib': 1192.0,
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'test_accuracy': 29.509999999999998,
+2025-05-08 04:17:24,071 - src.utils.logging_utils - INFO -  'test_loss': 2.9671161140441895,
+2025-05-08 04:17:24,072 - src.utils.logging_utils - INFO -  'total_gpu_energy_joules': 9381.395891171338,
+2025-05-08 04:17:24,072 - src.utils.logging_utils - INFO -  'total_gpu_energy_wh': 2.6059433031031496,
+2025-05-08 04:17:24,072 - src.utils.logging_utils - INFO -  'total_run_duration_sec': 131.30461287498474,
+2025-05-08 04:17:24,072 - src.utils.logging_utils - INFO -  'training_duration_sec': 126.36475801467896}
+2025-05-08 04:17:24,072 - src.utils.logging_utils - INFO - 
+--- Experiment Finished Successfully ---
+Deactivating virtual environment...
+#####################################################################
+Job finished with exit code 0 at Thu May  8 04:17:25 CEST 2025
+#####################################################################

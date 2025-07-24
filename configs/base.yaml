@@ -1,0 +1,69 @@
+general:
+  seed: 42
+  device: "auto"
+
+training:
+  epochs: 100
+  criterion: "CrossEntropyLoss"
+  log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "bp_val_loss"
+  early_stopping_patience: 20
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.0
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+data:
+  root: "./data"
+  download: true
+  val_split: 0.1
+
+optimizer:
+  type: "AdamW"
+  lr: 0.001
+  weight_decay: 0.0001
+
+algorithm_params:
+  mf_early_stopping_enabled: false
+  mf_early_stopping_patience: 10
+  mf_early_stopping_min_delta: 0.0001
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+    project: "BeyondBackpropagation"
+    entity: "przspyra11"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+
+carbon_tracker:
+  enabled: true
+  mode: "offline"
+  output_dir: "results/carbon"
+  country_iso_code: "POL"
+
+profiling:
+  enabled: true
+  verbose: false
+
+checkpointing:
+  checkpoint_dir: null
+  save_best_metric: "bp_val_accuracy"
+
+tuning:
+  enabled: false
+  n_trials: 50
+  direction: "maximize"
+  metric: "val_accuracy"
+  sampler: "TPE"
+  pruner: "Median"
+  lr_range: [1.0e-5, 1.0e-2]
+  wd_range: [1.0e-6, 1.0e-3]

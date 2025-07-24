@@ -1,0 +1,61 @@
+experiment_name: "ff_hinton_mnist_mlp_3x1000_SGD"
+algorithm:
+  name: "FF"
+
+data:
+  name: "MNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+data_loader:
+  batch_size: 100
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "FF_MLP"
+  params:
+    hidden_dims: [1000, 1000, 1000]
+    activation: "ReLU"
+    bias: true
+    norm_eps: 1.0e-8
+    bias_init: 0.0
+
+algorithm_params:
+  optimizer_type: "SGD"
+  ff_learning_rate: 0.0019075980272792064
+  ff_weight_decay: 0.0005229088821652552
+  ff_momentum: 0.9
+  downstream_learning_rate: 0.03234998392840941
+  downstream_weight_decay: 0.0047668064095875455
+  downstream_momentum: 0.9
+  peer_normalization_factor: 0.03
+  peer_momentum: 0.9
+
+training:
+  epochs: 100
+  log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "FF_Hinton/Val_Acc_Epoch"
+  early_stopping_patience: 20
+  early_stopping_mode: "max"
+  early_stopping_min_delta: 0.01
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/ff_hinton_mnist_mlp_3x1000_SGD_ref"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

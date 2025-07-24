@@ -1,0 +1,50 @@
+experiment_name: "mf_cifar100_mlp_3x2000"
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00017277890583771544
+  weight_decay: 0.0
+  epochs_per_layer: 8
+  log_interval: 9999
+
+  mf_early_stopping_enabled: true
+  mf_early_stopping_patience: 4
+  mf_early_stopping_min_delta: 0.0001
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_cifar100_mlp_3x2000"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

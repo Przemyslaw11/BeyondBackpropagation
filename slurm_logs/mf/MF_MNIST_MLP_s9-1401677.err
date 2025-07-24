@@ -1,0 +1,490 @@
+ binutils/2.38 loaded.
+ bzip2/1.0.8 loaded.
+ zlib/1.2.12 loaded.
+ ncurses/6.3 loaded.
+ libreadline/8.1.2 loaded.
+ Tcl/8.6.12 loaded.
+ SQLite/3.38.3 loaded.
+ XZ/5.2.5 loaded.
+ GMP/6.2.1 loaded.
+ libffi/3.4.2 loaded.
+ OpenSSL/1.1 loaded.
+ Python/3.10.4 loaded.
+ CUDA/12.4.0 loaded.
+
+Currently Loaded Modules:
+  1) binutils/2.38   5) libreadline/8.1.2   9) GMP/6.2.1      13) CUDA/12.4.0
+  2) bzip2/1.0.8     6) Tcl/8.6.12         10) libffi/3.4.2
+  3) zlib/1.2.12     7) SQLite/3.38.3      11) OpenSSL/1.1
+  4) ncurses/6.3     8) XZ/5.2.5           12) Python/3.10.4
+
+ 
+
+2025-05-08 04:07:39,013 - src.utils.config_parser - INFO - Successfully merged configuration from configs/mf/mnist_mlp_2x1000.yaml and configs/base.yaml
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: przspyra11 (agh_racing) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.19.8
+wandb: Run data is saved locally in /net/tscratch/people/plgspyra/BeyondBackpropagation/wandb/run-20250508_040739-di368sca
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run mf_mnist_mlp_2x1000
+wandb: ⭐️ View project at https://wandb.ai/przspyra11/BeyondBackpropagation
+wandb: 🚀 View run at https://wandb.ai/przspyra11/BeyondBackpropagation/runs/di368sca
+[codecarbon INFO @ 04:07:40] offline tracker init
+[codecarbon INFO @ 04:07:40] [setup] RAM Tracking...
+[codecarbon INFO @ 04:07:40] [setup] CPU Tracking... 
+ Linux OS detected: Please ensure RAPL files exist at /sys/class/powercap/intel-rapl/subsystem to measure CPU
+
+[codecarbon INFO @ 04:07:40] CPU Model on constant consumption mode: AMD EPYC 7742 64-Core Processor
+[codecarbon INFO @ 04:07:40] [setup] GPU Tracking...
+[codecarbon INFO @ 04:07:40] Tracking Nvidia GPU via pynvml
+[codecarbon INFO @ 04:07:40] The below tracking methods have been set up:
+                RAM Tracking Method: RAM power estimation model
+                CPU Tracking Method: cpu_load
+                GPU Tracking Method: pynvml
+            
+[codecarbon INFO @ 04:07:40] >>> Tracker's metadata:
+[codecarbon INFO @ 04:07:40]   Platform system: Linux-5.14.0-503.26.1.el9_5.x86_64-x86_64-with-glibc2.34
+[codecarbon INFO @ 04:07:40]   Python version: 3.10.4
+[codecarbon INFO @ 04:07:40]   CodeCarbon version: 3.0.1
+[codecarbon INFO @ 04:07:40]   Available RAM : 125.000 GB
+[codecarbon INFO @ 04:07:40]   CPU count: 16 thread(s) in 2 physical CPU(s)
+[codecarbon INFO @ 04:07:40]   CPU model: AMD EPYC 7742 64-Core Processor
+[codecarbon INFO @ 04:07:40]   GPU count: 1
+[codecarbon INFO @ 04:07:40]   GPU model: 1 x NVIDIA A100-SXM4-40GB BUT only tracking these GPU ids : [0]
+[codecarbon INFO @ 04:07:40] Emissions data (if any) will be saved to file /net/tscratch/people/plgspyra/BeyondBackpropagation/results/carbon/mf_mnist_mlp_2x1000_carbon.csv
+
+Layer_W1_M1 Epoch 1/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 1/14:   0%|          | 1/390 [00:00<00:39,  9.95it/s]
+Layer_W1_M1 Epoch 1/14:   7%|▋         | 26/390 [00:00<00:02, 148.53it/s]
+Layer_W1_M1 Epoch 1/14:  13%|█▎        | 49/390 [00:00<00:01, 184.85it/s]
+Layer_W1_M1 Epoch 1/14:  18%|█▊        | 70/390 [00:00<00:01, 188.82it/s]
+Layer_W1_M1 Epoch 1/14:  24%|██▎       | 92/390 [00:00<00:01, 199.09it/s]
+Layer_W1_M1 Epoch 1/14:  29%|██▉       | 114/390 [00:00<00:01, 200.04it/s]
+Layer_W1_M1 Epoch 1/14:  35%|███▍      | 136/390 [00:00<00:01, 205.46it/s]
+Layer_W1_M1 Epoch 1/14:  41%|████      | 158/390 [00:00<00:01, 204.29it/s]
+Layer_W1_M1 Epoch 1/14:  46%|████▌     | 180/390 [00:00<00:01, 207.62it/s]
+Layer_W1_M1 Epoch 1/14:  52%|█████▏    | 202/390 [00:01<00:00, 205.75it/s]
+Layer_W1_M1 Epoch 1/14:  57%|█████▋    | 224/390 [00:01<00:00, 209.11it/s]
+Layer_W1_M1 Epoch 1/14:  63%|██████▎   | 246/390 [00:01<00:00, 206.32it/s]
+Layer_W1_M1 Epoch 1/14:  69%|██████▉   | 269/390 [00:01<00:00, 212.06it/s]
+Layer_W1_M1 Epoch 1/14:  75%|███████▍  | 291/390 [00:01<00:00, 208.56it/s]
+Layer_W1_M1 Epoch 1/14:  80%|████████  | 313/390 [00:01<00:00, 210.78it/s]
+Layer_W1_M1 Epoch 1/14:  86%|████████▌ | 335/390 [00:01<00:00, 208.38it/s]
+Layer_W1_M1 Epoch 1/14:  92%|█████████▏| 357/390 [00:01<00:00, 210.61it/s]
+Layer_W1_M1 Epoch 1/14:  97%|█████████▋| 379/390 [00:01<00:00, 208.75it/s]
+Layer_W1_M1 Epoch 1/14:  97%|█████████▋| 379/390 [00:01<00:00, 208.75it/s, loss=0.084917]
+                                                                                         
+
+Layer_W1_M1 Epoch 2/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 2/14:   4%|▍         | 17/390 [00:00<00:02, 152.37it/s]
+Layer_W1_M1 Epoch 2/14:  11%|█         | 41/390 [00:00<00:01, 186.23it/s]
+Layer_W1_M1 Epoch 2/14:  17%|█▋        | 65/390 [00:00<00:01, 197.28it/s]
+Layer_W1_M1 Epoch 2/14:  23%|██▎       | 89/390 [00:00<00:01, 202.35it/s]
+Layer_W1_M1 Epoch 2/14:  29%|██▉       | 113/390 [00:00<00:01, 204.65it/s]
+Layer_W1_M1 Epoch 2/14:  35%|███▌      | 137/390 [00:00<00:01, 206.53it/s]
+Layer_W1_M1 Epoch 2/14:  41%|████▏     | 161/390 [00:00<00:01, 207.24it/s]
+Layer_W1_M1 Epoch 2/14:  47%|████▋     | 184/390 [00:00<00:00, 213.76it/s]
+Layer_W1_M1 Epoch 2/14:  53%|█████▎    | 206/390 [00:01<00:00, 208.07it/s]
+Layer_W1_M1 Epoch 2/14:  59%|█████▊    | 229/390 [00:01<00:00, 206.23it/s]
+Layer_W1_M1 Epoch 2/14:  65%|██████▍   | 252/390 [00:01<00:00, 212.67it/s]
+Layer_W1_M1 Epoch 2/14:  70%|███████   | 274/390 [00:01<00:00, 207.22it/s]
+Layer_W1_M1 Epoch 2/14:  76%|███████▌  | 297/390 [00:01<00:00, 205.42it/s]
+Layer_W1_M1 Epoch 2/14:  82%|████████▏ | 321/390 [00:01<00:00, 206.65it/s]
+Layer_W1_M1 Epoch 2/14:  88%|████████▊ | 344/390 [00:01<00:00, 212.76it/s]
+Layer_W1_M1 Epoch 2/14:  94%|█████████▍| 366/390 [00:01<00:00, 208.14it/s]
+Layer_W1_M1 Epoch 2/14:  99%|█████████▉| 387/390 [00:01<00:00, 207.23it/s]
+Layer_W1_M1 Epoch 2/14:  99%|█████████▉| 387/390 [00:01<00:00, 207.23it/s, loss=0.053431]
+                                                                                         
+
+Layer_W1_M1 Epoch 3/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 3/14:   4%|▍         | 17/390 [00:00<00:02, 158.80it/s]
+Layer_W1_M1 Epoch 3/14:  10%|█         | 39/390 [00:00<00:01, 193.15it/s]
+Layer_W1_M1 Epoch 3/14:  16%|█▌        | 61/390 [00:00<00:01, 197.07it/s]
+Layer_W1_M1 Epoch 3/14:  21%|██▏       | 83/390 [00:00<00:01, 205.16it/s]
+Layer_W1_M1 Epoch 3/14:  27%|██▋       | 105/390 [00:00<00:01, 202.81it/s]
+Layer_W1_M1 Epoch 3/14:  33%|███▎      | 129/390 [00:00<00:01, 204.99it/s]
+Layer_W1_M1 Epoch 3/14:  39%|███▉      | 153/390 [00:00<00:01, 206.56it/s]
+Layer_W1_M1 Epoch 3/14:  45%|████▌     | 177/390 [00:00<00:01, 207.49it/s]
+Layer_W1_M1 Epoch 3/14:  51%|█████     | 199/390 [00:00<00:00, 211.09it/s]
+Layer_W1_M1 Epoch 3/14:  57%|█████▋    | 221/390 [00:01<00:00, 206.89it/s]
+Layer_W1_M1 Epoch 3/14:  62%|██████▏   | 243/390 [00:01<00:00, 210.47it/s]
+Layer_W1_M1 Epoch 3/14:  68%|██████▊   | 265/390 [00:01<00:00, 206.63it/s]
+Layer_W1_M1 Epoch 3/14:  74%|███████▍  | 289/390 [00:01<00:00, 207.77it/s]
+Layer_W1_M1 Epoch 3/14:  80%|████████  | 312/390 [00:01<00:00, 212.65it/s]
+Layer_W1_M1 Epoch 3/14:  86%|████████▌ | 334/390 [00:01<00:00, 208.83it/s]
+Layer_W1_M1 Epoch 3/14:  92%|█████████▏| 357/390 [00:01<00:00, 206.77it/s]
+Layer_W1_M1 Epoch 3/14:  98%|█████████▊| 381/390 [00:01<00:00, 207.24it/s]
+Layer_W1_M1 Epoch 3/14:  98%|█████████▊| 381/390 [00:01<00:00, 207.24it/s, loss=0.041162]
+                                                                                         
+
+Layer_W1_M1 Epoch 4/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 4/14:   4%|▍         | 16/390 [00:00<00:02, 158.11it/s]
+Layer_W1_M1 Epoch 4/14:   9%|▉         | 37/390 [00:00<00:01, 179.02it/s]
+Layer_W1_M1 Epoch 4/14:  15%|█▌        | 60/390 [00:00<00:01, 201.52it/s]
+Layer_W1_M1 Epoch 4/14:  21%|██        | 81/390 [00:00<00:01, 196.53it/s]
+Layer_W1_M1 Epoch 4/14:  27%|██▋       | 104/390 [00:00<00:01, 207.49it/s]
+Layer_W1_M1 Epoch 4/14:  32%|███▏      | 125/390 [00:00<00:01, 200.94it/s]
+Layer_W1_M1 Epoch 4/14:  38%|███▊      | 148/390 [00:00<00:01, 209.58it/s]
+Layer_W1_M1 Epoch 4/14:  44%|████▎     | 170/390 [00:00<00:01, 204.76it/s]
+Layer_W1_M1 Epoch 4/14:  49%|████▉     | 193/390 [00:00<00:00, 204.04it/s]
+Layer_W1_M1 Epoch 4/14:  55%|█████▌    | 216/390 [00:01<00:00, 211.53it/s]
+Layer_W1_M1 Epoch 4/14:  61%|██████    | 238/390 [00:01<00:00, 206.40it/s]
+Layer_W1_M1 Epoch 4/14:  67%|██████▋   | 261/390 [00:01<00:00, 204.85it/s]
+Layer_W1_M1 Epoch 4/14:  73%|███████▎  | 284/390 [00:01<00:00, 211.90it/s]
+Layer_W1_M1 Epoch 4/14:  78%|███████▊  | 306/390 [00:01<00:00, 206.55it/s]
+Layer_W1_M1 Epoch 4/14:  84%|████████▍ | 329/390 [00:01<00:00, 205.28it/s]
+Layer_W1_M1 Epoch 4/14:  90%|█████████ | 352/390 [00:01<00:00, 211.76it/s]
+Layer_W1_M1 Epoch 4/14:  96%|█████████▌| 374/390 [00:01<00:00, 206.69it/s]
+Layer_W1_M1 Epoch 4/14:  96%|█████████▌| 374/390 [00:01<00:00, 206.69it/s, loss=0.059959]
+                                                                                         
+
+Layer_W1_M1 Epoch 5/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 5/14:   4%|▍         | 17/390 [00:00<00:02, 156.50it/s]
+Layer_W1_M1 Epoch 5/14:  10%|█         | 40/390 [00:00<00:01, 197.82it/s]
+Layer_W1_M1 Epoch 5/14:  16%|█▌        | 61/390 [00:00<00:01, 196.00it/s]
+Layer_W1_M1 Epoch 5/14:  22%|██▏       | 84/390 [00:00<00:01, 208.25it/s]
+Layer_W1_M1 Epoch 5/14:  27%|██▋       | 105/390 [00:00<00:01, 202.42it/s]
+Layer_W1_M1 Epoch 5/14:  33%|███▎      | 128/390 [00:00<00:01, 211.37it/s]
+Layer_W1_M1 Epoch 5/14:  38%|███▊      | 150/390 [00:00<00:01, 206.56it/s]
+Layer_W1_M1 Epoch 5/14:  44%|████▍     | 173/390 [00:00<00:01, 205.78it/s]
+Layer_W1_M1 Epoch 5/14:  50%|█████     | 196/390 [00:00<00:00, 212.21it/s]
+Layer_W1_M1 Epoch 5/14:  56%|█████▌    | 218/390 [00:01<00:00, 208.56it/s]
+Layer_W1_M1 Epoch 5/14:  62%|██████▏   | 240/390 [00:01<00:00, 211.18it/s]
+Layer_W1_M1 Epoch 5/14:  67%|██████▋   | 262/390 [00:01<00:00, 208.49it/s]
+Layer_W1_M1 Epoch 5/14:  73%|███████▎  | 284/390 [00:01<00:00, 210.79it/s]
+Layer_W1_M1 Epoch 5/14:  78%|███████▊  | 306/390 [00:01<00:00, 208.83it/s]
+Layer_W1_M1 Epoch 5/14:  84%|████████▍ | 328/390 [00:01<00:00, 210.43it/s]
+Layer_W1_M1 Epoch 5/14:  90%|████████▉ | 350/390 [00:01<00:00, 209.10it/s]
+Layer_W1_M1 Epoch 5/14:  95%|█████████▌| 372/390 [00:01<00:00, 210.38it/s]
+Layer_W1_M1 Epoch 5/14:  95%|█████████▌| 372/390 [00:01<00:00, 210.38it/s, loss=0.095244]
+                                                                                         
+
+Layer_W1_M1 Epoch 6/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 6/14:   4%|▍         | 17/390 [00:00<00:02, 165.88it/s]
+Layer_W1_M1 Epoch 6/14:  10%|█         | 39/390 [00:00<00:01, 196.23it/s]
+Layer_W1_M1 Epoch 6/14:  16%|█▌        | 61/390 [00:00<00:01, 199.95it/s]
+Layer_W1_M1 Epoch 6/14:  21%|██        | 82/390 [00:00<00:01, 203.04it/s]
+Layer_W1_M1 Epoch 6/14:  27%|██▋       | 104/390 [00:00<00:01, 207.06it/s]
+Layer_W1_M1 Epoch 6/14:  32%|███▏      | 126/390 [00:00<00:01, 206.93it/s]
+Layer_W1_M1 Epoch 6/14:  38%|███▊      | 148/390 [00:00<00:01, 206.82it/s]
+Layer_W1_M1 Epoch 6/14:  44%|████▎     | 170/390 [00:00<00:01, 209.01it/s]
+Layer_W1_M1 Epoch 6/14:  49%|████▉     | 192/390 [00:00<00:00, 206.25it/s]
+Layer_W1_M1 Epoch 6/14:  55%|█████▍    | 214/390 [00:01<00:00, 210.26it/s]
+Layer_W1_M1 Epoch 6/14:  61%|██████    | 236/390 [00:01<00:00, 205.41it/s]
+Layer_W1_M1 Epoch 6/14:  66%|██████▋   | 259/390 [00:01<00:00, 211.61it/s]
+Layer_W1_M1 Epoch 6/14:  72%|███████▏  | 281/390 [00:01<00:00, 206.47it/s]
+Layer_W1_M1 Epoch 6/14:  78%|███████▊  | 304/390 [00:01<00:00, 204.71it/s]
+Layer_W1_M1 Epoch 6/14:  84%|████████▍ | 327/390 [00:01<00:00, 211.33it/s]
+Layer_W1_M1 Epoch 6/14:  89%|████████▉ | 349/390 [00:01<00:00, 206.23it/s]
+Layer_W1_M1 Epoch 6/14:  95%|█████████▌| 372/390 [00:01<00:00, 204.38it/s]
+Layer_W1_M1 Epoch 6/14:  95%|█████████▌| 372/390 [00:01<00:00, 204.38it/s, loss=0.021779]
+                                                                                         
+
+Layer_W1_M1 Epoch 7/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 7/14:   4%|▍         | 17/390 [00:00<00:02, 159.47it/s]
+Layer_W1_M1 Epoch 7/14:  10%|█         | 39/390 [00:00<00:01, 193.64it/s]
+Layer_W1_M1 Epoch 7/14:  15%|█▌        | 60/390 [00:00<00:01, 200.58it/s][codecarbon INFO @ 04:07:56] Energy consumed for RAM : 0.000164 kWh. RAM Power : 38.0 W
+
+Layer_W1_M1 Epoch 7/14:  21%|██        | 81/390 [00:00<00:01, 200.41it/s]
+Layer_W1_M1 Epoch 7/14:  27%|██▋       | 104/390 [00:00<00:01, 204.77it/s]
+Layer_W1_M1 Epoch 7/14:  32%|███▏      | 125/390 [00:00<00:01, 205.48it/s]
+Layer_W1_M1 Epoch 7/14:  38%|███▊      | 148/390 [00:00<00:01, 205.46it/s]
+Layer_W1_M1 Epoch 7/14:  44%|████▍     | 171/390 [00:00<00:01, 212.22it/s][codecarbon INFO @ 04:07:56] Delta energy consumed for CPU with cpu_load : 0.000217 kWh, power : 50.49000000000001 W
+[codecarbon INFO @ 04:07:56] Energy consumed for All CPU : 0.000217 kWh
+[codecarbon INFO @ 04:07:56] Energy consumed for all GPUs : 0.000269 kWh. Total GPU Power : 60.59128582911584 W
+[codecarbon INFO @ 04:07:56] 0.000651 kWh of electricity used since the beginning.
+
+Layer_W1_M1 Epoch 7/14:  49%|████▉     | 193/390 [00:00<00:00, 205.95it/s]
+Layer_W1_M1 Epoch 7/14:  55%|█████▌    | 216/390 [00:01<00:00, 204.62it/s]
+Layer_W1_M1 Epoch 7/14:  61%|██████▏   | 239/390 [00:01<00:00, 211.30it/s]
+Layer_W1_M1 Epoch 7/14:  67%|██████▋   | 261/390 [00:01<00:00, 205.57it/s]
+Layer_W1_M1 Epoch 7/14:  73%|███████▎  | 284/390 [00:01<00:00, 204.30it/s]
+Layer_W1_M1 Epoch 7/14:  79%|███████▊  | 307/390 [00:01<00:00, 210.93it/s]
+Layer_W1_M1 Epoch 7/14:  84%|████████▍ | 329/390 [00:01<00:00, 205.67it/s]
+Layer_W1_M1 Epoch 7/14:  90%|█████████ | 352/390 [00:01<00:00, 204.11it/s]
+Layer_W1_M1 Epoch 7/14:  96%|█████████▌| 375/390 [00:01<00:00, 210.48it/s]
+Layer_W1_M1 Epoch 7/14:  96%|█████████▌| 375/390 [00:01<00:00, 210.48it/s, loss=0.018697]
+                                                                                         
+
+Layer_W1_M1 Epoch 8/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 8/14:   4%|▍         | 17/390 [00:00<00:02, 160.51it/s]
+Layer_W1_M1 Epoch 8/14:  11%|█         | 41/390 [00:00<00:01, 191.67it/s]
+Layer_W1_M1 Epoch 8/14:  17%|█▋        | 65/390 [00:00<00:01, 200.44it/s]
+Layer_W1_M1 Epoch 8/14:  23%|██▎       | 88/390 [00:00<00:01, 210.61it/s]
+Layer_W1_M1 Epoch 8/14:  28%|██▊       | 110/390 [00:00<00:01, 206.88it/s]
+Layer_W1_M1 Epoch 8/14:  34%|███▍      | 132/390 [00:00<00:01, 209.64it/s]
+Layer_W1_M1 Epoch 8/14:  39%|███▉      | 153/390 [00:00<00:01, 205.96it/s]
+Layer_W1_M1 Epoch 8/14:  45%|████▌     | 176/390 [00:00<00:01, 210.03it/s]
+Layer_W1_M1 Epoch 8/14:  51%|█████     | 198/390 [00:00<00:00, 209.52it/s]
+Layer_W1_M1 Epoch 8/14:  56%|█████▋    | 220/390 [00:01<00:00, 208.23it/s]
+Layer_W1_M1 Epoch 8/14:  62%|██████▏   | 241/390 [00:01<00:00, 207.71it/s]
+Layer_W1_M1 Epoch 8/14:  68%|██████▊   | 264/390 [00:01<00:00, 207.50it/s]
+Layer_W1_M1 Epoch 8/14:  73%|███████▎  | 285/390 [00:01<00:00, 207.89it/s]
+Layer_W1_M1 Epoch 8/14:  79%|███████▉  | 308/390 [00:01<00:00, 207.45it/s]
+Layer_W1_M1 Epoch 8/14:  85%|████████▍ | 331/390 [00:01<00:00, 213.06it/s]
+Layer_W1_M1 Epoch 8/14:  91%|█████████ | 353/390 [00:01<00:00, 207.98it/s]
+Layer_W1_M1 Epoch 8/14:  96%|█████████▋| 376/390 [00:01<00:00, 206.65it/s]
+Layer_W1_M1 Epoch 8/14:  96%|█████████▋| 376/390 [00:01<00:00, 206.65it/s, loss=0.048164]
+                                                                                         
+
+Layer_W1_M1 Epoch 9/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W1_M1 Epoch 9/14:   4%|▍         | 17/390 [00:00<00:02, 160.21it/s]
+Layer_W1_M1 Epoch 9/14:  11%|█         | 41/390 [00:00<00:01, 190.44it/s]
+Layer_W1_M1 Epoch 9/14:  17%|█▋        | 65/390 [00:00<00:01, 199.81it/s]
+Layer_W1_M1 Epoch 9/14:  23%|██▎       | 88/390 [00:00<00:01, 210.72it/s]
+Layer_W1_M1 Epoch 9/14:  28%|██▊       | 110/390 [00:00<00:01, 205.95it/s]
+Layer_W1_M1 Epoch 9/14:  34%|███▍      | 133/390 [00:00<00:01, 205.02it/s]
+Layer_W1_M1 Epoch 9/14:  40%|████      | 157/390 [00:00<00:01, 206.95it/s]
+Layer_W1_M1 Epoch 9/14:  46%|████▌     | 180/390 [00:00<00:00, 212.94it/s]
+Layer_W1_M1 Epoch 9/14:  52%|█████▏    | 202/390 [00:00<00:00, 208.58it/s]
+Layer_W1_M1 Epoch 9/14:  57%|█████▋    | 224/390 [00:01<00:00, 209.85it/s]
+Layer_W1_M1 Epoch 9/14:  63%|██████▎   | 246/390 [00:01<00:00, 208.87it/s]
+Layer_W1_M1 Epoch 9/14:  69%|██████▊   | 268/390 [00:01<00:00, 208.52it/s]
+Layer_W1_M1 Epoch 9/14:  74%|███████▍  | 289/390 [00:01<00:00, 207.51it/s]
+Layer_W1_M1 Epoch 9/14:  80%|████████  | 312/390 [00:01<00:00, 208.18it/s]
+Layer_W1_M1 Epoch 9/14:  85%|████████▌ | 333/390 [00:01<00:00, 208.58it/s]
+Layer_W1_M1 Epoch 9/14:  91%|█████████▏| 356/390 [00:01<00:00, 206.49it/s]
+Layer_W1_M1 Epoch 9/14:  97%|█████████▋| 380/390 [00:01<00:00, 207.27it/s]
+Layer_W1_M1 Epoch 9/14:  97%|█████████▋| 380/390 [00:01<00:00, 207.27it/s, loss=0.053074]
+                                                                                         
+
+Layer_W2_M2 Epoch 1/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 1/14:   4%|▍         | 17/390 [00:00<00:02, 157.04it/s]
+Layer_W2_M2 Epoch 1/14:  11%|█         | 41/390 [00:00<00:01, 188.68it/s]
+Layer_W2_M2 Epoch 1/14:  17%|█▋        | 65/390 [00:00<00:01, 198.30it/s]
+Layer_W2_M2 Epoch 1/14:  23%|██▎       | 88/390 [00:00<00:01, 209.40it/s]
+Layer_W2_M2 Epoch 1/14:  28%|██▊       | 109/390 [00:00<00:01, 202.08it/s]
+Layer_W2_M2 Epoch 1/14:  34%|███▍      | 132/390 [00:00<00:01, 209.87it/s]
+Layer_W2_M2 Epoch 1/14:  39%|███▉      | 154/390 [00:00<00:01, 205.25it/s]
+Layer_W2_M2 Epoch 1/14:  45%|████▌     | 176/390 [00:00<00:01, 209.33it/s]
+Layer_W2_M2 Epoch 1/14:  51%|█████     | 197/390 [00:00<00:00, 203.09it/s]
+Layer_W2_M2 Epoch 1/14:  56%|█████▋    | 220/390 [00:01<00:00, 209.56it/s]
+Layer_W2_M2 Epoch 1/14:  62%|██████▏   | 242/390 [00:01<00:00, 206.13it/s]
+Layer_W2_M2 Epoch 1/14:  68%|██████▊   | 264/390 [00:01<00:00, 208.41it/s]
+Layer_W2_M2 Epoch 1/14:  73%|███████▎  | 285/390 [00:01<00:00, 204.51it/s]
+Layer_W2_M2 Epoch 1/14:  79%|███████▉  | 308/390 [00:01<00:00, 207.26it/s]
+Layer_W2_M2 Epoch 1/14:  84%|████████▍ | 329/390 [00:01<00:00, 205.61it/s]
+Layer_W2_M2 Epoch 1/14:  90%|█████████ | 352/390 [00:01<00:00, 207.15it/s]
+Layer_W2_M2 Epoch 1/14:  96%|█████████▌| 373/390 [00:01<00:00, 206.78it/s]
+Layer_W2_M2 Epoch 1/14:  96%|█████████▌| 373/390 [00:01<00:00, 206.78it/s, loss=0.092549]
+                                                                                         
+
+Layer_W2_M2 Epoch 2/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 2/14:   4%|▍         | 17/390 [00:00<00:02, 157.10it/s]
+Layer_W2_M2 Epoch 2/14:  10%|█         | 40/390 [00:00<00:01, 196.64it/s]
+Layer_W2_M2 Epoch 2/14:  16%|█▌        | 61/390 [00:00<00:01, 195.04it/s]
+Layer_W2_M2 Epoch 2/14:  21%|██        | 82/390 [00:00<00:01, 199.95it/s]
+Layer_W2_M2 Epoch 2/14:  27%|██▋       | 105/390 [00:00<00:01, 203.69it/s]
+Layer_W2_M2 Epoch 2/14:  32%|███▏      | 126/390 [00:00<00:01, 204.39it/s]
+Layer_W2_M2 Epoch 2/14:  38%|███▊      | 149/390 [00:00<00:01, 206.19it/s]
+Layer_W2_M2 Epoch 2/14:  44%|████▎     | 170/390 [00:00<00:01, 206.53it/s]
+Layer_W2_M2 Epoch 2/14:  49%|████▉     | 192/390 [00:00<00:00, 210.46it/s]
+Layer_W2_M2 Epoch 2/14:  55%|█████▍    | 214/390 [00:01<00:00, 206.65it/s]
+Layer_W2_M2 Epoch 2/14:  61%|██████    | 236/390 [00:01<00:00, 209.12it/s]
+Layer_W2_M2 Epoch 2/14:  66%|██████▌   | 257/390 [00:01<00:00, 206.33it/s]
+Layer_W2_M2 Epoch 2/14:  71%|███████▏  | 278/390 [00:01<00:00, 207.39it/s]
+Layer_W2_M2 Epoch 2/14:  77%|███████▋  | 300/390 [00:01<00:00, 209.07it/s]
+Layer_W2_M2 Epoch 2/14:  82%|████████▏ | 321/390 [00:01<00:00, 206.56it/s]
+Layer_W2_M2 Epoch 2/14:  88%|████████▊ | 343/390 [00:01<00:00, 210.18it/s]
+Layer_W2_M2 Epoch 2/14:  94%|█████████▎| 365/390 [00:01<00:00, 206.19it/s]
+Layer_W2_M2 Epoch 2/14:  99%|█████████▉| 386/390 [00:01<00:00, 201.21it/s]
+Layer_W2_M2 Epoch 2/14:  99%|█████████▉| 386/390 [00:01<00:00, 201.21it/s, loss=0.001098]
+                                                                                         
+
+Layer_W2_M2 Epoch 3/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 3/14:   4%|▍         | 17/390 [00:00<00:02, 155.64it/s]
+Layer_W2_M2 Epoch 3/14:  11%|█         | 41/390 [00:00<00:01, 187.08it/s]
+Layer_W2_M2 Epoch 3/14:  16%|█▋        | 64/390 [00:00<00:01, 204.91it/s]
+Layer_W2_M2 Epoch 3/14:  22%|██▏       | 85/390 [00:00<00:01, 197.83it/s]
+Layer_W2_M2 Epoch 3/14:  28%|██▊       | 108/390 [00:00<00:01, 208.39it/s]
+Layer_W2_M2 Epoch 3/14:  33%|███▎      | 129/390 [00:00<00:01, 201.14it/s]
+Layer_W2_M2 Epoch 3/14:  39%|███▉      | 153/390 [00:00<00:01, 203.56it/s]
+Layer_W2_M2 Epoch 3/14:  45%|████▌     | 176/390 [00:00<00:01, 210.82it/s]
+Layer_W2_M2 Epoch 3/14:  51%|█████     | 198/390 [00:00<00:00, 205.37it/s]
+Layer_W2_M2 Epoch 3/14:  57%|█████▋    | 221/390 [00:01<00:00, 203.99it/s]
+Layer_W2_M2 Epoch 3/14:  63%|██████▎   | 244/390 [00:01<00:00, 211.03it/s]
+Layer_W2_M2 Epoch 3/14:  68%|██████▊   | 266/390 [00:01<00:00, 205.84it/s]
+Layer_W2_M2 Epoch 3/14:  74%|███████▍  | 289/390 [00:01<00:00, 203.82it/s]
+Layer_W2_M2 Epoch 3/14:  80%|████████  | 312/390 [00:01<00:00, 210.82it/s]
+Layer_W2_M2 Epoch 3/14:  86%|████████▌ | 334/390 [00:01<00:00, 205.44it/s]
+Layer_W2_M2 Epoch 3/14:  92%|█████████▏| 357/390 [00:01<00:00, 204.12it/s]
+Layer_W2_M2 Epoch 3/14:  97%|█████████▋| 380/390 [00:01<00:00, 211.01it/s]
+Layer_W2_M2 Epoch 3/14:  97%|█████████▋| 380/390 [00:01<00:00, 211.01it/s, loss=0.006289]
+                                                                                         
+
+Layer_W2_M2 Epoch 4/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 4/14:   4%|▍         | 17/390 [00:00<00:02, 152.00it/s]
+Layer_W2_M2 Epoch 4/14:  10%|█         | 40/390 [00:00<00:01, 195.50it/s]
+Layer_W2_M2 Epoch 4/14:  16%|█▌        | 61/390 [00:00<00:01, 192.35it/s]
+Layer_W2_M2 Epoch 4/14:  22%|██▏       | 84/390 [00:00<00:01, 206.07it/s]
+Layer_W2_M2 Epoch 4/14:  27%|██▋       | 105/390 [00:00<00:01, 199.44it/s]
+Layer_W2_M2 Epoch 4/14:  33%|███▎      | 128/390 [00:00<00:01, 208.80it/s]
+Layer_W2_M2 Epoch 4/14:  38%|███▊      | 149/390 [00:00<00:01, 201.80it/s]
+Layer_W2_M2 Epoch 4/14:  44%|████▍     | 172/390 [00:00<00:01, 209.78it/s]
+Layer_W2_M2 Epoch 4/14:  50%|████▉     | 194/390 [00:00<00:00, 204.70it/s]
+Layer_W2_M2 Epoch 4/14:  55%|█████▌    | 216/390 [00:01<00:00, 208.81it/s]
+Layer_W2_M2 Epoch 4/14:  61%|██████    | 237/390 [00:01<00:00, 202.57it/s]
+Layer_W2_M2 Epoch 4/14:  67%|██████▋   | 260/390 [00:01<00:00, 209.83it/s]
+Layer_W2_M2 Epoch 4/14:  72%|███████▏  | 282/390 [00:01<00:00, 205.52it/s]
+Layer_W2_M2 Epoch 4/14:  78%|███████▊  | 305/390 [00:01<00:00, 204.35it/s]
+Layer_W2_M2 Epoch 4/14:  84%|████████▍ | 328/390 [00:01<00:00, 211.15it/s][codecarbon INFO @ 04:08:11] Energy consumed for RAM : 0.000317 kWh. RAM Power : 38.0 W
+
+Layer_W2_M2 Epoch 4/14:  90%|████████▉ | 350/390 [00:01<00:00, 206.38it/s]
+Layer_W2_M2 Epoch 4/14:  96%|█████████▌| 373/390 [00:01<00:00, 205.42it/s]
+Layer_W2_M2 Epoch 4/14:  96%|█████████▌| 373/390 [00:01<00:00, 205.42it/s, loss=0.037514]
+                                                                                         
+[codecarbon INFO @ 04:08:11] Delta energy consumed for CPU with cpu_load : 0.000196 kWh, power : 48.62812500000001 W
+[codecarbon INFO @ 04:08:11] Energy consumed for All CPU : 0.000413 kWh
+[codecarbon INFO @ 04:08:11] Energy consumed for all GPUs : 0.000531 kWh. Total GPU Power : 62.715143163987854 W
+[codecarbon INFO @ 04:08:11] 0.001261 kWh of electricity used since the beginning.
+
+Layer_W2_M2 Epoch 5/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 5/14:   4%|▍         | 17/390 [00:00<00:02, 158.17it/s]
+Layer_W2_M2 Epoch 5/14:  11%|█         | 41/390 [00:00<00:01, 188.79it/s]
+Layer_W2_M2 Epoch 5/14:  16%|█▋        | 64/390 [00:00<00:01, 205.79it/s]
+Layer_W2_M2 Epoch 5/14:  22%|██▏       | 85/390 [00:00<00:01, 199.36it/s]
+Layer_W2_M2 Epoch 5/14:  28%|██▊       | 108/390 [00:00<00:01, 209.38it/s]
+Layer_W2_M2 Epoch 5/14:  33%|███▎      | 130/390 [00:00<00:01, 204.38it/s]
+Layer_W2_M2 Epoch 5/14:  39%|███▉      | 152/390 [00:00<00:01, 208.92it/s]
+Layer_W2_M2 Epoch 5/14:  44%|████▍     | 173/390 [00:00<00:01, 203.44it/s]
+Layer_W2_M2 Epoch 5/14:  50%|█████     | 195/390 [00:00<00:00, 208.29it/s]
+Layer_W2_M2 Epoch 5/14:  55%|█████▌    | 216/390 [00:01<00:00, 208.53it/s]
+Layer_W2_M2 Epoch 5/14:  61%|██████    | 237/390 [00:01<00:00, 204.22it/s]
+Layer_W2_M2 Epoch 5/14:  66%|██████▋   | 259/390 [00:01<00:00, 207.79it/s]
+Layer_W2_M2 Epoch 5/14:  72%|███████▏  | 280/390 [00:01<00:00, 206.95it/s]
+Layer_W2_M2 Epoch 5/14:  77%|███████▋  | 301/390 [00:01<00:00, 204.88it/s]
+Layer_W2_M2 Epoch 5/14:  83%|████████▎ | 323/390 [00:01<00:00, 207.77it/s]
+Layer_W2_M2 Epoch 5/14:  88%|████████▊ | 344/390 [00:01<00:00, 205.53it/s]
+Layer_W2_M2 Epoch 5/14:  94%|█████████▎| 365/390 [00:01<00:00, 205.96it/s]
+Layer_W2_M2 Epoch 5/14:  99%|█████████▉| 386/390 [00:01<00:00, 204.11it/s]
+Layer_W2_M2 Epoch 5/14:  99%|█████████▉| 386/390 [00:01<00:00, 204.11it/s, loss=0.004049]
+                                                                                         
+
+Layer_W2_M2 Epoch 6/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 6/14:   4%|▍         | 17/390 [00:00<00:02, 153.28it/s]
+Layer_W2_M2 Epoch 6/14:  10%|█         | 40/390 [00:00<00:01, 195.42it/s]
+Layer_W2_M2 Epoch 6/14:  16%|█▌        | 61/390 [00:00<00:01, 191.88it/s]
+Layer_W2_M2 Epoch 6/14:  21%|██▏       | 83/390 [00:00<00:01, 202.29it/s]
+Layer_W2_M2 Epoch 6/14:  27%|██▋       | 105/390 [00:00<00:01, 199.56it/s]
+Layer_W2_M2 Epoch 6/14:  33%|███▎      | 127/390 [00:00<00:01, 206.08it/s]
+Layer_W2_M2 Epoch 6/14:  38%|███▊      | 149/390 [00:00<00:01, 202.07it/s]
+Layer_W2_M2 Epoch 6/14:  44%|████▍     | 171/390 [00:00<00:01, 206.69it/s]
+Layer_W2_M2 Epoch 6/14:  49%|████▉     | 193/390 [00:00<00:00, 203.20it/s]
+Layer_W2_M2 Epoch 6/14:  55%|█████▌    | 215/390 [00:01<00:00, 207.32it/s]
+Layer_W2_M2 Epoch 6/14:  61%|██████    | 237/390 [00:01<00:00, 203.82it/s]
+Layer_W2_M2 Epoch 6/14:  66%|██████▌   | 258/390 [00:01<00:00, 205.38it/s]
+Layer_W2_M2 Epoch 6/14:  72%|███████▏  | 280/390 [00:01<00:00, 209.60it/s]
+Layer_W2_M2 Epoch 6/14:  77%|███████▋  | 302/390 [00:01<00:00, 204.44it/s]
+Layer_W2_M2 Epoch 6/14:  83%|████████▎ | 324/390 [00:01<00:00, 208.56it/s]
+Layer_W2_M2 Epoch 6/14:  88%|████████▊ | 345/390 [00:01<00:00, 204.05it/s]
+Layer_W2_M2 Epoch 6/14:  94%|█████████▍| 366/390 [00:01<00:00, 204.10it/s]
+Layer_W2_M2 Epoch 6/14: 100%|█████████▉| 389/390 [00:01<00:00, 204.71it/s]
+Layer_W2_M2 Epoch 6/14: 100%|█████████▉| 389/390 [00:01<00:00, 204.71it/s, loss=0.000003]
+                                                                                         
+
+Layer_W2_M2 Epoch 7/14:   0%|          | 0/390 [00:00<?, ?it/s]
+Layer_W2_M2 Epoch 7/14:   4%|▍         | 17/390 [00:00<00:02, 155.87it/s]
+Layer_W2_M2 Epoch 7/14:  10%|█         | 40/390 [00:00<00:01, 197.05it/s]
+Layer_W2_M2 Epoch 7/14:  16%|█▌        | 61/390 [00:00<00:01, 192.93it/s]
+Layer_W2_M2 Epoch 7/14:  22%|██▏       | 84/390 [00:00<00:01, 205.08it/s]
+Layer_W2_M2 Epoch 7/14:  27%|██▋       | 105/390 [00:00<00:01, 200.26it/s]
+Layer_W2_M2 Epoch 7/14:  33%|███▎      | 127/390 [00:00<00:01, 206.45it/s]
+Layer_W2_M2 Epoch 7/14:  38%|███▊      | 148/390 [00:00<00:01, 207.22it/s]
+Layer_W2_M2 Epoch 7/14:  43%|████▎     | 169/390 [00:00<00:01, 203.08it/s]
+Layer_W2_M2 Epoch 7/14:  49%|████▊     | 190/390 [00:00<00:00, 204.83it/s]
+Layer_W2_M2 Epoch 7/14:  54%|█████▍    | 212/390 [00:01<00:00, 208.15it/s]
+Layer_W2_M2 Epoch 7/14:  60%|█████▉    | 233/390 [00:01<00:00, 205.07it/s]
+Layer_W2_M2 Epoch 7/14:  65%|██████▌   | 254/390 [00:01<00:00, 204.89it/s]
+Layer_W2_M2 Epoch 7/14:  71%|███████   | 276/390 [00:01<00:00, 208.13it/s]
+Layer_W2_M2 Epoch 7/14:  76%|███████▌  | 297/390 [00:01<00:00, 205.93it/s]
+Layer_W2_M2 Epoch 7/14:  82%|████████▏ | 318/390 [00:01<00:00, 204.81it/s]
+Layer_W2_M2 Epoch 7/14:  87%|████████▋ | 340/390 [00:01<00:00, 207.47it/s]
+Layer_W2_M2 Epoch 7/14:  93%|█████████▎| 361/390 [00:01<00:00, 207.15it/s]
+Layer_W2_M2 Epoch 7/14:  98%|█████████▊| 382/390 [00:01<00:00, 204.33it/s]
+Layer_W2_M2 Epoch 7/14:  98%|█████████▊| 382/390 [00:01<00:00, 204.33it/s, loss=0.000000]
+                                                                                         
+
+Evaluating MF MF_MLP (BP-style):   0%|          | 0/40 [00:00<?, ?it/s]
+Evaluating MF MF_MLP (BP-style):   2%|▎         | 1/40 [00:00<00:04,  8.37it/s]
+Evaluating MF MF_MLP (BP-style):  32%|███▎      | 13/40 [00:00<00:00, 67.15it/s]
+Evaluating MF MF_MLP (BP-style):  62%|██████▎   | 25/40 [00:00<00:00, 86.97it/s]
+Evaluating MF MF_MLP (BP-style):  92%|█████████▎| 37/40 [00:00<00:00, 95.20it/s]
+                                                                                
+[codecarbon INFO @ 04:08:19] Energy consumed for RAM : 0.000396 kWh. RAM Power : 38.0 W
+[codecarbon INFO @ 04:08:19] Delta energy consumed for CPU with cpu_load : 0.000121 kWh, power : 57.86999999999999 W
+[codecarbon INFO @ 04:08:19] Energy consumed for All CPU : 0.000535 kWh
+[codecarbon INFO @ 04:08:19] Energy consumed for all GPUs : 0.000671 kWh. Total GPU Power : 62.587824475936316 W
+[codecarbon INFO @ 04:08:19] 0.001602 kWh of electricity used since the beginning.
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:         Layer_W1_M1/Epochs_Trained ▁
+wandb: Layer_W1_M1/GPU_Mem_Used_MiB_Batch ▁▆███████
+wandb: Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB ▁▆███████
+wandb: Layer_W1_M1/Peak_GPU_Mem_Layer_MiB ▁
+wandb:       Layer_W1_M1/Train_Loss_Batch ▇▄▃▅█▁▁▄▄
+wandb:    Layer_W1_M1/Train_Loss_EpochAvg █▃▂▂▁▁▁▁▁
+wandb:    Layer_W1_M1/Train_Loss_LayerAvg ▁
+wandb:    Layer_W1_M1/Val_LocalLoss_Epoch ▅▂▃▁▂▄▄█▄
+wandb:         Layer_W2_M2/Epochs_Trained ▁
+wandb: Layer_W2_M2/GPU_Mem_Used_MiB_Batch ▁▁▁▁▁▁▁
+wandb: Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB ▁▁▁▁▁▁▁
+wandb: Layer_W2_M2/Peak_GPU_Mem_Layer_MiB ▁
+wandb:       Layer_W2_M2/Train_Loss_Batch █▁▁▄▁▁▁
+wandb:    Layer_W2_M2/Train_Loss_EpochAvg █▃▃▂▂▁▁
+wandb:    Layer_W2_M2/Train_Loss_LayerAvg ▁
+wandb:    Layer_W2_M2/Val_LocalLoss_Epoch ▁▁▄▄█▅█
+wandb:               estimated_fwd_gflops ▁
+wandb:                final/Test_Accuracy ▁
+wandb:   final/codecarbon_emissions_gCO2e ▁
+wandb:         final/estimated_fwd_gflops ▁
+wandb:        final/peak_gpu_mem_used_mib ▁
+wandb:      final/total_gpu_energy_joules ▁
+wandb:          final/total_gpu_energy_wh ▁
+wandb:       final/total_run_duration_sec ▁
+wandb:        final/training_duration_sec ▁
+wandb:                        global_step ▁▁▁▁▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▇▇▇▇▇█████
+wandb:           initial_gpu_mem_used_mib ▁
+wandb:             model_parameters_total ▁
+wandb:         model_parameters_trainable ▁
+wandb: 
+wandb: Run summary:
+wandb:         Layer_W1_M1/Epochs_Trained 9
+wandb: Layer_W1_M1/GPU_Mem_Used_MiB_Batch 914
+wandb: Layer_W1_M1/Peak_GPU_Mem_Epoch_MiB 914
+wandb: Layer_W1_M1/Peak_GPU_Mem_Layer_MiB 914
+wandb:       Layer_W1_M1/Train_Loss_Batch 0.05307
+wandb:    Layer_W1_M1/Train_Loss_EpochAvg 0.02597
+wandb:    Layer_W1_M1/Train_Loss_LayerAvg 0.02597
+wandb:    Layer_W1_M1/Val_LocalLoss_Epoch 0.10202
+wandb:         Layer_W2_M2/Epochs_Trained 7
+wandb: Layer_W2_M2/GPU_Mem_Used_MiB_Batch 934
+wandb: Layer_W2_M2/Peak_GPU_Mem_Epoch_MiB 934
+wandb: Layer_W2_M2/Peak_GPU_Mem_Layer_MiB 934
+wandb:       Layer_W2_M2/Train_Loss_Batch 0.0
+wandb:    Layer_W2_M2/Train_Loss_EpochAvg 0.00648
+wandb:    Layer_W2_M2/Train_Loss_LayerAvg 0.00648
+wandb:    Layer_W2_M2/Val_LocalLoss_Epoch 0.20586
+wandb:             codecarbon_country_iso POL
+wandb:                 codecarbon_enabled True
+wandb:                    codecarbon_mode offline
+wandb:         estimated_bp_update_gflops nan
+wandb:               estimated_fwd_gflops 0.00359
+wandb:                final/Test_Accuracy 98.15
+wandb:                    final/Test_Loss nan
+wandb:   final/codecarbon_emissions_gCO2e 1.06013
+wandb:   final/estimated_bp_update_gflops nan
+wandb:         final/estimated_fwd_gflops 0.00359
+wandb:        final/peak_gpu_mem_used_mib 934
+wandb:      final/total_gpu_energy_joules 2299.12479
+wandb:          final/total_gpu_energy_wh 0.63865
+wandb:       final/total_run_duration_sec 40.1306
+wandb:        final/training_duration_sec 36.76533
+wandb:           initial_gpu_mem_used_mib 336.625
+wandb:             model_parameters_total 1823850
+wandb:         model_parameters_trainable 1823850
+wandb: 
+wandb: 🚀 View run mf_mnist_mlp_2x1000 at: https://wandb.ai/przspyra11/BeyondBackpropagation/runs/di368sca
+wandb: ⭐️ View project at: https://wandb.ai/przspyra11/BeyondBackpropagation
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20250508_040739-di368sca/logs

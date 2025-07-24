@@ -1,0 +1,66 @@
+experiment_name: bp_fashion_mnist_mlp_4x2000
+algorithm:
+  name: BP
+data:
+  name: FashionMNIST
+  root: ./data
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+model:
+  name: FF_MLP
+  params:
+    hidden_dims:
+    - 2000
+    - 2000
+    - 2000
+    - 2000
+    activation: ReLU
+    bias: true
+training:
+  epochs: 100
+  criterion: CrossEntropyLoss
+  log_interval: 100
+  early_stopping_enabled: true
+  early_stopping_metric: "bp_val_loss"
+  early_stopping_patience: 10
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.0 
+optimizer:
+  type: AdamW
+  lr: 0.0002040628171913876
+  weight_decay: 4.186646492145325e-06
+logging:
+  level: INFO
+  wandb:
+    use_wandb: true
+    project: BeyondBackpropagation
+checkpointing:
+  checkpoint_dir: checkpoints/bp_fashion_mnist_mlp_4x2000
+  save_best_metric: bp_val_accuracy
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
+tuning:
+  enabled: true
+  n_trials: 10
+  num_epochs: 15
+  direction: maximize
+  metric: val_accuracy
+  sampler: TPE
+  pruner: Median
+  lr_range:
+  - 1.0e-05
+  - 0.01
+  wd_range:
+  - 1.0e-06
+  - 0.001

@@ -1,0 +1,67 @@
+experiment_name: "cafodfa_mnist_cnn_3block"
+algorithm:
+  name: "CaFo"
+
+data:
+  name: "MNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels': 1
+  image_size: 28
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "CaFo_CNN"
+  params:
+    block_channels: [32, 128, 512]
+    activation: "ReLU"
+    use_batchnorm: true
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
+
+algorithm_params:
+  # --- Block Training (DFA) ---
+  train_blocks: true
+  block_training_epochs: 5
+  block_optimizer_type: Adam
+  block_lr: 0.0004977965859721583
+  block_weight_decay: 9.594431243311431e-07
+ 
+  # --- Predictor Training (CE) ---
+  predictor_optimizer_type: Adam
+  predictor_lr: 0.00025391813833013565
+  predictor_weight_decay: 2.0840357948896564e-06
+  loss_type: CrossEntropyLoss
+  num_epochs_per_block: 12
+  log_interval: 9999
+  aggregation_method: sum
+
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: "val_loss"
+  predictor_early_stopping_patience: 5
+  predictor_early_stopping_mode: "min"
+  predictor_early_stopping_min_delta: 0.0005
+
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/cafodfa_mnist_cnn_3block"
+  save_best_metric: "bp_val_accuracy"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

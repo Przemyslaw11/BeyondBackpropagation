@@ -1,0 +1,53 @@
+experiment_name: cafo_cifar10_cnn_3block
+algorithm:
+  name: CaFo
+data:
+  name: CIFAR10
+  root: ./data
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+model:
+  name: CaFo_CNN
+  params:
+    block_channels:
+    - 32
+    - 128
+    - 512
+    activation: ReLU
+    use_batchnorm: true
+    kernel_size: 3
+    pool_kernel_size: 2
+    pool_stride: 2
+algorithm_params:
+  optimizer_type: Adam
+  lr: 0.001
+  weight_decay: 0.0
+  loss_type: CrossEntropyLoss
+  num_epochs_per_block: 733
+  log_interval: 200
+  predictor_early_stopping_enabled: true
+  predictor_early_stopping_metric: val_loss
+  predictor_early_stopping_patience: 8
+  predictor_early_stopping_mode: min
+  predictor_early_stopping_min_delta: 0.001
+  predictor_lr: 0.00024111676098423975
+  predictor_weight_decay: 6.3583588566762514e-06
+logging:
+  level: INFO
+  wandb:
+    use_wandb: true
+checkpointing:
+  checkpoint_dir: checkpoints/cafo_cifar10_cnn_3block
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

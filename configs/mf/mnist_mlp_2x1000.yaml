@@ -1,0 +1,46 @@
+experiment_name: mf_mnist_mlp_2x1000
+algorithm:
+  name: MF
+data:
+  name: MNIST
+  root: ./data
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+model:
+  name: MF_MLP
+  params:
+    hidden_dims:
+    - 1000
+    - 1000
+    activation: ReLU
+    bias: true
+algorithm_params:
+  lr: 0.001570297088405539
+  epochs_per_layer: 14
+  optimizer_type: Adam
+  weight_decay: 0.0
+  log_interval: 9999
+  mf_early_stopping_enabled: true
+  mf_early_stopping_patience: 5
+  mf_early_stopping_min_delta: 0.0001
+logging:
+  level: INFO
+  wandb:
+    use_wandb: true
+checkpointing:
+  checkpoint_dir: checkpoints/mf_mnist_mlp_2x1000
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
+tuning:
+  enabled: false
