@@ -139,14 +139,14 @@
     git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
     cd BeyondBackpropagation
     ```
-2.  **Create and activate a Python virtual environment:** (Use a Python version compatible with `requirements.txt`, e.g., 3.10+)
+2.  **Create and activate a Python virtual environment:** (Requires Python 3.12 because PyTorch 2.4.0 doesn't have wheels built for Python 3.13)
     ```bash
-    python3 -m venv venv
+    uv venv --python 3.12 venv
     source venv/bin/activate
     ```
-3.  **Install dependencies:**
+3.  **Install dependencies using uv:**
     ```bash
-    pip install -r requirements.txt
+    uv pip install -r requirements.txt
     ```
 4.  **Download datasets:** Datasets will be automatically downloaded to the `data/` directory upon the first run if not present.
 
