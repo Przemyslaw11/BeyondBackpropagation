@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000M
 #SBATCH --time=08:00:00
-#SBATCH -A plgoncotherapy-gpu-a100
+#SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
@@ -95,9 +95,9 @@ module list
 echo "Activating virtual environment..."
 source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
 
-# Set WANDB to offline mode for compute nodes
-export WANDB_MODE=offline
-echo "Set WANDB_MODE=offline"
+# Compute nodes have outbound HTTPS to api.wandb.ai, so runs stream live.
+export WANDB_MODE=online
+echo "Set WANDB_MODE=online"
 
 echo "Checking PyTorch CUDA..."
 python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}')" || { echo "PyTorch check failed"; exit 1; }
@@ -107,6 +107,15 @@ echo "Running experiment script for task $SLURM_ARRAY_TASK_ID..."
 srun python scripts/run_experiment.py --config "$CONFIG_FILE"
 
 EXIT_CODE=$?
+
+# --- Sync anything that fell back to offline; must run before deactivate ---
+WANDB_LOCAL_DIR="${WANDB_DIR:-$SLURM_SUBMIT_DIR}/wandb"
+if compgen -G "$WANDB_LOCAL_DIR/offline-run-*" > /dev/null; then
+    echo "Syncing offline W&B runs from $WANDB_LOCAL_DIR ..."
+    wandb sync "$WANDB_LOCAL_DIR"/offline-run-* || echo "WARNING: wandb sync failed"
+else
+    echo "No offline W&B runs to sync."
+fi
 
 # --- Cleanup ---
 echo "Deactivating virtual environment..."
@@ -119,10 +128,6 @@ else
     echo "Array Task $SLURM_ARRAY_TASK_ID finished with errors (Exit Code: $EXIT_CODE)."
 fi
 date
-echo "To sync WandB offline runs (after ALL tasks finish):"
-echo "cd $SLURM_SUBMIT_DIR"
-echo "source venv/bin/activate"
-echo "wandb sync --sync-all # Syncs all runs in the local wandb directory"
 echo "#####################################################################"
 
 exit $EXIT_CODE
