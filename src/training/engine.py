@@ -466,13 +466,20 @@ def run_training(
         logger.info("Starting evaluation phase on test set...")
         evaluation_fn = get_evaluation_function(algo_name)
         eval_criterion = nn.CrossEntropyLoss()
-        eval_args = {
-            "model": model,
-            "data_loader": test_loader,
-            "device": device,
-            "criterion": eval_criterion,
-            "input_adapter": input_adapter,
-        }
+        if algo_name == "ff":
+            eval_args = {
+                "model": model,
+                "data_loader": test_loader,
+                "device": device,
+            }
+        else:
+            eval_args = {
+                "model": model,
+                "data_loader": test_loader,
+                "device": device,
+                "criterion": eval_criterion,
+                "input_adapter": input_adapter,
+            }
         if algo_name == "cafo":
             eval_args["aggregation_method"] = config.get("algorithm_params", {}).get(
                 "aggregation_method", "sum"
