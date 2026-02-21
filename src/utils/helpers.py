@@ -64,6 +64,7 @@ def save_checkpoint(
     filename: str = "checkpoint.pth",
     best_filename: str = "model_best.pth",
     checkpoint_dir: str = "checkpoints",
+    keep_best_only: bool = False,
 ) -> None:
     """Saves model checkpoint.
 
@@ -74,9 +75,14 @@ def save_checkpoint(
         filename: Base filename for the checkpoint.
         best_filename: Filename for the best model checkpoint.
         checkpoint_dir: Directory to save checkpoints.
+        keep_best_only: Skip the per-epoch snapshot and write only the best model.
+            Set False to retain resumable per-epoch checkpoints.
     """
     if not checkpoint_dir:
         logger.warning("Checkpoint directory not specified, cannot save checkpoint.")
+        return
+
+    if keep_best_only and not is_best:
         return
 
     create_directory_if_not_exists(checkpoint_dir)
@@ -84,8 +90,9 @@ def save_checkpoint(
     best_filepath = os.path.join(checkpoint_dir, best_filename)
 
     try:
-        torch.save(state, filepath)
-        logger.debug(f"Saved checkpoint to {filepath}")
+        if not keep_best_only:
+            torch.save(state, filepath)
+            logger.debug(f"Saved checkpoint to {filepath}")
         if is_best:
             epoch = state.get("epoch", "?")
             metric = state.get("best_metric_value", "?")
@@ -96,4 +103,6 @@ def save_checkpoint(
             )
             torch.save(state["state_dict"], best_filepath)
     except Exception as e:
-        logger.error(f"Failed to save checkpoint to {filepath}: {e}", exc_info=True)
+        logger.error(
+            f"Failed to save checkpoint to {checkpoint_dir}: {e}", exc_info=True
+        )
