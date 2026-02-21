@@ -71,6 +71,7 @@ profiling:
 
 checkpointing:
   checkpoint_dir: null
+  keep_best_only: true
   save_best_metric: "bp_val_accuracy"
 
 tuning:

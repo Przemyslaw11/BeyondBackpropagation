@@ -191,6 +191,7 @@ def train_bp_model(
     scheduler_params = train_config.get("scheduler_params", {})
     log_interval = train_config.get("log_interval", 100)
     checkpoint_dir = checkpoint_config.get("checkpoint_dir", None)
+    keep_best_only = checkpoint_config.get("keep_best_only", True)
     save_best_metric = checkpoint_config.get("save_best_metric", "bp_val_loss").lower()
     save_best_metric_mode = "max" if "accuracy" in save_best_metric else "min"
 
@@ -369,6 +370,7 @@ def train_bp_model(
                     checkpoint_dir=checkpoint_dir,
                     filename=checkpoint_filename,
                     best_filename=best_checkpoint_filename,
+                    keep_best_only=keep_best_only,
                 )
 
             if es_enabled:

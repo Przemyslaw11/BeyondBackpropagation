@@ -152,6 +152,7 @@ def train_ff_model(
     log_interval = train_config.get("log_interval", 100)
     num_classes = data_config.get("num_classes", 10)
     checkpoint_dir = checkpoint_config.get("checkpoint_dir", None)
+    keep_best_only = checkpoint_config.get("keep_best_only", True)
 
     # --- Early Stopping Setup ---
     es_enabled = train_config.get("early_stopping_enabled", True)
@@ -534,6 +535,7 @@ def train_ff_model(
                 checkpoint_dir=checkpoint_dir,
                 filename=f"ff_checkpoint_epoch_{epoch + 1}.pth",
                 best_filename=f"ff_{exp_name}_best.pth",
+                keep_best_only=keep_best_only,
             )
 
     total_training_time = time.time() - run_start_time
