@@ -1,0 +1,745 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a standard LaTeX article template.
+% It has been adapted from your original thesis file for submission to arXiv.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[11pt, english]{article}
+
+% FONT AND ENCODING
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper, margin=1in]{geometry}
+% BIBLIOGRAPHY
+% \usepackage[sorting=none]{biblatex}
+% \addbibresource{bibliography.bib}
+
+
+% MATH PACKAGES
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{siunitx}
+
+% GRAPHICS AND COLOR
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+% TABLES AND ALGORITHMS
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage[ruled,linesnumbered]{algorithm2e}
+
+% CODE LISTINGS
+% \usepackage[newfloat]{minted}
+
+% LAYOUT AND FIGURES
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% HYPERLINKS (load last)
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue,
+    pdftitle={Beyond Backpropagation: Exploring Innovative Algorithms for Energy-Efficient Deep Neural Network Training},
+    pdfauthor={Przemyslaw Spyra}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% ARTICLE METADATA (TITLE, AUTHOR, ETC.)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{Beyond Backpropagation: Exploring Innovative Algorithms for Energy-Efficient Deep Neural Network Training}
+
+\author{
+    Przemyslaw Spyra \\
+    \texttt{przspyra@student.agh.edu.pl} \\\\
+    AGH University of Science and Technology \\
+    Krakow, Poland
+}
+
+% Use \date{} to prevent LaTeX from printing the current date
+\date{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% CUSTOM COMMANDS
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\code}[1]{\texttt{#1}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% BEGIN DOCUMENT
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The increasing computational demands of deep neural networks (DNNs), primarily driven by the high-energy requirements of the backpropagation (BP) algorithm, pose a significant challenge to sustainable AI development. This paper presents a rigorous investigation into three promising training methods without backpropagation: the \textbf{Forward-Forward (FF) Algorithm}, the \textbf{Cascaded-Forward (CaFo) Algorithm}, and the \textbf{Mono-Forward (MF) Algorithm}. This investigation charts an evolutionary progression from foundational concepts to a demonstrably superior solution.
+
+To ensure a fair and insightful analysis, a robust comparative framework was established. Each alternative algorithm was implemented on its native architecture (MLPs for FF and MF, a CNN for CaFo) and systematically compared against an equivalent model trained with BP. Critically, this methodology mandates comprehensive hyperparameter optimization for all algorithms using Optuna, coupled with consistent early stopping criteria based on validation performance, thereby ensuring that all comparisons are conducted between optimally tuned models.
+
+The investigation culminates in a significant finding: The Mono-Forward (MF) algorithm not only competes with, but consistently surpasses backpropagation in classification accuracy on its native MLP architectures. This superior generalization arises from the algorithm's ability to converge to a more favorable minimum in the validation loss landscape, challenging the long-held assumption that global optimization is a prerequisite for achieving state-of-the-art performance. This breakthrough delivers profound efficiency gains, reducing energy consumption by up to 41\% and accelerating training by up to 34\% on complex datasets. These figures represent direct measurements at the hardware level obtained via the NVIDIA Management Library (NVML) API, which translate to a demonstrably smaller carbon footprint as estimated by the CodeCarbon tool.
+
+Beyond this primary result, this paper provides a detailed analysis of the underlying drivers of computational efficiency. This "autopsy at the hardware level" reveals the sources of performance disparities by exposing the architectural inefficiencies of the FF algorithm while validating the computationally lean design of MF. Furthermore, this research empirically challenges the simplistic notion that all BP-free methods are inherently more memory-efficient, instead revealing the nuanced resource requirements of each approach. By documenting the trajectory from FF's foundational concepts and their practical limitations to MF's compelling synthesis of superior accuracy and sustainability, this work offers a clear, data-driven roadmap for the future of energy-efficient deep learning.
+\end{abstract}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% MAIN BODY OF THE PAPER
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\include{tex/1_Introduction}
+\include{tex/2_BackgroundAndLiteratureReview}
+\include{tex/3_Methodology}
+\include{tex/4_ExperimentsAndResults}
+\include{tex/5_Discussion}
+\include{tex/6_conclusion_and_future_work} % Assuming you move your conclusion to a file
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% ACKNOWLEDGMENTS AND BIBLIOGRAPHY
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection*{Acknowledgments}
+The authors would like to thank Professor Witold Dzwinel for his invaluable guidance and expert supervision. This work was made possible by the computational resources provided by ACK Cyfronet AGH on the Athena cluster. The research was supported by the PLGrid Infrastructure.
+
+% \printbibliography
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% APPENDICES
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{thebibliography}{10}
+
+\bibitem{abbas2024impact}
+Balogun Barnabas~Friday and Dhakir Abbas~Ali.
+\newblock Balancing innovation and sustainability: Assessing the impact of
+  generative {AI} on energy consumption.
+\newblock {\em International Journal of Innovative Research \& Development},
+  13(9):1--10, 2024.
+
+\bibitem{akiba2019optuna}
+Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta, and Masanori Koyama.
+\newblock {Optuna}: A next-generation hyperparameter optimization framework.
+\newblock In {\em Proceedings of the 25th {ACM SIGKDD} International
+  Conference on Knowledge Discovery \& Data Mining (KDD)}, pages 2623--2631.
+  ACM, 2019.
+
+\bibitem{andrae2015global}
+Anders S.~G. Andrae and Tomas Edler.
+\newblock On global electricity usage of communication technology: trends to
+  2030.
+\newblock {\em Challenges}, 6(1):117--157, 2015.
+
+\bibitem{anthony2020carbontracker}
+Lasse~F. Anthony, Benjamin Kanding, and Raghavendra Selvan.
+\newblock {CarbonTracker}: Tracking and predicting the carbon footprint of
+  training deep learning models.
+\newblock In {\em {ICML} 2020 Workshop on Challenges in Deploying and
+  Monitoring Machine Learning Systems}, 2020.
+
+\bibitem{ba2016layer}
+Jimmy~Lei Ba, Jamie~Ryan Kiros, and Geoffrey~E. Hinton.
+\newblock Layer normalization.
+\newblock {\em arXiv preprint arXiv:1607.06450}, 2016.
+
+\bibitem{bengio2015towards}
+Yoshua Bengio, Dong-Hyun Lee, J{\"o}rg Bornschein, Thomas Mesnard, and Zhouhan
+  Lin.
+\newblock Towards biologically plausible deep learning.
+\newblock {\em arXiv preprint arXiv:1502.04156}, 2015.
+
+\bibitem{bergstra2011algorithms}
+James~S. Bergstra, R{\'e}mi Bardenet, Yoshua Bengio, and Bal{\'a}zs K{\'e}gl.
+\newblock Algorithms for hyper-parameter optimization.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  volume~24, pages 2546--2554. Curran Associates, Inc., 2011.
+
+\bibitem{bi1998synaptic}
+Guo-qiang Bi and Mu-ming Poo.
+\newblock Synaptic modifications in cultured hippocampal neurons: dependence on
+  spike timing, synaptic strength, and postsynaptic cell type.
+\newblock {\em The Journal of Neuroscience}, 18(24):10464--10472, 1998.
+
+\bibitem{charpentier2023accuracy}
+Bertrand Charpentier, Loris Dutto, Nicolas Thome, and Matthieu Cord.
+\newblock Accuracy is not the only metric that matters: Estimating the energy
+  consumption of deep learning models using {RAPL}.
+\newblock {\em arXiv preprint arXiv:2304.00897}, 2023.
+
+\bibitem{chen2016training}
+Tianqi Chen, Bing Xu, Chiyuan Zhang, and Carlos Guestrin.
+\newblock Training deep nets with sublinear memory cost.
+\newblock {\em arXiv preprint arXiv:1604.06174}, 2016.
+
+\bibitem{chung2024zeus}
+Jae-Won Chung, Myeongjae Lee, and Minsoo Rhu.
+\newblock {Zeus}: Understanding and optimizing {GPU} energy consumption of {DL}
+  training.
+\newblock PyTorch Blog, January 2024.
+
+\bibitem{codecarbon2021}
+{Mila}, {BCG GAMMA}, {Haverford College}, and {Comet}.
+\newblock {CodeCarbon}: Track and reduce {CO2} emissions from your computing,
+  2021.
+\newblock URL: \url{https://github.com/mlco2/codecarbon}.
+
+\bibitem{desislavov2024energy}
+Radosvet Desislavov, Djordje Lazovic, Jie Zhou, and Pauline Grosso.
+\newblock Measuring the energy consumption and efficiency of deep neural
+  networks: A survey.
+\newblock {\em arXiv preprint arXiv:2403.08151}, 2024.
+
+\bibitem{devlin2018bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock {BERT}: Pre-training of deep bidirectional transformers for language
+  understanding.
+\newblock In {\em Proceedings of the 2019 Conference of the North American
+  Chapter of the Association for Computational Linguistics}, pages 4171--4186,
+  2019.
+
+\bibitem{garcia2019estimation}
+Eva Garc{\'\i}a-Mart{\'\i}n, Crefeda~Faviola Rodrigues, Graham Riley, and
+  Sebastian Gabel.
+\newblock Estimation of energy consumption in machine learning.
+\newblock {\em Journal of Parallel and Distributed Computing}, 134:75--88,
+  2019.
+
+\bibitem{gong2025mono}
+James Gong, Bruce Li, and Waleed Abdulla.
+\newblock {Mono-Forward}: Backpropagation-free algorithm for efficient neural
+  network training harnessing local errors.
+\newblock {\em arXiv preprint arXiv:2501.09238}, 2025.
+
+\bibitem{goodfellow2016deep}
+Ian Goodfellow, Yoshua Bengio, and Aaron Courville.
+\newblock {\em Deep learning}.
+\newblock MIT Press, 2016.
+
+\bibitem{he2015delving}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Delving deep into rectifiers: Surpassing human-level performance on
+  {ImageNet} classification.
+\newblock In {\em Proceedings of the {IEEE} International Conference on
+  Computer Vision (ICCV)}, pages 1026--1034, 2015.
+
+\bibitem{he2016deep}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In {\em Proceedings of the {IEEE} Conference on Computer Vision and
+  Pattern Recognition (CVPR)}, pages 770--778, 2016.
+
+\bibitem{henderson2020towards}
+Peter Henderson, Jieru Hu, Joshua Romoff, Emma Brunskill, Dan Jurafsky, and
+  Joelle Pineau.
+\newblock Towards the systematic reporting of the energy and carbon footprints
+  of machine learning.
+\newblock {\em Journal of Machine Learning Research}, 21(248):1--43, 2020.
+
+\bibitem{hinton2022forward}
+Geoffrey Hinton.
+\newblock The {Forward-Forward} algorithm: Some preliminary investigations.
+\newblock {\em arXiv preprint arXiv:2212.13345}, 2022.
+
+\bibitem{hochreiter2001gradient}
+Sepp Hochreiter, Yoshua Bengio, Paolo Frasconi, and J{\"u}rgen Schmidhuber.
+\newblock Gradient flow in recurrent nets: the difficulty of learning
+  long-term dependencies.
+\newblock In {\em A Field Guide to Dynamical Recurrent Neural Networks}, pages
+  237--243. {IEEE Press}, 2001.
+
+\bibitem{horowitz2014computing}
+Mark Horowitz.
+\newblock Computing's energy problem (and what we can do about it).
+\newblock In {\em 2014 {IEEE} International Solid-State Circuits Conference
+  Digest of Technical Papers (ISSCC)}, pages 1.1.1--1.1.7. {IEEE}, 2014.
+
+\bibitem{howard2017mobilenets}
+Andrew~G. Howard, Menglong Zhu, Bo~Chen, Dmitry Kalenichenko, Weijun Wang,
+  Tobias Weyand, Marco Andreetto, and Hartwig Adam.
+\newblock {MobileNets}: Efficient convolutional neural networks for mobile
+  vision applications.
+\newblock {\em arXiv preprint arXiv:1704.04861}, 2017.
+
+\bibitem{jacob2018quantization}
+Benoit Jacob, Skirmantas Kligys, Bo~Chen, Menglong Zhu, Matthew Tang, Andrew
+  Howard, Hartwig Adam, and Dmitry Kalenichenko.
+\newblock Quantization and training of neural networks for efficient
+  integer-arithmetic-only inference.
+\newblock In {\em Proceedings of the {IEEE} Conference on Computer Vision and
+  Pattern Recognition (CVPR)}, pages 2704--2713, 2018.
+
+\bibitem{jaderberg2017decoupled}
+Max Jaderberg, Wojciech~Marian Czarnecki, Simon Osindero, Oriol Vinyals, Alex
+  Graves, David Silver, and Koray Kavukcuoglu.
+\newblock Decoupled neural interfaces using synthetic gradients.
+\newblock In {\em Proceedings of the 34th International Conference on Machine
+  Learning (ICML)}, volume~70 of {\em Proceedings of Machine Learning
+  Research}, pages 1627--1635. PMLR, 2017.
+
+\bibitem{johnson2023inconsistency}
+Rie Johnson and Tong Zhang.
+\newblock Inconsistency, instability, and generalization gap of deep neural
+  network training.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  volume~36, pages 15127--15143. Curran Associates, Inc., 2023.
+
+\bibitem{kaplan2020scaling}
+Jared Kaplan, Sam McCandlish, Tom Henighan, Tom~B. Brown, Benjamin Chess, Rewon
+  Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+\newblock Scaling laws for neural language models.
+\newblock {\em arXiv preprint arXiv:2001.08361}, 2020.
+
+\bibitem{krizhevsky2012learning}
+Alex Krizhevsky.
+\newblock Learning multiple layers of features from tiny images.
+\newblock Technical report, University of Toronto, 2012.
+
+\bibitem{krizhevsky2012imagenet}
+Alex Krizhevsky, Ilya Sutskever, and Geoffrey~E. Hinton.
+\newblock {ImageNet} classification with deep convolutional neural networks.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  volume~25, pages 1097--1105. Curran Associates, Inc., 2012.
+
+\bibitem{lecun1998gradient}
+Yann LeCun, L{\'e}on Bottou, Yoshua Bengio, and Patrick Haffner.
+\newblock Gradient-based learning applied to document recognition.
+\newblock {\em Proceedings of the {IEEE}}, 86(11):2278--2324, 1998.
+
+\bibitem{lillicrap2020backpropagation}
+Timothy~P. Lillicrap, Adam Santoro, Luke Marris, Colin~J. Akerman, and Geoffrey
+  Hinton.
+\newblock Backpropagation and the brain.
+\newblock {\em Nature Reviews Neuroscience}, 21(6):335--346, 2020.
+
+\bibitem{loshchilov2017decoupled}
+Ilya Loshchilov and Frank Hutter.
+\newblock Decoupled weight decay regularization.
+\newblock In {\em International Conference on Learning Representations (ICLR)},
+  2019.
+
+\bibitem{mnih2015human}
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei~A. Rusu, Joel Veness,
+  Marc~G. Bellemare, Alex Graves, Martin Riedmiller, Andreas~K. Fidjeland,
+  Georg Ostrovski, et~al.
+\newblock Human-level control through deep reinforcement learning.
+\newblock {\em Nature}, 518(7540):529--533, 2015.
+
+\bibitem{narayanagowda2023watt}
+Shreyank Narayanagowda, Animesh Laddha, Spandan Mukhopadhyay, and Pria Grover.
+\newblock {Watt} for what: Rethinking deep learning's energy-performance
+  relationship.
+\newblock {\em arXiv preprint arXiv:2310.06522}, 2023.
+
+
+\bibitem{nokland2016direct}
+Arild N{\o}kland.
+\newblock Direct feedback alignment provides learning in deep neural networks.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  volume~29, pages 1037--1045. Curran Associates, Inc., 2016.
+
+\bibitem{oxford2024global}
+Rahmatallah Poudineh.
+\newblock Global electricity demand: what's driving growth and why it matters?
+\newblock OIES Energy Comment, Oxford Institute for Energy Studies, January
+  2025.
+
+\bibitem{paszke2019pytorch}
+Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory
+  Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, et~al.
+\newblock {PyTorch}: An imperative style, high-performance deep learning
+  library.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  volume~32, pages 8026--8037, 2019.
+
+\bibitem{patterson2021carbon}
+David Patterson, Joseph Gonzalez, Quoc Le, Chen Liang, Lluis-Miquel Munguia,
+  Daniel Rothchild, David~R. So, Maud Texier, and Jeff Dean.
+\newblock Carbon emissions and large neural network training.
+\newblock {\em arXiv preprint arXiv:2104.10350}, 2021.
+
+\bibitem{rajput2023enhancing}
+Saurabhsingh Rajput, Yeshi Xu, Shiping Chen, and Xiaoli Jin.
+\newblock Enhancing energy-awareness in deep learning through fine-grained
+  energy measurement.
+\newblock {\em arXiv preprint arXiv:2308.12264}, 2023.
+
+\bibitem{yarally2023uncovering}
+Tim Yarally, Lu{\'\i}s Cruz, Daniel Feitosa, Pauline Grosso, Djordje Lazovic,
+  Jean-Baptiste Tallon, Matthijs van~der Vlag, and Jie Zhou.
+\newblock Uncovering energy-efficient practices in deep learning training:
+  Preliminary steps towards green {AI}.
+\newblock In {\em 2023 IEEE/ACM 2nd International Conference on AI Engineering
+  (CAIN)}, pages 127--138. IEEE, 2023.
+
+\bibitem{rumelhart1986learning}
+David~E. Rumelhart, Geoffrey~E. Hinton, and Ronald~J. Williams.
+\newblock Learning representations by back-propagating errors.
+\newblock {\em Nature}, 323(6088):533--536, 1986.
+
+\bibitem{schwartz2020green}
+Roy Schwartz, Jesse Dodge, Noah~A. Smith, and Oren Etzioni.
+\newblock Green {AI}.
+\newblock {\em Communications of the ACM}, 63(12):54--63, 2020.
+
+\bibitem{song2000competitive}
+Sen Song, Kenneth~D. Miller, and L.~F. Abbott.
+\newblock Competitive hebbian learning through spike-timing-dependent synaptic
+  plasticity.
+\newblock {\em Nature Neuroscience}, 3(9):919--926, 2000.
+
+\bibitem{strubell2019energy}
+Emma Strubell, Ananya Ganesh, and Andrew McCallum.
+\newblock Energy and policy considerations for deep learning in {NLP}.
+\newblock In {\em Proceedings of the 57th Annual Meeting of the Association
+  for Computational Linguistics (ACL)}, pages 3645--3650, 2019.
+
+\bibitem{tan2019efficientnet}
+Mingxing Tan and Quoc~V. Le.
+\newblock {EfficientNet}: Rethinking model scaling for convolutional neural
+  networks.
+\newblock In {\em Proceedings of the 36th International Conference on Machine
+  Learning (ICML)}, volume~97 of {\em Proceedings of Machine Learning
+  Research}, pages 6105--6114. PMLR, 2019.
+
+\bibitem{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N. Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  volume~30, pages 5998--6008. Curran Associates, Inc., 2017.
+
+\bibitem{wef2025paradox}
+{World Economic Forum} and {Accenture}.
+\newblock Artificial intelligence's energy paradox: Balancing challenges and
+  opportunities.
+\newblock AI Governance Alliance Report, World Economic Forum, January 2025.
+
+\bibitem{wef2024growing}
+Ginelle Greene-Dewasmes.
+\newblock AI and energy: Will ai reduce emissions or increase power demand?
+\newblock World Economic Forum, July 2024.
+
+\bibitem{xiao2017fashion}
+Han Xiao, Kashif Rasul, and Roland Vollgraf.
+\newblock {Fashion-MNIST}: a novel image dataset for benchmarking machine
+  learning algorithms.
+\newblock {\em arXiv preprint arXiv:1708.07747}, 2017.
+
+
+\bibitem{fawzi2022discovering}
+Alhussein Fawzi, Matej Balog, Aja Huang, Thomas Hubert, Bernardino
+  Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov, Francisco J.~R.
+  Ruiz, Julian Schrittwieser, Grzegorz Swirszcz, et~al.
+\newblock Discovering faster matrix multiplication algorithms with
+  reinforcement learning.
+\newblock {\em Nature}, 610(7930):47--53, 2022.
+
+\bibitem{zhao2023cafo}
+Gongpei Zhao, Tao Wang, Yidong Li, Yi~Jin, Congyan Lang, and Haibin Ling.
+\newblock The {Cascaded Forward} algorithm for neural network training.
+\newblock {\em arXiv preprint arXiv:2303.09728}, 2023.
+
+\end{thebibliography}
+
+
+\pagebreak 
+\appendix
+
+\section{Hyperparameter Tuning Details}
+\label{app:hyper_tuning}
+This appendix provides a comprehensive account of the hyperparameter settings established for each algorithm in this thesis. To ensure a rigorous and fair comparison, systematic hyperparameter optimization was conducted for all training algorithms. This included Backpropagation (BP), Forward-Forward (FF), Cascaded-Forward (CaFo), and Mono-Forward (MF), each tested across their respective experimental configurations. The process was facilitated by the Optuna framework \cite{akiba2019optuna}, a tool the author employed to methodically search for optimal parameters.
+
+The general optimization strategy utilized a Tree-structured Parzen Estimator (TPE) sampler \cite{bergstra2011algorithms}. For the BP baselines, a Median pruner was implemented to terminate unpromising trials based on intermediate validation performance. Conversely, pruning was disabled for the alternative algorithms (FF, CaFo, MF), as their distinct, often layer-wise, training dynamics render intermediate metrics unreliable for predicting final outcomes. The primary objective for each tuning trial was the maximization of validation set accuracy, evaluated within a specified training budget. Upon completion of each search, the identified optimal hyperparameters were automatically propagated to the final experiment configuration files using dedicated utility scripts. The resulting optimized parameters, which were used for the final experimental runs detailed in Chapter \ref{chap:experiments}, are documented in the following sections.
+
+\subsection{Backpropagation Baseline Tuning Parameters}
+The AdamW optimizer \cite{loshchilov2017decoupled} was utilized for all BP baseline experiments. The optimization process was configured as follows:
+\begin{itemize}
+    \item \textbf{Search Space (Common):}
+        \begin{itemize}
+            \item Learning Rate (\texttt{lr}): Loguniform($10^{-5}$, $10^{-2}$)
+            \item Weight Decay (\texttt{weight\_decay}): Loguniform($10^{-6}$, $10^{-3}$)
+        \end{itemize}
+    \item \textbf{Objective:} Maximize validation accuracy within the trial's training budget, which incorporated early stopping based on validation loss.
+    \item \textbf{Sampler/Pruner:} TPE / Median.
+\end{itemize}
+The optimal hyperparameters identified for each BP baseline configuration were:
+\begin{itemize}
+    \item \textbf{BP Baseline for FF (Fashion-MNIST 4x2000 MLP):}
+        \begin{itemize}
+            \item Learning Rate: 0.0002040628171913876
+            \item Weight Decay: 4.186646492145325e-06
+        \end{itemize}
+    \item \textbf{BP Baseline for CaFo (Fashion-MNIST 3-Block CNN):}
+        \begin{itemize}
+            \item Learning Rate: 0.000564093098959669
+            \item Weight Decay: 8.597071465954117e-06
+        \end{itemize}
+     \item \textbf{BP Baseline for CaFo (CIFAR-10 3-Block CNN):}
+        \begin{itemize}
+            \item Learning Rate: 0.0067628739201322655
+            \item Weight Decay: 4.7418070637518205e-06
+        \end{itemize}
+     \item \textbf{BP Baseline for CaFo (CIFAR-100 3-Block CNN):}
+        \begin{itemize}
+            \item Learning Rate: 0.0003201243830098061
+            \item Weight Decay: 5.880350745731698e-05
+        \end{itemize}
+     \item \textbf{BP Baseline for MF (Fashion-MNIST 2x1000 MLP):}
+        \begin{itemize}
+            \item Learning Rate: 0.00021316290979390737
+            \item Weight Decay: 2.7122805865833542e-05
+        \end{itemize}
+    \item \textbf{BP Baseline for MF (CIFAR-10 3x2000 MLP):}
+            \begin{itemize}
+                \item Learning Rate: 8.11587582031004e-05
+                \item Weight Decay: 2.0847447927718932e-05
+            \end{itemize}
+    \item \textbf{BP Baseline for MF (CIFAR-100 3x2000 MLP):}
+            \begin{itemize}
+                \item Learning Rate: 0.00010362161015212055
+                \item Weight Decay: 9.105881789069153e-06
+            \end{itemize}
+    \item \textbf{BP Baseline for FF (MNIST 3x1000 MLP):}
+        \begin{itemize}
+            \item Learning Rate: 0.0001329291894316216
+            \item Weight Decay: 0.0007114476009343421
+        \end{itemize}
+    \item \textbf{BP Baseline for FF (MNIST 4x2000 MLP):}
+        \begin{itemize}
+            \item Learning Rate: 0.0001329291894316216
+            \item Weight Decay: 0.0007114476009343421
+        \end{itemize}
+    \item \textbf{BP Baseline for CaFo (MNIST 3-Block CNN):}
+        \begin{itemize}
+            \item Learning Rate: 0.001570297088405539
+            \item Weight Decay: 6.251373574521755e-05
+        \end{itemize}
+    \item \textbf{BP Baseline for MF (MNIST 2x1000 MLP):}
+        \begin{itemize}
+            \item Learning Rate: 0.00019762189340280086
+            \item Weight Decay: 7.4763120622522945e-06
+        \end{itemize}
+\end{itemize}
+
+\subsection{Alternative Algorithm Tuning Parameters}
+The alternative algorithms were tuned using their respective dedicated Optuna objective functions.
+\begin{itemize}
+    \item \textbf{Objective:} Maximize final validation accuracy at the end of the algorithm's specific training procedure.
+    \item \textbf{Sampler/Pruner:} TPE / None.
+\end{itemize}
+
+\textbf{Forward-Forward (FF):}
+\begin{itemize}
+    \item \textbf{Search Space (Common):}
+        \begin{itemize}
+            \item FF Layer Learning Rate (\texttt{ff\_learning\_rate}): Loguniform ($2 \times 10^{-4}$, $5 \times 10^{-3}$)
+            \item FF Layer Weight Decay (\texttt{ff\_weight\_decay}): Loguniform ($10^{-4}$, $10^{-3}$)
+            \item Downstream Classifier Learning Rate (\texttt{downstream\_learning\_rate}): Loguniform ($2 \times 10^{-3}$, $5 \times 10^{-2}$)
+            \item Downstream Classifier Weight Decay (\texttt{downstream\_weight\_decay}): Loguniform ($10^{-3}$, $10^{-2}$)
+        \end{itemize}
+    \item \textbf{Best Hyperparameters Found:}
+        \begin{itemize}
+            \item FF (Fashion-MNIST 4x2000 MLP, AdamW):
+                \begin{itemize}
+                    \item \texttt{ff\_learning\_rate}: 0.0003722230492626773
+                    \item \texttt{ff\_weight\_decay}: 0.0003583569744251919
+                    \item \texttt{downstream\_learning\_rate}: 0.011120232890144957
+                    \item \texttt{downstream\_weight\_decay}: 0.0051200359925764015
+                \end{itemize}
+             \item FF (MNIST 3x1000 MLP, SGD):
+                 \begin{itemize}
+                     \item \texttt{ff\_learning\_rate}: 0.0019075980272792064
+                     \item \texttt{ff\_weight\_decay}: 0.0005229088821652552
+                     \item \texttt{downstream\_learning\_rate}: 0.03234998392840941
+                     \item \texttt{downstream\_weight\_decay}: 0.0047668064095875455
+                     \item \texttt{ff\_momentum}: 0.9
+                     \item \texttt{downstream\_momentum}: 0.9
+                 \end{itemize}
+             \item FF (MNIST 3x1000 MLP, AdamW):
+                 \begin{itemize}
+                     \item \texttt{ff\_learning\_rate}: 0.0004759134394296565
+                     \item \texttt{ff\_weight\_decay}: 0.0004169096909947932
+                     \item \texttt{downstream\_learning\_rate}: 0.010727571797342173
+                     \item \texttt{downstream\_weight\_decay}: 0.0061527185182837065
+                 \end{itemize}
+             \item FF (MNIST 4x2000 MLP, AdamW):
+                 \begin{itemize}
+                     \item \texttt{ff\_learning\_rate}: 0.0005253511034001832
+                     \item \texttt{ff\_weight\_decay}: 0.0004227844165066995
+                     \item \texttt{downstream\_learning\_rate}: 0.0027075510107757122
+                     \item \texttt{downstream\_weight\_decay}: 0.0035730744916099627
+                 \end{itemize}
+        \end{itemize}
+     \item \textbf{Fixed Parameters:} Key parameters were held constant during the tuning of the FF algorithm. These included the optimizer type (AdamW or SGD), a goodness threshold ($\theta=2.0$), and peer normalization settings (factor=0.03, momentum=0.9). All trials were conducted for a maximum of 100 epochs, with early stopping triggered by the \texttt{FF\_Hinton/Val\_Acc\_Epoch} metric, using a patience of 20 epochs and a minimum delta of 0.01.
+\end{itemize}
+
+\textbf{Cascaded-Forward (CaFo):}
+\begin{itemize}
+    \item \textbf{Search Space (Common):}
+        \begin{itemize}
+            \item Predictor Learning Rate (\texttt{predictor\_lr}): Loguniform ($2 \times 10^{-4}$, $5 \times 10^{-3}$)
+            \item Predictor Weight Decay (\texttt{predictor\_weight\_decay}): Loguniform ($10^{-7}$, $10^{-4}$)
+            \item Epochs Per Predictor (\texttt{num\_epochs\_per\_block}): IntUniform (range dependent on dataset)
+            \item \textit{For CaFo-DFA variant (\texttt{train\_blocks}=true):}
+                \begin{itemize}
+                    \item Block Learning Rate (\texttt{block\_lr}): Loguniform ($2 \times 10^{-5}$, $5 \times 10^{-4}$)
+                    \item Block Weight Decay (\texttt{block\_weight\_decay}): Loguniform ($10^{-7}$, $10^{-4}$)
+                \end{itemize}
+        \end{itemize}
+    \item \textbf{Best Hyperparameters Found:}
+        \begin{itemize}
+            \item CaFo-Rand-CE (Fashion-MNIST 3-Block CNN):
+                \begin{itemize}
+                    \item \texttt{predictor\_lr}: 0.0013737845955327983
+                    \item \texttt{predictor\_weight\_decay}: 2.937538457632828e-07
+                    \item \texttt{num\_epochs\_per\_block}: 145 (Maximum, with early stopping patience of 8)
+                \end{itemize}
+            \item CaFo-DFA-CE (Fashion-MNIST 3-Block CNN):
+                 \begin{itemize}
+                     \item \texttt{block\_lr}: 0.0001384690524742107
+                     \item \texttt{block\_weight\_decay}: 1.3311216080736884e-05
+                     \item \texttt{predictor\_lr}: 0.0003304463634024569
+                     \item \texttt{predictor\_weight\_decay}: 3.967605077052991e-05
+                     \item \texttt{num\_epochs\_per\_block}: 85 (Maximum, with early stopping patience of 6)
+                 \end{itemize}
+             \item CaFo-Rand-CE (CIFAR-10 3-Block CNN):
+                 \begin{itemize}
+                     \item \texttt{predictor\_lr}: 0.00024111676098423975
+                     \item \texttt{predictor\_weight\_decay}: 6.3583588566762514e-06
+                     \item \texttt{num\_epochs\_per\_block}: 733 (Maximum, with early stopping patience of 8)
+                 \end{itemize}
+             \item CaFo-DFA-CE (CIFAR-10 3-Block CNN):
+                 \begin{itemize}
+                     \item \texttt{block\_lr}: 0.0001373784595532798
+                     \item \texttt{block\_weight\_decay}: 2.938027938703532e-07
+                     \item \texttt{predictor\_lr}: 0.0006677511008261821
+                     \item \texttt{predictor\_weight\_decay}: 1.5702970884055385e-05
+                     \item \texttt{num\_epochs\_per\_block}: 147 (Maximum, with early stopping patience of 8)
+                 \end{itemize}
+             \item CaFo-Rand-CE (CIFAR-100 3-Block CNN):
+                 \begin{itemize}
+                     \item \texttt{predictor\_lr}: 0.00024111676098423975
+                     \item \texttt{predictor\_weight\_decay}: 6.3583588566762514e-06
+                     \item \texttt{num\_epochs\_per\_block}: 1220 (Maximum, with early stopping patience of 10)
+                 \end{itemize}
+             \item CaFo-DFA-CE (CIFAR-100 3-Block CNN):
+                 \begin{itemize}
+                     \item \texttt{block\_lr}: 0.0001373784595532798
+                     \item \texttt{block\_weight\_decay}: 2.938027938703532e-07
+                     \item \texttt{predictor\_lr}: 0.0006677511008261821
+                     \item \texttt{predictor\_weight\_decay}: 1.5702970884055385e-05
+                     \item \texttt{num\_epochs\_per\_block}: 1271 (Maximum, with early stopping patience of 10)
+                 \end{itemize}
+            \item CaFo-Rand-CE (MNIST 3-Block CNN):
+                \begin{itemize}
+                    \item \texttt{predictor\_lr}: 0.00042136234742798395
+                    \item \texttt{predictor\_weight\_decay}: 1.6585525961391826e-06
+                    \item \texttt{num\_epochs\_per\_block}: 227 (Maximum, with early stopping patience of 8)
+                \end{itemize}
+            \item CaFo-DFA-CE (MNIST 3-Block CNN):
+                 \begin{itemize}
+                     \item \texttt{block\_lr}: 0.0004977965859721583
+                     \item \texttt{block\_weight\_decay}: 9.594431243311431e-07
+                     \item \texttt{predictor\_lr}: 0.00025391813833013565
+                     \item \texttt{predictor\_weight\_decay}: 2.0840357948896564e-06
+                     \item \texttt{num\_epochs\_per\_block}: 12 (Maximum, with early stopping patience of 5)
+                 \end{itemize}
+        \end{itemize}
+    \item \textbf{Fixed Parameters:} Several parameters for the CaFo algorithm remained fixed. The block architecture was a three-block CNN, with each block comprising a 3x3 Convolution, a ReLU activation, a 2x2 Max-Pooling layer, and Batch Normalization, with output channels of 32, 128, and 512 respectively. The Adam optimizer and Cross-Entropy loss were consistently used for predictor training, and the final predictions were aggregated by summation.
+\end{itemize}
+
+\textbf{Mono-Forward (MF):}
+\begin{itemize}
+    \item \textbf{Search Space (Common):}
+        \begin{itemize}
+            \item Learning Rate (\texttt{lr}): Loguniform ($10^{-5}$, $10^{-2}$)
+            \item Epochs Per Layer (\texttt{epochs\_per\_layer}): IntUniform (e.g., 5-30)
+        \end{itemize}
+    \item \textbf{Best Hyperparameters Found:}
+        \begin{itemize}
+            \item MF (MNIST 2x1000 MLP):
+                \begin{itemize}
+                    \item Learning Rate: 0.001570297088405539
+                    \item Epochs Per Layer: 14 
+                \end{itemize}
+            \item MF (Fashion-MNIST 2x1000 MLP):
+                \begin{itemize}
+                    \item Learning Rate: 0.0003873086262136253
+                    \item Epochs Per Layer: 12 
+                \end{itemize}
+            \item MF (CIFAR-10 3x2000 MLP):
+                \begin{itemize}
+                    \item Learning Rate: 0.0003241756767272183
+                    \item Epochs Per Layer: 15 
+                \end{itemize}
+            \item MF (CIFAR-100 3x2000 MLP):
+                \begin{itemize}
+                    \item Learning Rate: 0.00017277890583771544
+                    \item Epochs Per Layer: 8 
+                \end{itemize}
+        \end{itemize}
+    \item \textbf{Fixed Parameters:} For the MF algorithm, several key parameters were held constant to ensure consistency. The MLP architecture was fixed as specified for each dataset: a 2x1000 MLP for MNIST and Fashion-MNIST, and a 3x2000 MLP for CIFAR-10 and CIFAR-100. Layer-wise training was conducted using the Adam optimizer with a weight decay value fixed at 0.0, minimizing a local Cross-Entropy loss at each layer. All layer weights and their corresponding projection matrices were initialized using the Kaiming Uniform method.
+\end{itemize}
+
+\pagebreak
+
+\section{Computational Environment}
+\label{app:environment}
+The experiments presented in this thesis were conducted within a consistent and well-defined computational environment hosted on the Athena cluster. The specific hardware and software configurations are detailed below to ensure the reproducibility of the presented results.
+\begin{itemize}
+    \item \textbf{Operating System:} Rocky Linux 9.5 (Blue Onyx)
+    \item \textbf{CPU Architecture:} x86\_64 (AMD EPYC 7742 @ 2.25 GHz)
+    \item \textbf{GPU Architecture:} NVIDIA Ampere (A100-SXM4-40GB)
+    \item \textbf{NVIDIA Driver Version:} 570.86.15
+    \item \textbf{CUDA Toolkit Version:} 12.4.0
+    \item \textbf{Deep Learning Framework:} PyTorch v2.4.0 (build `+cu121` linked against CUDA 12.1)
+    \item \textbf{Python Version:} 3.10.4
+    \item \textbf{Key Python Libraries:}
+        \begin{multicols}{3}
+            \begin{itemize}
+                \item \code{torchvision}: 0.19.0
+                \item \code{optuna}: 4.2.1
+                \item \code{wandb}: 0.19.8
+                \item \code{pynvml}: 12.0.0
+                \item \code{codecarbon}: 3.0.1
+                \item \code{numpy}: 2.2.4
+                \item \code{PyYAML}: 6.0.2
+                \item \code{scikit-learn}: 1.6.1
+                \item \code{tqdm}: 4.67.1 
+            \end{itemize}
+        \end{multicols}
+    \item \textbf{Profiling Tool for FLOPs:} PyTorch Profiler (\texttt{torch.profiler})
+    \item \textbf{Energy and Resource Monitoring Tool:} NVIDIA Management Library (NVML) via the \code{pynvml} package
+    \item \textbf{Carbon Footprint Estimation Tool:} CodeCarbon v3.0.1 \cite{codecarbon2021}
+    \item \textbf{Job Scheduler:} SLURM 23.11.7
+\end{itemize}
+
+
+\section{Code Repository and Experimental Logs}
+\label{app:code_repository}
+To ensure the highest degree of reproducibility and transparency, the complete source code for all experiments, along with the unabridged output logs from every run, has been made publicly available. This repository contains the full implementations of the alternative algorithms and their backpropagation baselines, all scripts for data loading and experiment execution, and the raw log files for complete verifiability of the results. The repository is hosted on GitHub at the following address: \url{https://github.com/Przemyslaw11/BeyondBackpropagation}
+
+Comprehensive instructions for setting up the environment and replicating the experiments are provided in the \code{README.md} file within the repository. For specific software versions and hardware details, the author refers the reader to the environmental specifications listed in Appendix \ref{app:environment}.
+
+
+\end{document}

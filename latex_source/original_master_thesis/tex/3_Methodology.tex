@@ -1,0 +1,218 @@
+\section{Methodology}
+\label{chap:methodology}
+
+This chapter details the research methodology used to investigate the research questions articulated in Chapter \ref{chap:introduction}. The author outlines the experimental design, the datasets utilized, the specific implementations of the alternative algorithms on their native architectures, and the corresponding configurations for fair BP baselines. Furthermore, this chapter describes the systematic hyperparameter optimization strategy, the metrics for performance and efficiency evaluation, and the computational infrastructure. The central tenet of this methodology is the establishment of a rigorous and equitable comparative framework, achieved by controlling for architectural variations and applying consistent optimization and evaluation protocols across all experiments.
+
+\subsection{Ensuring Fair Comparisons: Methodological Rigor}
+\label{sec:methodology_fairness_rigor}
+
+A cornerstone of this paper is the adherence to a strict methodological protocol designed to ensure that all comparisons between the alternative algorithms and backpropagation (BP) are equitable. To address the need for fair benchmarking identified in the literature (see Section~\ref{sec:fair_benchmarking_chap2}), this rigor allows the conclusion that observed differences are primarily due to the training algorithms themselves, rather than to confounding variables. To this end, the author implemented the following principles:
+
+\begin{enumerate}
+    \item \textbf{Native Architecture Replication:} Each alternative algorithm was implemented in its specific native architecture, as described or evaluated in its source publication. This principle respects the developmental context of each algorithm. Consequently, FF and MF were evaluated on their designated MLP structures, while CaFo was evaluated on its defined CNN with three blocks for image classification tasks.
+
+    \item \textbf{Identical Architectures for Backpropagation Baselines:} For each experiment involving an alternative algorithm, a corresponding BP baseline was constructed using an \emph{identical} network architecture. This entailed replicating the number and type of layers, neuron and channel counts, activation functions, and any integrated normalization layers. Algorithm-specific components, such as FF's goodness layers or MF's projection matrices, were excluded from the BP baseline, which instead featured a standard final classification layer suitable for end-to-end training. This critical step isolates the impact of the training algorithm from that of the architectural design.
+
+    \item \textbf{Systematic and Universal Hyperparameter Optimization:} To mitigate the influence of default parameters and allow each algorithm to operate near its optimal capacity, systematic hyperparameter optimization was applied using the Optuna framework. This tuning was performed universally for \emph{all} alternative algorithms and their respective BP baselines, for every experimental configuration. This practice ensures that comparisons are not biased by disparities in default tuning.
+
+    \item \textbf{Consistent Early Stopping Based on Validation Performance:} All training procedures incorporated early stopping, governed by performance on a separate validation set. Training was terminated if the validation score failed to improve over a predefined patience period. The model checkpoint that produced the best validation score was subsequently used for final evaluation on the test set and efficiency measurements. This protocol ensures that the results reflect the optimal state achieved by each model and avoids comparisons based on arbitrary training durations, which could unfairly bias algorithms with different convergence dynamics.
+
+    \item \textbf{Consistent Software and Hardware Environment:} All experiments were executed within a unified software environment and on identical hardware (NVIDIA A100 GPUs), thus minimizing the variability due to software versions or hardware idiosyncrasies.
+
+    \item \textbf{Standardized Data Handling and Metrics:} Identical data preprocessing, augmentation, and dataset splits were employed for all compared algorithms within a given task. All performance and efficiency metrics were measured using consistent tools and methodologies in each experiment.
+\end{enumerate}
+By adhering to these principles, this research provides a robust and transparent evaluation, facilitating reliable conclusions regarding the relative merits and trade-offs of the investigated BP-free training algorithms.
+
+\subsection{Experimental Design Overview}
+\label{sec:methodology_design}
+The research is based on a comparative experimental design devised by the author to isolate the effect of the training algorithm on both task performance and computational efficiency. The design encompasses the following key comparisons:
+\begin{itemize}
+    \item \textbf{Forward-Forward (FF) vs. Backpropagation (BP):} A foundational set of experiments was carried out on MLP architectures. This involved implementing FF and a fair BP baseline on a 4$\times$2000 ReLU MLP for the Fashion-MNIST dataset, and on both 3$\times$1000 and 4$\times$2000 ReLU MLPs for the MNIST dataset. These architectures are consistent with those explored in the original FF publication \cite{hinton2022forward} and serve as a reference for BP-free methods.
+    \item \textbf{Cascaded-Forward (CaFo) vs. Backpropagation (BP):} A comprehensive evaluation was performed on the MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100 datasets. CaFo was implemented on its native CNN architecture with three blocks, as specified for image datasets in its source paper \cite{zhao2023cafo}. The evaluation encompassed both the \textbf{CaFo-Rand-CE} and \textbf{CaFo-DFA-CE} variants. Comparisons were made against fair BP baselines utilizing the identical CNN structure with three blocks.
+    \item \textbf{Mono-Forward (MF) vs. Backpropagation (BP):} An extensive evaluation of the MF algorithm was performed across the four datasets using its specified native MLP architectures \cite{gong2025mono}. For the MNIST and Fashion-MNIST datasets, a \textbf{2$\times$1000 ReLU MLP} was employed. For the more complex CIFAR-10 and CIFAR-100 datasets, a larger \textbf{3$\times$2000 ReLU MLP} was used. In all instances, MF was benchmarked against fair BP baselines constructed with these identical MLP structures.
+\end{itemize}
+In every comparison, the principle of using identical architectures for both the alternative algorithm and its corresponding BP baseline was strictly maintained, as detailed in Section \ref{sec:methodology_fairness_rigor}. Furthermore, all training procedures integrated early stopping based on the performance of the validation set. This involved monitoring a specified metric and terminating training if no improvement was observed over a predefined patience period. The final evaluation metrics were reported from the model checkpoint corresponding to the best validation score achieved, a standard practice that ensures that the results reflect the optimal state reached by each model. Although the original publications for FF, CaFo, and MF may have utilized different library versions or fixed training durations, the author conducted all experiments within a consistent, modern software environment (detailed in Section \ref{sec:methodology_infrastructure}) and used early stopping to determine the effective training duration, thus ensuring an equitable comparison of algorithms on contemporary hardware.
+
+\subsection{Dataset Description and Preprocessing}
+\label{sec:methodology_datasets}
+The following standard benchmark datasets were utilized to evaluate the algorithms across varying levels of classification complexity:
+\begin{itemize}
+    \item \textbf{MNIST \cite{lecun1998gradient}:} A dataset of 70,000 28x28 pixel grayscale images of handwritten digits (0 to 9), with a standard 60k/10k train/test split.
+    \item \textbf{Fashion-MNIST \cite{xiao2017fashion}:} A dataset of 70,000 28x28 pixel grayscale images across 10 categories of apparel, with a standard 60k/10k train/test split.
+    \item \textbf{CIFAR-10 \cite{krizhevsky2012learning}:} A dataset of 60,000 32x32 pixel color images spanning 10 object classes, with a standard 50k/10k train/test split.
+    \item \textbf{CIFAR-100 \cite{krizhevsky2012learning}:} A dataset similar to CIFAR-10 but with 100 distinct classes, also using a standard 50k/10k train/test split.
+\end{itemize}
+
+For each dataset, the standard training and testing splits were preserved. For CIFAR-10, CIFAR-100, and Fashion-MNIST, a validation subset was created by randomly sampling 10\% of the original training data. Following the precedent established in the original FF paper \cite{hinton2022forward}, a fixed split was used for the MNIST dataset, allocating 50,000 images for training and 10,000 for validation. The remainder of the original training set was used for model training in all cases. In adherence to recommended practices for computational workloads on the Athena cluster, datasets were loaded from and intermediate results were stored on the user's high-performance \code{\$SCRATCH} directory on the Lustre filesystem.
+
+Consistent preprocessing steps were applied across all experiments for any given dataset:
+\begin{itemize}
+    \item \textbf{Normalization:} Pixel values were first scaled to a range via \code{ToTensor}. Subsequently, the images were normalized using the standard means and standard deviations per channel for each dataset:
+        \begin{itemize}
+            \item \textbf{MNIST:} mean=(0.1307,), std=(0.3081,)
+            \item \textbf{Fashion-MNIST:} mean=(0.2860,), std=(0.3530,)
+            \item \textbf{CIFAR-10:} mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010)
+            \item \textbf{CIFAR-100:} mean=(0.5071, 0.4867, 0.4408), std=(0.2675, 0.2565, 0.2761)
+        \end{itemize}
+    \item \textbf{Data Augmentation (CIFAR):} For the CIFAR-10 and CIFAR-100 datasets, standard data augmentation techniques, specifically random horizontal flips (p=0.5) and random crops (32x32 with padding of 4 pixels), were applied consistently during the training of both alternative algorithms and their BP baselines.
+    \item \textbf{Data Augmentation (MNIST/Fashion-MNIST):} In accordance with common practice, no data augmentation was applied to the MNIST or Fashion-MNIST datasets.
+    \item \textbf{Dimensions:} Input images were processed at their native resolutions. These were 28x28 for MNIST and Fashion-MNIST, and 32x32 for CIFAR-10 and CIFAR-100. The number of input channels was configured accordingly (1 for grayscale, 3 for color).
+\end{itemize}
+
+Data loading was managed with PyTorch's \code{DataLoader} class \cite{paszke2019pytorch}. A consistent batch size of 128 was used for training and evaluation across nearly all experiments, and the FF algorithm constituted the sole exception, for which a batch size of 100 was used to align with its reference implementation.
+
+\subsection{Implementation of Alternative Algorithms}
+\label{sec:methodology_alternatives}
+Each alternative algorithm was implemented to faithfully represent its original description, with a focus on the specific architectural and procedural details required for the experiments in this paper.
+
+\subsubsection{Forward-Forward (FF) Algorithm}
+\label{subsec:methodology_ff}
+The author's implementation of the FF algorithm, conceptually detailed in Section~\ref{subsec:ff_algorithm_chap2}, was configured for its native MLP architectures.
+\begin{itemize}
+    \item \textbf{Architectural Details:}
+        \begin{itemize}
+            \item \textbf{For Fashion-MNIST:} A 4$\times$2000 ReLU MLP was used.
+            \item \textbf{For MNIST:} Both a 3$\times$1000 and a 4$\times$2000 ReLU MLP were implemented.
+        \end{itemize}
+        In all cases, layer normalization was applied as length normalization ($ \mathbf{x}_l / (||\mathbf{x}_l||_2 + \epsilon) $) after each hidden layer's ReLU activation.
+    \item \textbf{Mechanism Implementation:}
+        \begin{itemize}
+            \item Positive and negative data were created by embedding one-hot-encoded labels into the first 10 pixels of the input images.
+            \item The goodness function was implemented as the sum of squared activations.
+            \item The local logistic loss used a dynamic threshold equal to the number of neurons in the layer.
+            \item Both FF layers and a separate downstream classifier were trained using a shared optimizer (AdamW or SGD), with hyperparameters determined by Optuna.
+        \end{itemize}
+    \item \textbf{Inference Implementation:} Final predictions were determined by adding goodness scores across all hidden layers for each class label and selecting the class with the highest total score.
+\end{itemize}
+
+\subsubsection{Cascaded-Forward (CaFo) Algorithm}
+\label{subsec:methodology_cafo}
+The CaFo algorithm, whose block-wise training paradigm is described in Section~\ref{subsec:cafo_algorithm_chap2}, was implemented for all datasets using its native CNN architecture.
+\begin{itemize}
+    \item \textbf{Architectural Details:} A CNN with three blocks was implemented, where each block consisted of a 3x3 Convolution, a ReLU activation, a 2x2 Max Pooling layer, and Batch Normalization. The channel depths were set to 32, 128, and 512 for the respective blocks.
+    \item \textbf{Predictor Implementation:} A dedicated predictor, consisting of a flattening operation followed by a single Fully Connected (FC) layer, was attached to each of the three blocks.
+    \item \textbf{Training Variants Implemented:} The experimental evaluation focused on two primary variants both using use Cross-Entropy (CE) loss for predictor training:
+        \begin{itemize}
+            \item \textbf{CaFo-Rand-CE:} The CNN blocks were initialized with Kaiming Uniform and remained frozen during training.
+            \item \textbf{CaFo-DFA-CE:} The CNN blocks were first pre-trained using DFA, after which their weights were frozen for the subsequent predictor training phase.
+        \end{itemize}
+    \item \textbf{Predictor Training Protocol:} Each predictor was trained independently using the Adam optimizer. The training process for each predictor was governed by its own early stopping mechanism based on validation performance, with hyperparameters tuned via Optuna.
+    \item \textbf{Inference Implementation:} The final class prediction was generated by summing the logits from all three trained predictors.
+\end{itemize}
+
+\subsubsection{Mono-Forward (MF) Algorithm}
+\label{subsec:methodology_mf}
+The implementation of the MF algorithm was based on its native MLP architectures, as detailed conceptually in Section~\ref{subsec:mf_algorithm_chap2}.
+\begin{itemize}
+    \item \textbf{Architectural Details:}
+        \begin{itemize}
+            \item \textbf{For MNIST \& Fashion-MNIST:} A \textbf{2$\times$1000 ReLU MLP}.
+            \item \textbf{For CIFAR-10 \& CIFAR-100:} A \textbf{3$\times$2000 ReLU MLP}.
+        \end{itemize}
+        Each hidden layer was augmented with a learnable projection matrix ($\mathbf{M}_i$), and both the layer weights ($\mathbf{W}_i$) and the projection matrices were initialized using the Kaiming uniform method.
+    \item \textbf{Training Protocol:} Training was conducted in a layer-wise fashion. For each layer, its weights and projection matrix were trained jointly using the Adam optimizer to minimize a local Cross-Entropy loss. This local loss was derived from the softmax of the goodness scores, which were calculated as described in Equation~\ref{eq:mf_goodness_chap2}. Early stopping based on local validation loss determined the duration of training for each layer.
+{\sloppy
+\item \textbf{Inference Implementation:} The final prediction was made using the BP-style method, where only the goodness scores from the final hidden layer were used to generate the classification output.
+\par}
+\end{itemize}
+
+\subsection{Fair Backpropagation Baseline Setup}
+\label{sec:methodology_bp_baseline}
+For each alternative algorithm experiment, a dedicated BP baseline was meticulously constructed.
+
+\begin{itemize}
+    \item \textbf{Architectural Replication:} For every native architecture detailed in Section \ref{sec:methodology_alternatives}, an identical network structure was created for the BP baseline. This replication included the same number and type of layers, neuron/channel counts, ReLU activation functions, and normalization layers, such as BatchNorm retention in the CaFo CNN baseline.
+    \item \textbf{Consistent Initialization:} The weights of all layers were initialized using the same method as their counterparts in the implementation of the alternative algorithm, primarily the Kaiming uniform method.
+    \item \textbf{Removal of Algorithm-Specific Components:} All components unique to the alternative algorithms were removed. These included the label embedding mechanism of FF, the intermediate predictors of CaFo, the projection matrices $\mathbf{M}_i$ and local losses of MF, and specialized normalizations such as FF's length normalization.
+    \item \textbf{Standard BP Training:} The baselines were trained end-to-end using standard BP \cite{rumelhart1986learning}. A final fully connected layer followed by Softmax activation was used for classification, with a global Cross-Entropy loss function being minimized. The AdamW optimizer \cite{loshchilov2017decoupled} was used for training. Crucially, the BP baseline training also employed the same early stopping mechanism as the alternative algorithms, monitoring validation accuracy and saving the checkpoint with the best performance to ensure a fair comparison based on the optimal performance achieved.
+\end{itemize}
+This configuration ensures that comparisons effectively isolate the influence of the training algorithm by accounting for the optimal training duration determined through early stopping.
+
+\subsection{Hyperparameter Optimization Strategy}
+\label{sec:methodology_hyperparameters}
+To facilitate a fair comparison and allow each algorithm to perform effectively, a systematic hyperparameter optimization strategy was employed for all evaluated algorithms, including FF, CaFo, MF, and their corresponding BP baselines. This tuning was executed using the Optuna framework \cite{akiba2019optuna}.
+
+The general approach involved defining a search space for key hyperparameters relevant to each algorithm and utilizing Optuna's Tree-structured Parzen Estimator (TPE) sampler \cite{bergstra2011algorithms} to explore this space over a specified number of trials, typically between 30 and 50. The objective of each trial was to maximize the model's accuracy on the separate validation set. The training process within each Optuna trial was subject to the same early stopping protocol used in the final experimental runs. The optimal hyperparameters identified for each configuration were then used for the final training runs reported in Chapter~\ref{chap:experiments}. This consistent tuning methodology ensures a more robust comparison by mitigating the influence of suboptimal default parameters. For efficiency, detailed resource monitoring was generally disabled during the Optuna trials.
+
+\subsubsection{Alternative Algorithm Tuning}
+\label{subsec:methodology_hyper_alt}
+Dedicated Optuna objective functions were developed to tune each alternative algorithm. Key tuned parameters included:
+\begin{itemize}
+    \item \textbf{Forward-Forward (FF):} Learning rates and weight decay values for both FF layer updates and separate downstream classifier updates.
+    \item \textbf{Cascaded-Forward (CaFo):} Predictor learning rate, weight decay, and the number of training epochs per predictor. For the \textbf{CaFo-DFA} variant, the block learning rate, weight decay, and the number of block training epochs were also tuned.
+    \item \textbf{Mono-Forward (MF):} The primary learning rate for updating both layer weights and projection matrices, and possibly the number of training epochs applied per layer.
+\end{itemize}
+For these algorithms, Optuna's pruner was generally disabled, as their layer-wise or block-wise training dynamics are not consistently amenable to standard pruning mechanisms. Appendix~\ref{app:hyper_tuning} documents the best hyperparameters found for each configuration.
+
+\subsubsection{Backpropagation Baseline Tuning}
+\label{subsec:methodology_hyper_bp}
+The Optuna framework was also systematically applied to tune the hyperparameters for every BP baseline.
+\begin{itemize}
+    \item \textbf{Optimizer:} The AdamW optimizer \cite{loshchilov2017decoupled} was used.
+    \item \textbf{Search Space:} The learning rate and weight decay were tuned over log-uniform distributions.
+    \item \textbf{Objective:} The objective was to maximize validation set accuracy, with the training process within each trial also incorporating early stopping.
+    \item \textbf{Procedure:} Optuna was executed for a set number of trials for each BP baseline configuration. A Median pruner was occasionally employed to discard unpromising trials early. The hyperparameters with the best performance were used for the final BP baseline runs, with results documented in Appendix~\ref{app:hyper_tuning}.
+\end{itemize}
+This process ensures that the BP baselines operate near their optimal performance level on the specific replicated architectures, thereby allowing a fair assessment of the alternative algorithms.
+
+\subsubsection{Rationale for Universal Tuning}
+\label{subsec:methodology_hyper_justification}
+The decision was made to apply systematic hyperparameter optimization to \textbf{all} training algorithms to ensure the most rigorous and fair comparison possible. Although alternative algorithms are sometimes presented with specific default parameters, these may not be optimal for different datasets, architectures, or the specific training procedures employed in this work. This universal tuning aimed to:
+\begin{itemize}
+    \item \textbf{Ensure Fairness:} Prevent a situation where an algorithm underperforms merely due to suboptimal hyperparameters.
+    \item \textbf{Assess Potential:} Evaluate each algorithm closer to its performance limit as determined by validation accuracy in conjunction with early stopping.
+    \item \textbf{Isolate Algorithmic Effects:} More effectively isolate the impact of the core training mechanism from the confounding factor of hyperparameter choice.
+\end{itemize}
+This universal tuning approach was deemed essential to draw robust conclusions about the relative trade-offs of these novel training paradigms. The resulting hyperparameters are documented in Appendix~\ref{app:hyper_tuning}.
+
+\subsubsection{A Note on "Effective Epochs" and Training Duration}
+\label{subsec:methodology_effective_epochs}
+A direct consequence of applying early stopping in both end-to-end and layer-wise training paradigms is that the total training effort, measured in epochs, is not directly comparable. For this reason, the term "Effective Epochs" is introduced to quantify this effort, with the following distinct interpretations:
+\begin{itemize}
+    \item \textbf{For Backpropagation (BP) and Forward-Forward (FF):} Effective Epochs signifieS the total number of \emph{global training epochs} completed for the entire network before the early stopping criterion was met.
+    \item \textbf{For Mono-Forward (MF):} Effective Epochs represent the \emph{sum of the actual number of epochs for which each individual layer was trained}, subject to early stopping based on its own local validation loss.
+    \item \textbf{For Cascaded-Forward (CaFo):} Effective Epochs are the \emph{sum of the actual epochs for which each predictor was trained} (in the CaFo-Rand-CE variant), or the sum of epochs for block training plus the sum of epochs for predictor training (in the CaFo-DFA-CE variant).
+\end{itemize}
+This distinction is crucial for an accurate interpretation of the convergence behavior and training times presented in Chapter \ref{chap:experiments}.
+
+\subsection{Metrics for Evaluation}
+\label{sec:methodology_metrics}
+A comprehensive set of metrics was used to evaluate both performance of the model and computational efficiency:
+
+\begin{itemize}
+\item \textbf{Performance Metrics:}
+\begin{itemize}
+\item \textbf{Classification Accuracy:} The percentage of correct classifications on the test set, calculated using the model checkpoint that achieved the \textbf{best validation accuracy} during training, determined by the early stopping procedure.
+\item \textbf{Convergence Rate:} Plotted as accuracy or loss against wall-clock time to visualize the training process until its termination.
+\item \textbf{Loss Curves:} Plots of training and validation loss versus epochs.
+\end{itemize}
+\item \textbf{Efficiency Metrics:}
+\begin{itemize}
+\item \textbf{Energy Consumption:} The total GPU energy consumed during the main training loop, measured from the start of training \textbf{up to the point of termination}. This was measured in Watt hours (Wh) using the NVML API by integrating the power draw over time.
+\item \textbf{Training Time:} The wall-clock time for the main training loop \textbf{until termination}, reported in seconds (s).
+\item \textbf{Peak Memory Usage:} The maximum allocated GPU memory during the effective training duration, measured in Mebibytes (MiB) using NVML.
+\item \textbf{Floating Point Operations (FLOPs):} Estimated using PyTorch's profiler:
+    \begin{itemize}
+        \item \textbf{Estimated Forward Pass GFLOPs ($F_{fwd}$):} The GFLOPs required for a single forward pass on one sample, used to quantify inference complexity.
+        \item \textbf{Estimated BP Update Cycle GFLOPs ($F_{BP\_update}$):} Calculated \textit{exclusively} for BP baselines to estimate the cost of a full update cycle, a using the heuristic detailed in Section~\ref{sec:energy_efficiency_chap2} (Equation~\ref{eq:bp_update_cost}).
+    \end{itemize}
+\item \textbf{Estimated Carbon Emissions (gCO2e):} The estimated CO2e generated during the effective training duration. These were calculated using the CodeCarbon library in \textbf{offline mode}, with a specified grid carbon intensity factor corresponding to the hardware's location (Poland: "POL").
+\end{itemize}
+\end{itemize}
+These metrics provide a multifaceted view for analyzing the energy performance trade-offs that result from training procedures optimized via early stopping.
+
+\subsection{Experimental Infrastructure and Tools}
+\label{sec:methodology_infrastructure}
+All experiments were performed on the \textbf{Athena cluster}, a high-performance computing (HPC) resource provided by ACK Cyfronet AGH.
+\begin{itemize}
+    \item \textbf{Hardware:} Computations were conducted on the \code{plgrid-gpu-a100} partition. Each experimental run was allocated a \textbf{single NVIDIA A100-SXM4 40GB GPU}. The cluster nodes are equipped with AMD EPYC 7742 CPUs.
+    \item \textbf{Job Scheduling:} Jobs were managed via the \textbf{Slurm Workload Manager} and submitted to the \code{plgrid-gpu-a100} partition under the \code{plgoncotherapy-gpu-a100} grant.
+    \item \textbf{Configuration Management:} A structured system of \textbf{YAML files} was used, where configurations for each experiment were inherited from a base file defining common defaults.
+    \item \textbf{Deep Learning Framework and Environment:} The software environment was built upon loaded modules for \textbf{\code{Python/3.10.4}} and \textbf{\code{CUDA/12.4.0}}. The key libraries installed within a virtual environment included \textbf{PyTorch v2.4.0}, \textbf{Optuna v4.2.1}, \textbf{CodeCarbon v3.0.1}, and \code{pynvml} v12.0.0.
+    \item \textbf{Energy/Resource Monitoring:} NVML was utilized to monitor GPU energy consumption, power consumption, and maximum memory usage.
+    \item \textbf{FLOPs Profiling:} Forward pass FLOPs were estimated with \textbf{\texttt{torch.profiler}}.
+    \item \textbf{Carbon Footprint Estimation:} The CodeCarbon library was used in its offline mode with the ISO code "POL" to estimate CO2e emissions.
+    \item \textbf{Experiment Tracking:} Weights \& Biases (\code{wandb}) served as the primary tool to log metrics and track results.
+    \item \textbf{Version Control:} Git and GitHub were used for version control. The code repository is detailed in Appendix \ref{app:code_repository}.
+\end{itemize}
+Detailed environment specifications are provided in Appendix \ref{app:environment}.

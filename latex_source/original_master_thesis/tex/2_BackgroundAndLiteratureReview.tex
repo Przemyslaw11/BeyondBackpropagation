@@ -1,0 +1,270 @@
+\section{Literature Review}
+\label{chap:background}
+
+This chapter establishes the theoretical foundations and contextual framework essential for interpreting the comparative analysis presented in this paper. It commences with an exposition of deep neural networks and the canonical backpropagation algorithm, before proceeding to a discussion of the energy efficiency challenges endemic to deep learning. The chapter subsequently provides a detailed examination of three alternative training paradigms: the Forward-Forward (FF), Cascaded-Forward (CaFo), and Mono-Forward (MF) algorithms, which constitute the central focus of this research. These algorithms are situated within an evolutionary narrative of BP-free learning, where each method either builds upon or diverges from preceding concepts to resolve specific limitations. The chapter culminates by exploring established benchmarking practices for ensuring fair comparison against backpropagation and identifying the specific gaps in the existing literature that this paper seeks to address, with a pronounced emphasis on methodological rigor.
+
+\subsection{Deep Neural Networks and Backpropagation}
+\label{sec:dnn_bp}
+
+Deep neural networks (DNNs) have become established as a class of powerful models capable of discerning complex patterns from large-scale datasets, thereby facilitating breakthrough performance across a multitude of domains \cite{goodfellow2016deep}. Fundamentally, DNNs are constructed from multiple layers of interconnected computational units, or neurons, which transform input data through a sequence of non-linear mappings to produce semantically meaningful outputs. The efficacy of these networks is largely attributable to their hierarchical architecture, which enables the learning of progressively more abstract data representations.
+
+The canonical training methodology for DNNs is the backpropagation (BP) algorithm \cite{rumelhart1986learning}, a technique that has retained its dominance for over three decades. Backpropagation operates via two distinct phases: a forward pass, during which input signals traverse the network to generate predictions, and a backward pass, where error gradients are propagated from the output layer to preceding layers to guide the adjustment of weights. This process is formally defined as follows.
+
+For a neural network comprising $L$ layers, let $\mathbf{x}_l$ denote the activations in layer $l$, $\mathbf{W}_l$ the weight matrix connecting layer $l-1$ to layer $l$, $\mathbf{b}_l$ the bias vector in layer $l$ and $f_l$ the corresponding activation function. The forward pass computes:
+
+\begin{equation}
+\mathbf{z}_l = \mathbf{W}_l\mathbf{x}_{l-1} + \mathbf{b}_l
+\tag{2.1}
+\label{eq:bp_forward_z_chap2}
+\end{equation}
+
+\begin{equation}
+\mathbf{x}_l = f_l(\mathbf{z}_l)
+\tag{2.2}
+\label{eq:bp_forward_x_chap2}
+\end{equation}
+
+In the subsequent backward pass, for a given loss function $\mathcal{L}$ that measures the discrepancy between the predictions of the network $\mathbf{x}_L$ and the target outputs $\mathbf{y}$, the gradients are computed. The process begins at the output layer:
+
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mathbf{z}_L} = \frac{\partial \mathcal{L}}{\partial \mathbf{x}_L} \odot f'_L(\mathbf{z}_L)
+\tag{2.3}
+\label{eq:bp_backward_L_chap2}
+\end{equation}
+
+For any hidden layer $l$ (where $1 \le l < L$), the gradient is propagated backward:
+
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mathbf{z}_l} = \left(\mathbf{W}_{l+1}^T \frac{\partial \mathcal{L}}{\partial \mathbf{z}_{l+1}}\right) \odot f'_l(\mathbf{z}_l)
+\tag{2.4}
+\label{eq:bp_backward_l_chap2}
+\end{equation}
+
+Finally, the gradient with respect to the weights of the layer $l$ is calculated as:
+
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mathbf{W}_l} = \frac{\partial \mathcal{L}}{\partial \mathbf{z}_l} \mathbf{x}_{l-1}^T.
+\tag{2.5}
+\label{eq:bp_backward_W_chap2}
+\end{equation}
+
+As detailed in Equations (\ref{eq:bp_forward_z_chap2}) and (\ref{eq:bp_forward_x_chap2}), the forward pass entails the computation of pre-activation values followed by the application of activation functions. The backward pass, initiated by Equation (\ref{eq:bp_backward_L_chap2}) in the output layer, propagates the gradient through each hidden layer via the chain rule, as shown in Equation (\ref{eq:bp_backward_l_chap2}). Equation (\ref{eq:bp_backward_W_chap2}) then specifies how the gradients with respect to the weights are determined.
+
+Despite its demonstrated efficacy, backpropagation is beset by several inherent limitations. First, it requires the storage of all intermediate activations from the forward pass for subsequent use in the backward pass, a requirement that leads to substantial memory consumption scaling linearly with network depth \cite{chen2016training}. This consequently increases the energy expenditure associated with data storage and movement. Second, the algorithm's sequential nature gives rise to a computational bottleneck known as backward locking, wherein weight updates for a given layer are deferred until the completion of both the forward and backward passes, including gradient computations from all subsequent layers. This dependency obstructs layer-parallel updates and reduces opportunities for holistic training parallelization \cite{jaderberg2017decoupled}. Third, the algorithm is susceptible to the \emph{vanishing or exploding gradients} problem, where backpropagated error signals either diminish exponentially, rendering updates to early layers ineffective, or grow uncontrollably, destabilizing the training process. This phenomenon is primarily caused by the repeated multiplication of Jacobian factors (related to $f'_l$ and $\mathbf{W}_{l+1}^T$ in Equation (\ref{eq:bp_backward_l_chap2})) through the deep network chain \cite{hochreiter2001gradient}.
+
+In addition, backpropagation has faced criticism for its \textbf{lack of biological plausibility}. The algorithm relies on precise, symmetric weight transport between forward and backward passes (i.e., the use of $\mathbf{W}_{l+1}^T$ in Eq. \ref{eq:bp_backward_l_chap2}) is a requirement for which there is no substantial evidence in biological neural circuits \cite{lillicrap2020backpropagation}. The propagation of global error signals also stands in contrast to the predominantly local learning mechanisms observed in biological neurons \cite{bengio2015towards}.
+
+These constraints have catalyzed research into alternative training methodologies that seek to ameliorate the deficiencies of backpropagation while preserving competitive levels of performance. Of particular relevance are approaches that obviate the backward pass entirely, offering potential enhancements in memory efficiency, training velocity, and energy consumption.
+
+\subsection{Energy Efficiency in Deep Learning}
+\label{sec:energy_efficiency_chap2}
+
+The exponential scaling of computational demands for training contemporary deep neural networks has raised significant concerns about energy consumption and environmental impact. Seminal studies have shown that the training of a single large language model can generate carbon emissions comparable to the lifetime emissions of five automobiles \cite{strubell2019energy}. This phenomenon is symptomatic of a wider increase in the energy requirements of information and communication technologies (ICT), with reports indicating that data centers and communication networks are now responsible for 2 to 3\% of global electricity consumption and approximately 1\% of greenhouse gas emissions \cite{wef2024growing}. Although initial projections from 2015 suggested that ICT could constitute a significant portion of global electricity usage by 2030 \cite{andrae2015global}, more recent analyses from the Oxford Institute for Energy Studies forecast a base case scenario where data centers alone will consume 1,135 TWh in the same year \cite{oxford2024global}. The combined electricity demand from data centers, cryptocurrencies and AI is expected to increase substantially by 2026 \cite{wef2024growing}, highlighting the need for energy-efficient deep learning paradigms.
+
+The energy consumption profile of deep learning is multifaceted. A primary contributor is the computational workload of the training process itself, particularly matrix multiplications and evaluations of activation functions, which require considerable computational power. Floating-point operations (FLOPs) are commonly employed as an abstract metric to estimate these computational costs.
+
+However, it is crucial to recognize that, while FLOPs provide a useful measure of computational complexity, they do not directly quantify energy consumption. FLOPs represent a simple tally of arithmetic operations, whereas the actual energy expenditure per operation can exhibit significant variance contingent on hardware specifics such as processor architecture, numerical precision, and power state. Furthermore, a substantial fraction of energy, often rivaling or exceeding that of computation, is consumed by data movement across the memory hierarchy (e.g., DRAM, cache, registers) and interconnects, a factor that correlates poorly with FLOP counts \cite{horowitz2014computing}.
+
+Moreover, the notion of a fixed FLOP count for a fundamental operation is itself being challenged by AI-driven algorithmic discovery. For example, DeepMind AlphaTensor, a deep reinforcement learning agent, discovered novel matrix multiplication algorithms that are asymptotically more efficient than established methods like Strassen's algorithm for certain matrix sizes \cite{fawzi2022discovering}. By identifying a method to multiply 4x4 matrices in 47 steps instead of Strassen's 49, it achieved the first such improvement in more than fifty years, demonstrating that the foundational number of operations for a task is not an immutable baseline. This development serves as a powerful parallel to the objective of this paper: just as AI can optimize a core \emph{operation} such as matrix multiplication, this research investigates the replacement of the core training \emph{algorithm}, backpropagation, to achieve greater efficiency. Ultimately, the dynamic nature of algorithmic efficiency underscores the limitations of relying solely on theoretical proxies and reinforces the methodological decision in this work to rely on direct, empirical measurements of energy, time, and memory for a robust and faithful comparison.
+
+This need for a nuanced and empirical approach is especially clear when evaluating backpropagation (BP). An analysis restricted to forward-pass FLOPs is insufficient, as a complete BP update cycle encompasses a forward-pass, a backward-pass for gradient computation, and subsequent weight updates. As a widely accepted heuristic, the backward pass typically entails approximately twice the computational workload (FLOPs) of the forward pass for standard network layers \cite{kaplan2020scaling}. Consequently, the total theoretical computational cost of a single BP update cycle, which this paper terms $F_{BP\_update}$, can be estimated relative to the forward pass cost ($F_{fwd}$) as follows:
+\begin{equation}
+F_{BP\_update} \approx F_{fwd} (\text{forward}) + 2 \times F_{fwd} (\text{backward}) = 3 \times F_{fwd}
+\label{eq:bp_update_cost}
+\end{equation}
+BP-free methods, by their design, eliminate the $2 \times F_{fwd}$ cost of the backward pass. Although this 3x estimate serves as a useful theoretical benchmark, its ultimate impact on overall training efficiency is modulated by factors such as convergence speed and hardware utilization, reinforcing the need for direct time and energy measurements. In this paper, both the estimated forward pass GFLOPs ($F_{fwd}$) for all algorithms and the estimated BP update cycle GFLOPs ($F_{BP\_update}$) are reported to illustrate this computational difference.
+
+More direct and accurate measurements of energy consumption can be achieved through specialized APIs and instrumentation. The NVIDIA Management Library (NVML) API, for instance, provides real-time power readings from GPU devices, facilitating precise energy usage estimates during training. Tools such as CarbonTracker \cite{anthony2020carbontracker} and CodeCarbon \cite{codecarbon2021} utilize these measurements, integrating factors such as runtime and regional carbon intensity of the electricity grid to estimate the associated carbon footprint, typically reported in Carbon Dioxide Equivalent (CO2e) \cite{codecarbon2021}.
+
+Despite the availability of these tools, systematic reporting of energy metrics remains inconsistent within the deep learning research community \cite{henderson2020towards}. Many studies prioritize model accuracy and convergence speed, relegating energy considerations to a secondary status. When energy metrics are reported, they frequently lack methodological standardization, which complicates direct comparisons between different approaches.
+
+The concept of "Green AI" \cite{schwartz2020green} has arisen in response to these challenges, advocating for the elevation of efficiency to a primary evaluation criterion along with precision. This paradigm encourages the development of models that achieve state-of-the-art performance while minimizing resource consumption, thereby moving away from a paradigm of pursuing marginal accuracy gains with ever larger models at a significant environmental cost.
+
+It is also pertinent to note that many existing techniques for mitigating the energy cost of deep learning, such as network pruning, quantization \cite{jacob2018quantization}, knowledge distillation, and the development of inherently efficient architectures like MobileNets \cite{howard2017mobilenets} and EfficientNets \cite{tan2019efficientnet}, primarily target the model's structure or its inference phase. Although these methods are valuable, they are largely \emph{orthogonal} to the choice of the core training algorithm that dictates how weights are updated. This paper is specifically focused on the potential energy savings that can be achieved by fundamentally altering this training algorithm and moving beyond backpropagation.
+
+Alternative training algorithms that eliminate or modify the backpropagation process represent a promising avenue to improve energy efficiency during the \emph{training} phase. By potentially reducing memory overhead, enabling superior parallelization, and minimizing the data movement and computation associated with the backward pass, these approaches have the potential to substantially decrease the energy footprint of deep learning training while maintaining competitive performance.
+
+\subsection{Alternative Training Algorithms: An Evolutionary Perspective}
+\label{sec:alternative_algorithms_chap2}
+
+This section investigates three innovative training algorithms: Forward-Forward (FF), Cascaded-Forward (CaFo), and Mono-Forward (MF), which are designed to transcend the limitations of backpropagation. These methods are presented as stages in an evolutionary progression towards BP-free learning. FF established the fundamental concept of local, forward-only training. CaFo advanced this idea by introducing a structured block-wise framework to integrate supervisory signals more directly, although with its own set of complexities. MF represents a more recent refinement, developed to achieve high performance and efficiency through a distinct local learning mechanism. A common characteristic shared by all three algorithms is the elimination of the global backward pass; they rely instead on local learning rules that update weights based solely on information available within each layer.
+
+\subsubsection{Forward-Forward (FF) Algorithm}
+\label{subsec:ff_algorithm_chap2}
+
+Proposed by Geoffrey Hinton in 2022, the FF algorithm \cite{hinton2022forward} constitutes a radical departure from conventional backpropagation, motivated by considerations of biological plausibility and the potential for greater computational efficiency. Its central innovation was to demonstrate that effective learning can be achieved through purely local objectives and two distinct forward passes: one for "positive" (real) data and another for "negative" (typically artificially generated) data, thereby obviating the need to propagate error gradients backwards. Each layer is trained locally to differentiate between these data types by optimizing a layer-specific "goodness" metric \cite{hinton2022forward}.
+
+The core mechanism of the algorithm is as follows:
+\begin{enumerate}
+    \item \textbf{Data Presentation:} In a supervised context, positive data is formulated by presenting an input, such as an image, paired with its correct label. This pairing is often accomplished by embedding the label directly into the input representation, for example, by replacing the first few pixels. Subsequently, negative data is created by pairing the same input with an incorrect label \cite{hinton2022forward}.
+    \item \textbf{Goodness Function:} Each layer $l$ calculates a goodness score derived from its activation pattern $\mathbf{x}_l$. A common formulation for this score is the sum of squared activations: $G_l(\mathbf{x}_l) = \sum_i x_{l,i}^2$. The weights of the layer are then adjusted to increase this goodness for positive samples while decreasing it for negative samples \cite{hinton2022forward}.
+    \item \textbf{Local Objective:} The learning objective for a layer with parameters $\boldsymbol{\theta}_l$ is designed to maximize the difference in goodness between positive ($\mathbf{x}_l^+$) and negative ($\mathbf{x}_l^-$) inputs. 
+
+This is frequently framed using a logistic loss function applied to this difference, which may be shifted by a threshold $\theta$:
+        \begin{equation}
+        \mathcal{L}_l(\boldsymbol{\theta}_l) = \log(1 + e^{-(G_l(\mathbf{x}_l^+) - \theta)}) + \log(1 + e^{(G_l(\mathbf{x}_l^-) - \theta)})
+        \tag{2.6} \label{eq:ff_loss_chap2}
+        \end{equation}
+        where the optimization goal is to minimize $\mathcal{L}_l$.
+    \item \textbf{Layer Normalization:} Before propagating activations $\mathbf{x}_l$ to the subsequent layer $l+1$, FF applies layer normalization \cite{ba2016layer}, which is often simplified to length normalization by dividing by the L2 norm. This step is of critical importance: it removes the magnitude information that defined the goodness in layer $l$, thereby compelling subsequent layers to learn new discriminative features based on the orientation or relative activities of the activation vector, rather than merely inheriting the goodness signal \cite{hinton2022forward}.
+\end{enumerate}
+
+This forward-only, local learning paradigm presents several potential advantages pertinent to energy-efficient training:
+\begin{itemize}
+    \item \textbf{Reduced Memory Footprint:} By eliminating the backward pass, FF obviates the need to store intermediate activations for gradient computation. Memory requirements scale with the size of the layer rather than the depth of the network, which offers a significant potential for savings relative to BP, particularly in deep networks \cite{hinton2022forward}.
+    \item \textbf{Enhanced Parallelizability:} As each layer updates its weights locally and independently without backward locking, FF has the potential to facilitate greater parallelism across layers or even enable pipelined processing of data streams \cite{hinton2022forward}.
+    \item \textbf{Avoidance of Gradient Issues:} The local nature of the objective function inherently bypasses the issues of vanishing or exploding gradients associated with deep backpropagation chains \cite{hinton2022forward}.
+\end{itemize}
+
+However, FF also presents a unique set of characteristics and challenges:
+\begin{itemize}
+    \item \textbf{Native Architecture (MLP Focus):} It is essential to note that Hinton's original research mainly focused on developing and evaluating FF on MLPs with fully-connected layers, such as four-layer networks with 2000 ReLU neurons each for MNIST and Fashion-MNIST \cite{hinton2022forward}. Hinton himself noted difficulties in adapting FF to CNNs. This paper adheres to the native MLP architecture for FF evaluation, specifically a 4$\times$2000 network for Fashion-MNIST as per the research plan.
+    \item \textbf{Inference Procedure:} The standard inference process in FF requires multiple forward passes. To classify a given input, the network computes the total goodness, summed across relevant layers, for the input paired with each possible class label. The label that produces the highest total goodness is then selected as the prediction \cite{hinton2022forward}.
+    \item \textbf{Performance Relative to Backpropagation:} The results of Hinton's work and subsequent studies generally indicate that FF, in its native MLP form, achieves reasonable accuracy on datasets like MNIST but tends to lag behind standard BP, particularly on more complex datasets such as CIFAR-10 \cite{hinton2022forward}. Convergence is also typically observed to be slower \cite{hinton2022forward}.
+    \item \textbf{Hyperparameter Sensitivity:} The algorithm can exhibit sensitivity to hyperparameters such as learning rates and goodness thresholds ($\theta$ in Eq. \ref{eq:ff_loss_chap2}), and the specifics of the normalization procedure \cite{hinton2022forward}.
+\end{itemize}
+
+From a biological point of view, FF is considered as more plausible than BP because it employs local learning rules, avoids the need for precise symmetric weight transport, and does not require long-term storage of activations \cite{hinton2022forward}.
+
+\textbf{In the context of this paper}, FF serves as a foundational example of a BP-free algorithm, representing a critical conceptual advance. Its potential for reduced memory usage and enhanced parallelizability makes it highly relevant to the study of energy efficiency, although its practical efficiency in the tests conducted for this paper proved to be limited. By evaluating FF on its native MLP architecture against an identical MLP trained with BP, this research aims to isolate the impact of the FF mechanism on both performance and energy metrics.
+
+\subsubsection{Cascaded-Forward (CaFo) Algorithm}
+\label{subsec:cafo_algorithm_chap2}
+
+The CaFo algorithm \cite{zhao2023cafo}, proposed by Zhao et al. in 2023, builds upon concepts introduced in FF and aims to address some of the limitations of Hinton's approach, including its reliance on negative samples and the indirect nature of the "goodness" signal for supervision. CaFo introduces a structured, block-wise training process designed to improve stability, convergence, and accuracy while retaining the advantages of BP-free learning.
+
+CaFo is characterized by several key features:
+\begin{enumerate}
+    \item \textbf{Cascaded Neural Blocks:} The architecture comprises sequential "neural blocks," each containing standard components such as convolutional or fully-connected layers, normalization, and activation functions that progressively extract features \cite{zhao2023cafo}.
+    \item \textbf{Layer-wise Predictors (Auxiliary Classifiers):} A dedicated predictor, typically a shallow fully-connected layer followed by a softmax function, is attached to each neural block. This predictor maps the block's output features directly to task-specific outputs, such as class probabilities, thereby providing a more direct supervisory signal at multiple depths within the network \cite{zhao2023cafo}.
+    \item \textbf{Independent Component Training:} The predictors can be trained independently, often using the outputs of pre-trained or even randomly initialized neural blocks. The blocks themselves can be trained using non-BP methods such as direct feedback alignment (DFA) \cite{nokland2016direct} or remain fixed \cite{zhao2023cafo}.
+    \item \textbf{Single Input Stream:} In contrast to the positive/negative passes of FF, CaFo utilizes a single input stream and employs ground truth labels for local predictor losses, which simplifies data handling \cite{zhao2023cafo}.
+    \item \textbf{Knowledge Integration during Inference:} The final prediction is typically derived by aggregating the outputs from all predictors, for example, by averaging their probability distributions. This approach utilizes information from multiple levels of representation in a single forward pass through the architecture \cite{zhao2023cafo}.
+\end{enumerate}
+
+\textbf{Native Architecture and Implementation for Fair Benchmarking:}
+As specified in the CaFo publication \cite{zhao2023cafo}, and pertinent to the methodology of this paper, the authors proposed and evaluated a specific CNN variant for image classification tasks. This native architecture, which was used for datasets including Fashion-MNIST and CIFAR-10/100, involves several cascaded convolutional blocks. For the experiments in this paper, this research adheres strictly to this native CNN architecture. It consists of \textbf{three blocks}, each containing a \textbf{Conv2D(3x3), ReLU, MaxPool(2x2), and BatchNorm} layer, with progressively increasing channel depths (e.g., \textbf{32, 128, 512 channels}). The output feature map of each block is flattened before being fed into its dedicated predictor (e.g., an \textbf{FC layer + Softmax}). The corresponding fair BP baseline replicates this exact CNN architecture and is trained end-to-end.
+
+\pagebreak % Add this command to force a new p
+
+\textbf{Training Methodology and Efficiency Aspects:}
+CaFo training involves distinct phases, which have been implemented as part of this work:
+\begin{itemize}
+    \item \textbf{Neural Block Training (Optional: CaFo-DFA Variant):} The neural blocks can be randomly initialized and kept fixed, which constitutes the \textit{CaFo-Rand} variant. Alternatively, they can be trained using a BP-free method such as direct feedback alignment (DFA) \cite{nokland2016direct}. DFA offers a solution to the biological implausibility of backpropagation by eliminating the need for symmetric weight transport. Instead of propagating the error backward using the transpose of the forward weight matrices, DFA generates a synthetic gradient for each layer. This is achieved by projecting the global error signal from the output layer directly back to each hidden layer via a fixed, random feedback matrix. As this matrix is not learned and is independent of the forward weights, it allows each layer to compute an approximate weight update locally, thus avoiding the backward locking problem. Although often yielding lower accuracy than BP, its mechanism serves as an important benchmark for other BP-free algorithms \cite[Table 3]{gong2025mono}. This DFA block training mechanism has been implemented, which uses an approximation of DFA for convolutional layers, as a configurable option for evaluating the \textit{CaFo-DFA} variant.
+    
+    \item \textbf{Predictor Training:} Each predictor is trained independently on the output of its corresponding block. CaFo supports multiple loss functions, including Mean Squared Error (MSE), Cross-Entropy (CE), and Sparsemax Loss (SL) \cite{zhao2023cafo}. It should be noted that using the MSE loss for predictors permits a \textbf{closed-form solution} via linear regression, allowing exceptionally fast predictor training once the block outputs ($\mathbf{H}$) are computed \cite{zhao2023cafo}. Although the MSE loss variant offers this exceptional training speed, this work focuses on the Cross Entropy (CE) variants, as they are reported to yield higher classification accuracy, providing a more stringent test against backpropagation's performance \cite{zhao2023cafo}. Training with CE or SL involves gradient descent but is based solely on local gradients computed through the shallow predictor.
+\end{itemize}
+This modular training approach, which eliminates the deep backward pass, suggests potential advantages in terms of reduced memory usage and faster training times, particularly when using MSE loss, making it highly relevant for energy efficiency analysis. The use of DFA for block training offers an additional BP-free pathway within the CaFo framework.
+
+\textbf{Performance and Trade-offs:}
+The results presented in \cite{zhao2023cafo} indicate that CaFo significantly outperforms FF on benchmarks such as MNIST and CIFAR-10/100. Although it still generally underperforms an end-to-end BP-trained model on the same architectures, the performance gap reported for CaFo, especially with CE or SL loss and DFA-trained blocks, is smaller than that of FF \cite{zhao2023cafo}. The choice of loss function (MSE vs. CE/SL) presents a trade-off between speed and accuracy \cite{zhao2023cafo}. The experiments in this paper are designed to quantify these performance and efficiency trade-offs against a fair BP baseline, with a primary focus on the Rand-CE variant, while also acknowledging the implemented DFA capability.
+
+\textbf{Biological Plausibility:}
+Similar to FF, CaFo is argued to be more biologically plausible than BP due to its avoidance of weight transport, achieved through the use of DFA or local predictors, and its lack of global error propagation \cite{zhao2023cafo}.
+
+\textbf{In summary}, CaFo represents an evolutionary step from FF, offering a structured forward-only learning approach with the potential for improved accuracy and specific efficiency advantages. Its distinct native architectures and training options, including the Rand-CE and DFA-CE variants implemented, establish it as a key algorithm for the comparative study in this paper.
+
+\pagebreak
+
+\subsubsection{Mono-Forward (MF) Algorithm}
+\label{subsec:mf_algorithm_chap2}
+
+The MF algorithm, introduced by Gong, Li, and Abdulla \cite{gong2025mono}, is a recent BP-free training method that builds on the core principle of local, forward-only learning. It employs a novel mechanism, local projection matrices, with the objective of achieving performance that can match or even surpass that of backpropagation, particularly on MLP architectures, while offering substantial benefits in memory efficiency and parallelizability. MF simplifies certain aspects of both FF, by eliminating the need for negative samples, and CaFo, by replacing complex cascaded predictor training with a direct local loss computation on each layer's activations.
+
+\textbf{Core Mechanism: Local Learning with Projection Matrices}
+The key innovation of MF lies in its layer-wise optimization process, which utilizes a dedicated \emph{projection matrix} $\mathbf{M}_i$ in each hidden layer $i$. This matrix, with dimensions $m \times n$ (where $m$ is the number of classes and $n$ is the number of neurons in the layer), maps the layer's activation vector $\mathbf{a}_i$ (of size $1 \times n$ for a single sample, or $B \times n$ for a batch of size $B$) directly to category-specific "goodness" scores $\mathbf{G}_i$ (of size $1 \times m$ or $B \times m$):
+
+\begin{equation}
+\mathbf{G}_i = \mathbf{a}_i \mathbf{M}_i^T
+\tag{2.7} \label{eq:mf_goodness_chap2}
+\end{equation}
+
+MF then applies a standard cross-entropy loss, computed locally at each layer $i$, between the softmax of these goodness scores and the true labels $\mathbf{y}$:
+
+\begin{equation}
+\mathcal{L}_i = \text{CrossEntropy}(\text{softmax}(\mathbf{G}_i), \mathbf{y})
+\tag{2.8} \label{eq:mf_loss_chap2}
+\end{equation}
+Critically, both the layer's weights $\mathbf{W}_i$ and its projection matrix $\mathbf{M}_i$ are updated using gradients derived exclusively from this local loss $\mathcal{L}_i$:
+
+\begin{align}
+\mathbf{W}_i &\leftarrow \mathbf{W}_i - \eta \frac{\partial \mathcal{L}_i}{\partial \mathbf{W}_i} \tag{2.9} \label{eq:mf_update_W_chap2} \\
+\mathbf{M}_i &\leftarrow \mathbf{M}_i - \eta \frac{\partial \mathcal{L}_i}{\partial \mathbf{M}_i} \tag{2.10} \label{eq:mf_update_M_chap2}
+\end{align}
+where $\eta$ represents the learning rate. The gradient for the projection matrix, $\frac{\partial \mathcal{L}_i}{\partial \mathbf{M}_i}$, is computed directly. The gradient for the layer weights is determined via a local "mini-backpropagation" through the layer itself, as defined by the chain rule:
+
+\begin{equation}
+\frac{\partial \mathcal{L}_i}{\partial \mathbf{W}_i} = \frac{\partial \mathcal{L}_i}{\partial \mathbf{G}_i} \frac{\partial \mathbf{G}_i}{\partial \mathbf{a}_i} \frac{\partial \mathbf{a}_i}{\partial \mathbf{z}_i} \frac{\partial \mathbf{z}_i}{\partial \mathbf{W}_i}
+\tag{2.11} \label{eq:mf_local_chain_rule}
+\end{equation}
+where $\mathbf{z}_i$ is the pre-activation value. This local mechanism effectively avoids backward locking and the problems associated with global gradient propagation \cite{gong2025mono}.
+
+\textbf{Native Architectures and Fair Benchmarking Relevance}
+The original MF paper \cite{gong2025mono} primarily evaluated the algorithm using MLPs on standard image classification benchmarks. The native architectures specified in the paper, which are relevant to this paper, are:
+\begin{itemize}
+    \item \textbf{MNIST \& Fashion-MNIST:} A 2-hidden-layer MLP with 1000 ReLU neurons per hidden layer (a \textbf{2$\times$1000 ReLU MLP}).
+    \item \textbf{CIFAR-10 and CIFAR-100:} A 3-hidden-layer MLP with 2000 ReLU neurons per hidden layer (a \textbf{3$\times$2000 ReLU MLP}).
+\end{itemize}
+Each hidden layer in these architectures incorporates its own projection matrix $\mathbf{M}_i$, which is initialized using a method such as Kaiming uniform initialization \cite{he2015delving}, and is trained using the local loss $\mathcal{L}_i$. In the methodology of this paper, these specific MLPs will be implemented for MF, and the fair BP baselines will utilize \emph{identical} MLP structures trained end-to-end.
+
+\pagebreak
+\textbf{Prediction Methods}
+MF supports two distinct approaches for inference \cite{gong2025mono}:
+\begin{enumerate}
+    \item \textbf{FF-style Aggregation:} The goodness scores ($\mathbf{G}_i$) from all layers are aggregated, for instance, by summation, and the class corresponding to the highest aggregate score is predicted.
+    \item \textbf{BP-style Final Layer:} Only the goodness scores from the final hidden layer ($\mathbf{G}_L$) are used for prediction via a softmax function. This method is computationally analogous to standard BP inference, requiring a single forward pass.
+\end{enumerate}
+The original paper suggests that BP-style inference is both efficient and performs well \cite{gong2025mono}.
+
+\textbf{Potential for Energy Efficiency}
+The design of the MF algorithm holds significant promise for energy efficiency:
+\begin{itemize}
+    \item \textbf{Memory Usage:} The elimination of the backward pass obviates the need to store intermediate activations. The MF paper provides empirical evidence of substantially lower peak memory usage compared to BP \cite[Fig. 1-3]{gong2025mono}.
+    \item \textbf{Training Time:} The layer-wise independence of MF removes the backward locking constraint, which enables the potential layer-parallelism. The paper reports that MF trains significantly faster per epoch than BP on comparable MLP architectures \cite[Table 5]{gong2025mono}.
+    \item \textbf{FLOPs:} While MF eliminates the FLOPs associated with the backward pass, it introduces additional FLOPs for projection matrix computations. The net effect on computational load requires empirical measurement.
+    \item \textbf{Energy Consumption:} The combination of lower memory requirements, potentially faster training, and parallelizable computations is expected to result in a reduced overall energy consumption. Direct measurements using NVML are necessary to verify this.
+\end{itemize}
+It should be noted that the projection matrices $\mathbf{M}_i$ add to the parameter count compared to a standard BP network, leading to a slight increase in model size \cite{gong2025mono}.
+
+\textbf{Performance and Convergence}
+Crucially, Gong et al. \cite{gong2025mono} report that MF consistently \textbf{matched or surpassed the accuracy of BP} on identical MLP architectures across the MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100 datasets, while also significantly outperforming FF, FA, and DFA \cite[Table 3]{gong2025mono}. MF also demonstrated remarkable convergence stability \cite[Fig. 5]{gong2025mono}.
+
+\textbf{Biological Plausibility and Modularity}
+MF aligns more closely with the principles of biological learning than BP, due to its use of local updates and the absence of weight transport \cite{gong2025mono}. The independence of its layers also confers a high degree of modularity \cite[Section 3.3]{gong2025mono}.
+
+\textbf{In summary}, MF represents a significant recent advancement in the field of BP-free learning. It offers a compelling alternative that has the potential to deliver superior performance along with substantial efficiency advantages by directly mapping local layer activations to class-specific scores for local loss computation. The evaluation of MF on its native MLP architectures will be a primary focus of this paper's comparative analysis against fair BP baselines.
+
+\subsection{Benchmarking Against Backpropagation and the Need for Fairness}
+\label{sec:fair_benchmarking_chap2}
+A rigorous evaluation of the performance and energy efficiency of alternative training algorithms relative to backpropagation requires a fair benchmarking methodology. However, a review of the literature reveals that comparisons are often confounded by several factors. The most prominent of these is the network architecture; discrepancies in layer types, depth, width, connectivity, and activation functions can exert a dramatic influence on both performance and energy consumption, independent of the training algorithm used \cite{desislavov2024energy, yarally2023uncovering}.
+
+Previous studies comparing alternative algorithms often lacked the strict consistency required for a truly equitable assessment. For instance, comparisons frequently use standard BP architectures that may not replicate the potentially non-standard native architectures of the alternative algorithms, thereby hindering a fair assessment of the algorithmic impact. Furthermore, best practices such as systematic hyperparameter tuning and consistent validation-based early stopping are not always universally applied across all compared methods \cite{hinton2022forward}, making it difficult to disentangle algorithmic effects from those specific to a particular experimental setup. Research focused on energy efficiency has also highlighted the sensitivity of such measurements to architectural and configuration details \cite{garcia2019estimation}, further underscoring the necessity for the architecturally fair and methodologically rigorous comparison that this paper employs.
+Addressing these issues requires a framework built upon several principles of fairness:
+\begin{itemize}
+\item \textbf{Architectural Parity:} The alternative algorithm and its backpropagation baseline should be evaluated on identical network structures.
+\item \textbf{Systematic Optimization:} All the compared methods should undergo a rigorous, equivalent hyperparameter tuning to ensure that each performs at its potential.
+\item \textbf{Consistent Evaluation Criteria:} Practices like early stopping based on validation performance must be universally applied to avoid penalizing algorithms with different convergence dynamics.
+\item \textbf{Comprehensive and Consistent Metrics:} Efficiency should be evaluated using direct hardware measurements rather than relying solely on proxies.
+\end{itemize}
+The absence of a standardized methodology that incorporates these principles represents a significant gap in the literature. By adopting a fair benchmarking approach, which is centered on native architectures and consistent training practices, this paper aims to provide a robust assessment of the true performance and energy trade-offs offered by FF, CaFo, and MF relative to standard backpropagation.
+
+\subsection{Summary of Related Work and Identification of Research Gaps}
+\label{sec:research_gaps_chap2}
+This chapter has reviewed the foundational principles of DNN training with backpropagation, the significant challenge of energy efficiency in deep learning, and three promising BP-free alternatives: the Forward-Forward (FF), Cascaded-Forward (CaFo), and Mono-Forward (MF) algorithms, framed within an evolutionary context.
+Key conclusions drawn from the literature are as follows:
+\begin{enumerate}
+\item Backpropagation, despite its dominance, is characterized by limitations related to memory consumption, parallelism due to backward locking, gradient stability, and biological plausibility \cite{lillicrap2020backpropagation, bengio2015towards, jaderberg2017decoupled}.
+\item The energy cost associated with training large-scale DNNs is substantial and continues to grow, requiring research into more efficient training methodologies \cite{strubell2019energy, patterson2021carbon, wef2024growing}.
+\item Alternative algorithms such as FF \cite{hinton2022forward}, CaFo \cite{zhao2023cafo}, and MF \cite{gong2025mono} offer potential solutions by eliminating the backward pass and utilizing local learning rules.
+\item These alternatives are often developed and evaluated on specific "native" architectures, such as MLPs for FF and MF or block-wise CNNs for CaFo, a factor critical for fair assessment \cite{hinton2022forward, zhao2023cafo, gong2025mono}.
+\end{enumerate}
+\pagebreak
+
+Despite this progress, several research gaps persist, providing the motivation for this paper:
+\begin{enumerate}
+\item \textbf{Absence of a Fair and Holistic Comparative Framework:} There is a scarcity of studies that systematically compare emerging BP-free algorithms against backpropagation under truly equitable conditions. A rigorous framework would require implementing algorithms on their respective native architectures, establishing architecturally identical BP baselines, and applying consistent best practices such as universal hyperparameter optimization and validation-based early stopping to all methods.
+\item \textbf{Inconsistent and Indirect Efficiency Measurement:} Many studies lack direct hardware-level energy measurements, often relying on proxies like FLOPs which may not reflect true energy profiles \cite{charpentier2023accuracy}. The systematic and transparent reporting of a comprehensive suite of metrics, including direct energy consumption (Wh), training time, peak memory, and estimated CO2e, is rarely performed for these newer algorithms against fairly-optimized baselines \cite{henderson2020towards}.
+\item \textbf{Uncharacterized Performance-Efficiency Trade-offs:} As a consequence of the above, the specific trade-offs between classification accuracy and a full suite of measured efficiency metrics remain inadequately characterized for algorithms such as CaFo and MF when compared to rigorously-optimized BP baselines \cite{narayanagowda2023watt, yarally2023uncovering}.
+\item \textbf{Unknown Scalability on Native Architectures:} It is not well understood how the performance and efficiency of algorithms like CaFo and MF, on their native architectures, scale across datasets of increasing complexity when compared to fair and optimized BP baselines.
+\end{enumerate}
+This paper addresses these gaps by conducting a rigorous comparative empirical study. It focuses on the performance and, critically, the energy efficiency of FF, CaFo, and MF against fair BP baselines implemented on their identical native architectures, where all methods benefit from systematic hyperparameter tuning and early stopping. The methodology detailed in Chapter \ref{chap:methodology} is designed to facilitate this fair comparison through direct hardware measurements and computational profiling.

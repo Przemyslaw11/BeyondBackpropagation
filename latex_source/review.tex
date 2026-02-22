@@ -1,0 +1,112 @@
+Reviews
+Review 1
+Paper summary	The paper demonstrates that the Mono-Forward (MF) algorithm can act as a practical, energy-efficient alternative to backpropagation (BP), consistently matching or surpassing the latter in classification accuracy. Experimental results reported by the authors indicate that MF can deliver up to 41% lower energy consumption and 34% faster training on Multi-Layer Perceptron (MLP) architectures. This is a noteworthy contribution because MF can deliver superior performance compared to BP by eliminating the costly backward pass, which reduces memory traffic and lowers floating-point operations. Additionally, MF enables local, non-sequential weight updates that decrease data movement on hardware, optimized specifically for the fully connected structure MLPs.
+Relevance	
+4: good
+Novelty	
+4: good
+Technical soundness	
+4: good
+Language	
+4: good
+Experimental data	
+5: excellent
+Overall evaluation	
+2: accept
+Strengths: A rigorous, hardware-validated benchmarking study of three representative forward only BP-free training algorithms (FF, CaFo, MF), evaluated against fairly tuned BP baselines under a principled fairness framework on MLP and CNN architectures across four standard vision benchmarks (MNIST, Fashion-MNIST, CIFAR-10, CIFAR-100).
+
+Weaknesses: The article reads like a very condensed technical report. This is detrimental to its readability for the average PPAM reader. For example, the plots in Fig. 3 and Fig. 4 are completely illegible and don't convey what the authors are trying to explain in the paper text.
+Best Paper Award	
+0: NOT
+Review 2
+Paper summary	This paper presents a framework for evaluating the efficiency (memory, energy and hardware utilization) tradeoff for forward-only algorithms, i.e. ML approaches that does not rely on backpropagation, running on GPU. It also discusses the efficiency differences between 3 forward-only algorithms.
+Relevance	
+4: good
+Novelty	
+4: good
+Technical soundness	
+3: fair
+Language	
+4: good
+Experimental data	
+4: good
+Overall evaluation	
+0: borderline paper
+This paper tries to quantify the efficiency of various forward only algorithms vs the usual backpropagation based algorithms. The results presented in this work is interesting but there the lack of details and analysis in the main article (Specifically Section 6) made the paper seemed preliminary.
+
+The details of the different ML architectures are important for understanding the hardware implications. However, these details are not discussed much in the paper. As such, it was difficult to correlate the analysis with the provided results. For example, the paper claimed that the BP baselines were identical but algorithm specific components were removed. The removal of these components be the reason why certain architectures were better one way or another.
+
+In addition, the difference in software implementation could affect the hardware utilization. For example, as backprop (BP) algorithms are more widely used, the functionalities in existing software libraries could have been better optimized to get better/more stable BP performance than forward only algorithms. Details of how the models were implemented could be added for better understanding of the paper.
+Best Paper Award	
+0: NOT
+Review 3
+Paper summary	This paper presents a rigorous, hardware-validated benchmarking study comparing three backpropagation-free, forward-only training algorithms—Forward-Forward (FF), Cascaded Forward (CaFo), and Mono-Forward (MF)—against a finely tuned backpropagation (BP) baseline across four standard vision datasets. Utilising a standard framework equipped with Optuna and direct GPU physical monitoring (NVML) on an NVIDIA A100, the authors reveal that Mono-Forward (MF) achieves up to 41% lower energy consumption and 34% faster training times while matching or exceeding BP's classification accuracy on native Multi-Layer Perceptron (MLP) architectures. Conversely, the foundational Forward-Forward (FF) algorithm demonstrates severe hardware-level inefficiencies, including volatile GPU clock speeds that lead to up to 13x longer training times. Crucially, the study debunks a common assumption in BP-free literature by showing that the actual memory overhead introduced by algorithm-specific components (such as local projection matrices) frequently counteracts or entirely offsets the theoretical memory savings gained from omitting the backward pass.
+Relevance	
+5: excellent
+Novelty	
+4: good
+Technical soundness	
+4: good
+Language	
+5: excellent
+Experimental data	
+4: good
+Overall evaluation	
+1: weak accept
+This paper stands out for its experimental rigour. By introducing identical baseline structures, automated hyperparameter tuning via Optuna, and direct GPU measurements via NVML on an NVIDIA A100, the authors isolate true performance to provide an empirical look at memory efficiency —specifically demonstrating that algorithm-specific overheads can entirely erase the theoretical memory benefits of omitting the backward pass. To further enhance the impact, completeness, and clarity of the manuscript, please consider the following review comments:
+
+- While the acronym NVML is used several times starting from the Abstract, it is never formally defined or explained. Please explicitly state upon first use that it stands for the NVIDIA Management Library, and briefly clarify what it does and why it was chosen as the standard tool for capturing real-time physical hardware metrics (like power draw and peak memory allocation) in your experiments.
+
+- While Section 5.1 and Section 5.3 provide clear, dedicated performance and efficiency summaries for FF and MF via Table 1 and Table 2, respectively, the results for Cascaded Forward (CaFo) in Section 5.2 are presented purely as text descriptions. Since CaFo is introduced as one of the three core pillars of this benchmarking study, its performance metrics (Accuracy, Time, Energy, Peak Memory) should be summarised in an equivalent table within the main manuscript.
+
+- Because Mono-Forward places a cross-entropy loss at every hidden layer, it inherently behaves like a deep supervision network. It would be great if you could add a standard backpropagation baseline that uses matching layer-wise auxiliary losses. This is the only way to prove whether MF's efficiency and accuracy gains stem from its unique forward-only mechanism or simply from localised objective constraints.
+Best Paper Award	
+0: NOT
+Review 4
+Paper summary	The paper addresses the problem of the energy cost associated with training neural networks of the backpropagation type (NN‑backp),
+which are widely used in deep learning and subsequently applied in AI systems. The increasing electrical energy consumption observed
+during the training of such models raises the need for developing variants that maintain good classification accuracy while reducing energy usage.
+To this end, the authors propose an approach for comparing and validating recent NN‑backp variants that share a common feature:
+the replacement of backpropagation with forward‑only alternatives.
+Relevance	
+5: excellent
+Novelty	
+4: good
+Technical soundness	
+4: good
+Language	
+5: excellent
+Experimental data	
+4: good
+Overall evaluation	
+2: accept
+They examine three forward-only algorithms: FF, CaFo, and MF.
+Four benchmark datasets are used to evaluate the efficiency of these models, and the results indicate that the MF algorithm
+is the most effective. The authors also provide a hardware‑validated comparison of these three algorithms with a standard backpropagation
+model commonly used in the literature. They show that MF achieves classification accuracy comparable to, or even better than, BP while
+reducing energy consumption by approximately 41%, accompanied by significantly faster training times.
+All experiments were conducted in the high‑performance computing environment of the PLGrid Infrastructure and ACK Cyfronet AGH (Athena cluster).
+
+The paper is well written and well edited.
+However, the key term “hardware‑validated comparison” is unclear and should be explained in more detail.
+One methodological remark: the statistical analysis is based on only three runs, which is insufficient and can be considered only
+as preliminary evidence.
+Best Paper Award	
+0: NOT
+Review 5
+Paper summary	The paper presents a hardware-validated benchmarking study of three backpropagation-free, forward-only training algorithms: Forward-Forward, Cascaded Forward, and Mono-Forward. These methods are compared against tuned backpropagation baselines on MLP and CNN architectures using standard vision datasets. The study measures accuracy, training time, energy consumption, and GPU memory usage, with hardware-level measurements collected through NVML. The main empirical finding is that Mono-Forward can match or slightly outperform backpropagation on its native MLP architectures while reducing training time and energy consumption in some configurations.
+Relevance	
+4: good
+Novelty	
+3: fair
+Technical soundness	
+3: fair
+Language	
+4: good
+Experimental data	
+3: fair
+Overall evaluation	
+1: weak accept
+The paper addresses an interesting topic, especially given the growing concern about the energy cost of deep learning. The experimental framework is clearly motivated, and the use of direct hardware measurements is a positive aspect. I also appreciate that the authors explicitly state the limited scope of the conclusions, namely small-scale vision benchmarks, mostly MLP architectures, and a single GPU platform. However, the contribution is mainly evaluative rather than algorithmic, and the practical significance of the results is somewhat limited by the small datasets, shallow architectures, and the use of flattened CIFAR inputs for MLP experiments. The statistical evidence is also not very strong, since results are based on only three runs, and some of the reported accuracy differences are modest. A stronger comparison would include additional baselines, such as deep-supervision or local-loss backpropagation variants, to better isolate whether the gains come from the forward-only training mechanism or from local auxiliary objectives. The energy measurements are useful, although specific to one GPU platform. Overall, the paper is relevant and reasonably well executed, but the authors further clarify the limitations, and strengthen the discussion of baselines and statistical robustness.
+Best Paper Award	
+0: NOT

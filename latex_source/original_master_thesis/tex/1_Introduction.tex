@@ -1,0 +1,86 @@
+\section{Introduction}
+\label{chap:introduction}
+
+\subsection{Motivation}
+\label{sec:motivation}
+
+Deep neural networks (DNNs) have become a transformative technology in machine learning and artificial intelligence, establishing state-of-the-art benchmarks in diverse domains such as computer vision \cite{krizhevsky2012imagenet, he2016deep}, natural language processing \cite{vaswani2017attention, devlin2018bert}, and reinforcement learning \cite{mnih2015human}. However, this success is predicated on a substantial and escalating demand for computational resources, which translates directly into significant energy consumption. The challenge is particularly acute, as contemporary models now routinely scale to billions or trillions of parameters. The predominant training paradigm, which relies on the backpropagation (BP) algorithm \cite{rumelhart1986learning}, which requires the storage of all intermediate activations during the forward-pass to facilitate gradient computation in the subsequent backward pass. This requirement results in considerable memory usage and a correspondingly high energy budget \cite{chen2016training}. Moreover, the inherently sequential nature of the forward and backward passes imposes a fundamental constraint on parallelization, a bottleneck known as "backward locking" \cite{jaderberg2017decoupled}.
+
+The environmental consequences of these computational demands have emerged as a pressing concern. Recent analyses reveal a paradox in modern AI, where its capacity to optimize energy systems is contrasted with its own operational requirements. Although specific projections vary according to scope and underlying assumptions, some forecast that AI could account for \textbf{up to 3\% of global electricity demand by 2030} \cite{wef2025paradox}, underscoring an undisputed trend of rapid escalating energy consumption. Architectural studies confirm that even modest reductions in network complexity can halve the energy consumed during training \cite{yarally2023uncovering}, while hardware-aware analyzes underscore the non-linear relationship between model scale and energy cost \cite{desislavov2024energy}. In particular, training a single large language model can produce a carbon footprint of \textbf{more than 500 metric tons of CO2}, a figure equivalent to the lifetime emissions of several conventional automobiles \cite{patterson2021carbon, abbas2024impact}. In response, a new generation of hardware accelerators, sparsity techniques, and analytical tools such as CodeCarbon \cite{codecarbon2021}, which provides an estimated CO2e from energy use and local grid intensity, is being developed to tackle this energy crisis.
+
+This context has spurred a search for alternative training algorithms that completely eliminate the backward pass. Among the most promising are Geoffrey Hinton's Forward-Forward (FF) algorithm \cite{hinton2022forward}, the Cascaded-Forward (CaFo) algorithm \cite{zhao2023cafo}, and the Mono-Forward (MF) algorithm \cite{gong2025mono}. These backpropagation-free (BP-free) methods are not only intended to reduce energy consumption but are also inspired by learning principles observed in biological neural systems. In contrast to backpropagation's dependence on a global error signal and non-local computations, these alternatives employ local, layer-wise learning mechanisms. Such mechanisms are analogous to synaptic plasticity in the brain, where learning is governed by localized phenomena such as Hebbian learning \cite{song2000competitive} and spike-timing dependent plasticity (STDP) \cite{bi1998synaptic}.
+
+By aligning more closely with these neurobiological principles, these alternative algorithms offer potential improvements in energy efficiency and scalability. They can reduce computational overhead and memory requirements and, by breaking the global dependency of the backward pass, create new opportunities for parallel and distributed processing across diverse architectures, including multi-layer perceptrons (MLPs) and convolutional neural networks (CNNs). This localized learning paradigm could be especially advantageous in resource-constrained environments, such as on edge devices or within Internet of Things (IoT) systems. Ultimately, the biological inspiration that underpins these methods fosters the potential to develop more robust and efficient learning strategies, bridging the gap between artificial and natural intelligence and paving the way for a new generation of deep learning algorithms that are powerful and sustainable \cite{bengio2015towards, lillicrap2020backpropagation}.
+
+\subsection{Problem Statement}
+\label{sec:problem}
+
+The conventional backpropagation (BP) algorithm, despite its widespread success, is constrained by inherent limitations. Currently, the emerging class of BP-free alternatives introduces its own set of unresolved challenges related to practical viability and comparative performance. First, standard BP is constrained by significant drawbacks, including high memory costs for activation storage, the substantial computational overhead of the backward pass, the backward locking effect that inhibits parallelism, and the potential for gradient instability \cite{bengio2015towards, lillicrap2020backpropagation, jaderberg2017decoupled, hochreiter2001gradient}. Second, there is a distinct lack of systematic studies that rigorously compare emerging BP-free algorithms such as FF, CaFo, and MF against BP under controlled conditions, particularly those that evaluate both performance and direct energy efficiency metrics \cite{johnson2023inconsistency, strubell2019energy}.
+
+This gap is exacerbated by a third issue: Architectural variations frequently confound existing comparisons. Studies often assess alternative algorithms on architectures that are distinct from standard BP configurations, making it difficult to disentangle the influence of the training algorithm from that of the architectural design \cite{desislavov2024energy, yarally2023uncovering}. A critical deficiency is the absence of comparisons where alternative algorithms are evaluated on their specific "native" architectures, and fair backpropagation baselines are constructed on those same architectures, a condition essential for an accurate assessment. Fourth, energy efficiency analysis is often inconsistent, relying on indirect proxies such as floating-point operations (FLOPs) rather than direct hardware monitoring. This practice can yield incomplete or misleading conclusions about the true energy profiles of different training methods \cite{rajput2023enhancing, charpentier2023accuracy, chung2024zeus}, and standardized reporting of estimated CO2e using tools such as CodeCarbon is often omitted. Finally, as a consequence of these issues, the specific trade-offs between classification performance and a comprehensive suite of efficiency metrics (energy, time, memory, GFLOPs, estimated CO2e) for these newer algorithms relative to established baselines of BP remain inadequately characterized, thus limiting their informed adoption \cite{yarally2023uncovering, narayanagowda2023watt}.
+
+Addressing these deficiencies is imperative for the advancement of sustainable deep learning. Therefore, a standardized methodology is required to rigorously evaluate the performance and efficiency of emerging training algorithms against established baselines on equitable architectural grounds.
+
+\subsection{Research Objectives and Questions}
+\label{sec:objectives}
+
+To address this need, the primary objective of this paper is to conduct a comprehensive and fair comparison of the Forward-Forward (FF), Cascaded-Forward (CaFo), and Mono-Forward (MF) algorithms against a standard backpropagation-based approach. The experimental design focuses on implementing each algorithm in its native network architecture and establishing a corresponding fair BP baseline that uses an identical architecture, thereby isolating the impact of the training method itself.
+
+This paper seeks to provide empirical answers to the following research questions:
+\begin{enumerate}
+    \item How do the alternative training algorithms (FF, CaFo, and MF) compare to backpropagation in terms of classification accuracy and convergence rate on the MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100 datasets? This investigation is structured to evaluate FF foundationally on Fashion-MNIST, CaFo in its native CNN architecture, and MF in its native MLP architecture across all relevant datasets.
+
+    \item What are the directly measured energy consumption profiles (via the NVIDIA Management Library (NVML)) of FF, CaFo, and MF compared to their fair backpropagation baselines during training on identical native architectures?
+
+    \item How do key computational efficiency metrics differ between the alternative algorithms and their fair BP baselines under controlled architectural settings, including MLP structures native to MF?
+    
+    This analysis covers:
+        \begin{itemize}
+            \item Wall-clock training time.
+            \item Peak GPU memory usage.
+            \item Estimated forward-pass Giga Floating-Point Operations (GFLOPs) as a proxy for inference complexity.
+            \item An estimation of the computational cost per update cycle for BP, illustrating the theoretical savings from eliminating the backward pass.
+            \item Estimated Carbon Dioxide Equivalent (CO2e) calculated using the CodeCarbon library.
+        \end{itemize}
+
+    \item What specific energy performance trade-offs (including estimated CO2e) exist for CaFo and MF relative to backpropagation? How does FF's trade-off compare within its more limited experimental scope?
+    
+    \item How does the scalability, in terms of both performance and efficiency, of CaFo (on CNNs) and MF (on MLPs) vary across datasets of increasing complexity when compared to BP, and what are the implications for their potential deployment in energy-constrained environments?
+\end{enumerate}
+
+\subsection{Paper Contributions}
+\label{sec:contributions}
+
+This paper makes several distinct contributions to the field of energy-efficient deep learning:
+\begin{itemize}
+    \item \textbf{Rigorous Algorithm Replication:} The author faithfully reproduced the native architectures for the FF (MLP), CaFo (CNN, including both Rand CE and the implemented DFA CE variants), and MF (MLP) algorithms from their original descriptions.
+
+    \item \textbf{Fair Comparative Framework:} By implementing both alternative algorithms and their backpropagation counterparts on identical network architectures and applying consistent practices such as early stopping based on validation performance, this paper establishes a framework that isolates the impact of the training algorithm itself.
+
+    \item \textbf{Empirical Energy Efficiency Analysis:} Through direct hardware measurements using the NVIDIA NVML API and profiling tools, this work provides a detailed, multifaceted efficiency profile for each training method under fair conditions. This profile includes direct energy, time, peak memory, estimated forward-pass GFLOPs, and an estimated CO2e, alongside an estimation of BP's per-update computational cost to highlight algorithmic differences.
+
+    \item \textbf{Trade-off Characterization:} This paper presents a thorough analysis of the trade-offs between classification performance, determined from the best model state identified by validation, and comprehensive energy efficiency, offering valuable insights for the practical deployment of deep learning models in energy-conscious settings.
+
+    \item \textbf{Scalability Assessment:} Through systematic experiments on datasets of increasing complexity (MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100), the scalability and practical applicability of these novel training methods are evaluated.
+
+    \item \textbf{Open Research Infrastructure:} To promote reproducibility and facilitate future research, all source code, structured configuration files (employing an inheritance-based YAML system), experimental protocols and implementations of measurement tools are publicly available in a GitHub repository, with additional details provided in the Appendix~\ref{app:code_repository}.
+\end{itemize}
+
+\subsection{Overview of Paper Structure}
+\label{sec:structure}
+
+This paper is organized into six chapters, each designed to build on the preceding one to construct a comprehensive investigation of energy-efficient training methods for DNNs:
+\begin{itemize}
+    \item \textbf{Chapter 1: Introduction} outlines the motivation, defines the problem statement, and details the research objectives, contributions, and general structure of the paper.
+
+    \item \textbf{Chapter 2: Background and Literature Review} provides an overview of deep neural networks and the backpropagation algorithm, reviews pressing challenges in energy efficiency, and details the alternative training algorithms (FF, CaFo, MF) alongside the rationale for fair benchmarking. This chapter frames the selected algorithms within an evolutionary context, beginning with FF's foundational concepts, progressing to CaFo's structured block-wise methodology, and culminating in MF's recent advancements in both efficiency and performance.
+
+    \item \textbf{Chapter 3: Methodology} describes the experimental design, dataset preprocessing, implementation details for the alternative algorithms and their corresponding fair backpropagation baselines, evaluation metrics, and hardware and software infrastructure. A key focus of this chapter is the establishment of a methodologically rigorous framework for ensuring fair comparisons.
+
+    \item \textbf{Chapter 4: Experiments and Results} presents a detailed account of the empirical findings, including a full suite of performance and efficiency metrics for both the alternative algorithms and their fair BP baselines, supported by comparative analyses and statistical evaluations.
+
+    \item \textbf{Chapter 5: Discussion} interprets the experimental results, examines the specific trade-offs between energy efficiency and model performance, and discusses the advantages, limitations, and practical implications of the investigated training methods.
+
+    \item \textbf{Chapter 6: Conclusion and Future Work} summarizes the key findings, revisits the contributions of the paper, acknowledges its limitations, and proposes promising directions for future inquiry.
+\end{itemize}
+This structure is intended to guide the reader systematically through the context, methods, results, and implications of this research, which explores alternatives beyond conventional backpropagation to foster a more energy-efficient future for deep learning.
