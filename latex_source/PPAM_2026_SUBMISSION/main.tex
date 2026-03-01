@@ -97,7 +97,8 @@ baseline on MLP and 3-block CNN architectures across four standard
 vision benchmarks (MNIST, Fashion-MNIST, CIFAR-10, CIFAR-100). Using a
 principled comparison framework with identical architectures, universal
 hyperparameter optimisation via Optuna, and direct hardware-level
-efficiency measurement via NVML, we find that \MF{} consistently matches
+efficiency measurement via the NVIDIA Management Library (NVML), we
+find that \MF{} consistently matches
 or surpasses \BP{} in classification accuracy on its native MLP
 architectures, achieving up to 41\% lower energy consumption
 and up to 34\% faster training on these configurations. We
@@ -330,7 +331,11 @@ evaluative.
 
 As a key contribution, we propose a rigorous benchmarking framework
 designed to isolate the impact of the training algorithm from
-confounding variables.
+confounding variables. Throughout, a \emph{hardware-validated
+comparison} is one in which every efficiency claim is backed by a
+physical quantity read from the GPU itself while the workload runs —
+energy, elapsed time and memory occupancy — rather than by an
+analytical proxy such as a FLOP or parameter count.
 
 \paragraph{Fairness Protocols.}
 A strict set of protocols was adhered to for all experiments:
@@ -370,16 +375,33 @@ current design; the full discussion and implications are given in
 %
 Limitation~6 (Section~\ref{sec:limitations}).
 
+\paragraph{Architecture and Optimiser Configuration.}
+All layer weights and projection matrices were initialised with Kaiming
+uniform initialisation. \BP{} baselines were trained with AdamW, while
+\CaFo{} predictors and \MF{} layers used Adam on a local cross-entropy
+loss. Each \CaFo{} block comprises a $3{\times}3$ convolution, ReLU,
+$2{\times}2$ max-pooling and batch normalisation, with 32, 128 and 512
+output channels respectively; the three block-wise predictors are
+aggregated by summation to form the final prediction. \FF{} used a fixed
+goodness threshold $\theta=2.0$ with peer normalisation (factor 0.03,
+momentum 0.9). \MF{} used a weight decay fixed at 0.0, leaving the
+learning rate and the number of epochs per layer as the tuned
+quantities. Optuna searched the remaining learning rates and weight
+decays for every algorithm and every \BP{} baseline; the search spaces
+and selected values are in the supplementary material.
+
 \paragraph{Experimental Setup.}
 Experiments were conducted on MNIST~\cite{lecun1998gradient},
 Fashion-MNIST~\cite{xiao2017fashion}, CIFAR-10, and
 CIFAR-100~\cite{krizhevsky2009learning}. All experiments ran on
-NVIDIA A100-SXM4-40GB GPUs (Athena cluster, ACK Cyfronet AGH) under
-PyTorch~v2.4.0. The system CUDA toolkit version was 12.4.0; the
-PyTorch wheel (\texttt{torch==2.4.0+cu121}) bundles a
-CUDA~12.1 runtime.
-NVML energy readings are obtained via the
-system driver and are not affected by this runtime version difference.
+NVIDIA A100-SXM4-40GB GPUs (Athena cluster, ACK Cyfronet AGH), hosted on
+AMD EPYC 7742 nodes running Rocky Linux~9.8 with NVIDIA driver
+595.71.05, Python~3.10.4 and PyTorch~v2.4.0. The system CUDA toolkit
+version was 12.4.0; the PyTorch wheel (\texttt{torch==2.4.0+cu121})
+bundles a CUDA~12.1 runtime. The driver version is stated because it
+governs NVML power-reading semantics; NVML energy readings are obtained
+via the system driver and are not affected by the runtime version
+difference.
 Full environment details are in the supplementary material.
 
 For CIFAR-10 and CIFAR-100, standard training augmentation was applied
@@ -391,8 +413,11 @@ augmentation applied before flattening. No augmentation was applied to
 MNIST or Fashion-MNIST (see the supplementary material for full details).
 
 \paragraph{Evaluation Metrics.}
-To characterise each algorithm completely, a comprehensive suite of
-performance and hardware-efficiency metrics was employed:
+Energy and memory were captured with NVML, the vendor-supplied library
+that exposes the GPU's own power, clock and memory telemetry to a host
+process; it was chosen because it reports what the device actually drew
+and occupied, so no modelling assumption about the workload enters the
+efficiency figures. The full metric suite is:
 \begin{itemize}
   \item \textbf{Performance:} Test-set classification accuracy
         (mean~$\pm$~std across three independent runs).
@@ -465,11 +490,12 @@ accuracy margin justifies the cost.
   \end{tabular}
 \end{table}
 
-The convergence dynamics underlying this result are illustrated in
-Figure~\ref{fig:ff_convergence_dynamics}: \FF{}'s validation accuracy
-rises substantially more slowly than \BP{}'s, accompanied by an erratic
-training loss consistent with the indirect goodness supervision signal.
-The hardware-level cause is revealed by the autopsy in
+The same slow, volatile convergence is visible on MNIST
+(Figure~\ref{fig:ff_convergence_dynamics}), where \FF{}'s validation
+accuracy rises substantially more slowly than \BP{}'s, accompanied by an
+erratic training loss consistent with the indirect goodness supervision
+signal. The hardware-level cause of the efficiency penalty is revealed by
+the autopsy of the Fashion-MNIST configuration in
 Figure~\ref{fig:ff_resource_utilization}: volatile GPU clock speeds
 during \FF{} training indicate inefficient hardware saturation relative to
 \BP{}'s stable, high utilisation. Counterintuitively, \FF{} consumed slightly
@@ -502,9 +528,7 @@ advantage.
     \BP{}, contradicting the theoretical expectation that eliminating the
     backward pass reduces memory. \FF{} also exhibits volatile GPU clock
     speeds indicating underutilisation of the compute pipeline, whereas
-    \BP{} maintains stable, high clock rates. Trace labels follow the
-    \texttt{WiMj} convention: \texttt{W}$i$ = weight matrix~$i$,
-    \texttt{M}$j$ = monitor channel~$j$.
+    \BP{} maintains stable, high clock rates.
     Dataset: Fashion-MNIST; Architecture: 4$\times$2000 MLP.}
   \label{fig:ff_resource_utilization}
 \end{figure}
@@ -523,7 +547,48 @@ but at the cost of a significant 13.23~percentage-point
 accuracy drop on CIFAR-10 relative to \BP{}\@. The \texttt{CaFo-DFA-CE}
 variant substantially improved accuracy but proved exceptionally
 resource-intensive, consuming over four times more energy than
-\BP{} on CIFAR-10.
+\BP{} on CIFAR-10. Table~\ref{tab:cafo_bp_cnn_summary} quantifies both
+sides of this trade-off on that configuration.
+
+% PROVISIONAL DATA: the three-seed figures below are recovered from the
+% archived 2025 runs (NVIDIA driver 570.86.15) and were reconfirmed by
+% reparsing the per-run logs. They must be regenerated on the current
+% cluster (driver 595.71.05) before the paper is finalised.
+\begin{table}[tb]
+  \centering
+  \caption{Performance and efficiency: \CaFo{} variants vs.\ \BP{} on the
+    CIFAR-10 3-block CNN (mean~$\pm$~std, 3~runs).
+    Better result in each column is shown in \textbf{bold}.
+    Time and Energy cover full training to early stopping and include
+    the \CaFoDFA{} block-pretraining stage.
+    Memory is peak GPU allocation reported by NVML\@; it is a
+    device-wide reading that includes the CUDA context and so separates
+    the algorithms only weakly (see
+    Section~\ref{sec:discussion_memory}).
+    These figures are provisional: they were measured on an earlier
+    revision of the cluster software stack and are pending regeneration
+    in the environment reported above.}
+  \label{tab:cafo_bp_cnn_summary}
+  \setlength{\tabcolsep}{4pt}%
+  \small
+  \begin{tabular}{l
+      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
+      S[table-format=4.2] @{\,$\pm$\,} S[table-format=2.2]
+      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
+      S[table-format=4.0] @{\,$\pm$\,} S[table-format=1.0]}
+    \toprule
+    {Algorithm} &
+      \multicolumn{2}{c}{Accuracy (\%)} &
+      \multicolumn{2}{c}{Time (\si{\second})} &
+      \multicolumn{2}{c}{Energy (\si{\watt\hour})} &
+      \multicolumn{2}{c}{\shortstack[c]{Peak Mem \\ (\si{\mebibyte})}} \\
+    \midrule
+    \CaFoRand{}    & 66.09 & 0.32 & \bfseries 332.79 & \bfseries 61.94 & \bfseries 5.50 & \bfseries 1.00 & \bfseries 1014 & \bfseries 0 \\
+    \CaFoDFA{}     & 77.60 & 0.25 & 1314.38 & 37.66 & 27.37 & 0.44 & 1128 & 0 \\
+    \BP{} Baseline & \bfseries 79.32 & \bfseries 3.99 & 339.51 & 18.66 & 6.81 & 0.46 & 1114 & 0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 Figure~\ref{fig:cafo_convergence} illustrates these distinct convergence
 patterns on Fashion-MNIST. The flat initial segment in the
@@ -535,9 +600,9 @@ across all datasets.
 
 \begin{figure}[tb]
   \centering
-  \subfloat[Validation Accuracy]{\includegraphics[width=0.48\linewidth]{plots/CaFo_2.png}}%
+  \subfloat[Validation Accuracy]{\includegraphics[width=0.48\linewidth]{plots/CaFo_1.png}}%
   \hfill
-  \subfloat[Validation Loss]{\includegraphics[width=0.48\linewidth]{plots/CaFo_1.png}}
+  \subfloat[Validation Loss]{\includegraphics[width=0.48\linewidth]{plots/CaFo_2.png}}
   \vspace{-4pt}
   \caption{Convergence dynamics of \CaFo{} variants vs.\ \BP{} on the
     Fashion-MNIST 3-block CNN\@. \BP{} shows smooth, monotonic convergence.
@@ -606,7 +671,6 @@ claims.
   \end{tabular}
 \end{table}
 
-\pagebreak[4]
 {\looseness=-1
 On Fashion-MNIST, \MF{} achieved higher accuracy (+0.51~pp) at the cost of
 modestly increased training time (+18.20\%) and energy consumption
@@ -623,13 +687,12 @@ representing the strongest case for \MF{}'s efficiency advantage.
 Hardware monitoring further validates \MF{}'s lean design on the CIFAR-10
 task. As shown in Figure~\ref{fig:mf_hardware_and_memory}, \MF{}'s local
 training regime results in lower GPU utilisation and a reduced thermal
-profile compared to \BP{}\@. The characteristic step-like pattern in \MF{}'s
-memory usage trace, visible in
-Figure~\ref{fig:mf_hardware_and_memory}(c), is a direct signature of
-its layer-wise sequential training: memory allocations increase in
-discrete steps as each layer's projection matrix is loaded and updated
-before the next layer begins training. This pattern distinguishes \MF{}'s
-memory behaviour from \BP{}'s more uniform, full-graph allocation.
+profile compared to \BP{}\@. The memory trace in
+Figure~\ref{fig:mf_hardware_and_memory}(c) shows \MF{} sitting below \BP{}
+for the whole of training and finishing earlier, consistent with its
+shorter wall-clock time. Neither trace grows over the course of the run,
+and the separation between them is small relative to the fixed CUDA
+context that the reading includes.
 \par}
 
 \begin{figure}[tb]
@@ -643,10 +706,9 @@ memory behaviour from \BP{}'s more uniform, full-graph allocation.
   \caption{Hardware monitoring of \MF{} vs.\ \BP{} on the CIFAR-10
     3$\times$2000 MLP\@. \MF{}'s lower average GPU utilisation~(a) and
     reduced thermal profile~(b) are consistent with lower energy
-    consumption. The step-like pattern in \MF{}'s memory trace~(c) is a
-    direct signature of layer-wise sequential training: memory grows in
-    discrete steps as each layer's projection matrix is loaded and
-    updated before the next layer begins.
+    consumption. \MF{}'s memory trace~(c) remains below \BP{}'s throughout
+    and ends earlier, reflecting its shorter training run; neither trace
+    grows over the run.
     Dataset: CIFAR-10; Architecture: 3$\times$2000 MLP;
     GPU: NVIDIA A100-SXM4-40GB.}
   \label{fig:mf_hardware_and_memory}
@@ -835,7 +897,6 @@ limitations:
         hyperparameter interactions on the smaller network
         (2$\times$1000 MLP). This result qualifies any claim of
         consistent efficiency superiority across all configurations.
-    \pagebreak[4]
   \item \textbf{Scope of contribution.} This paper's primary
         contribution is evaluative, not algorithmic; the benchmarking
         framework, fair comparison conditions, and hardware-level
