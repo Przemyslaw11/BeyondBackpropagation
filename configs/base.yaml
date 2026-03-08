@@ -18,14 +18,18 @@ backend:
       pin_memory: false
 
 training:
-  epochs: 100
   criterion: "CrossEntropyLoss"
   log_interval: 100
-  early_stopping_enabled: true
-  early_stopping_metric: "bp_val_loss"
-  early_stopping_patience: 20
-  early_stopping_mode: "min"
-  early_stopping_min_delta: 0.0
+
+# Shared by BP, FF, CaFo and MF. max_epochs is the per-unit cap: epochs for BP and FF,
+# epochs per layer for MF, epochs per predictor for CaFo.
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 20
+  max_epochs: 100
 
 data_loader:
   batch_size: 128
@@ -41,11 +45,6 @@ optimizer:
   type: "AdamW"
   lr: 0.001
   weight_decay: 0.0001
-
-algorithm_params:
-  mf_early_stopping_enabled: false
-  mf_early_stopping_patience: 10
-  mf_early_stopping_min_delta: 0.0001
 
 logging:
   level: "INFO"
@@ -80,6 +79,10 @@ tuning:
   direction: "maximize"
   metric: "val_accuracy"
   sampler: "TPE"
-  pruner: "Median"
+  # Uniform across algorithms: truncating MF mid-layer is not the same event as
+  # truncating BP mid-epoch, so intermediate values are not comparable.
+  pruner: "None"
+  # Reduced epoch budget that pays for dropping the pruner. Same cap for every algorithm.
+  max_epochs: 20
   lr_range: [1.0e-5, 1.0e-2]
   wd_range: [1.0e-6, 1.0e-3]

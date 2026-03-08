@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.architectures.ff_mlp import FF_MLP
+from src.utils.early_stopping import resolve_early_stopping
 from src.utils.helpers import (
     create_directory_if_not_exists,
     format_time,
@@ -148,20 +149,19 @@ def train_ff_model(
         raise ValueError(f"Invalid LR/WD/Momentum format: {e}") from e
 
     optimizer_type = algo_config.get("optimizer_type", "SGD")
-    epochs = train_config.get("epochs", 100)
+    es_policy = resolve_early_stopping(config)
+    epochs = es_policy["max_epochs"]
     log_interval = train_config.get("log_interval", 100)
     num_classes = data_config.get("num_classes", 10)
     checkpoint_dir = checkpoint_config.get("checkpoint_dir", None)
     keep_best_only = checkpoint_config.get("keep_best_only", True)
 
     # --- Early Stopping Setup ---
-    es_enabled = train_config.get("early_stopping_enabled", True)
-    es_metric_key = train_config.get(
-        "early_stopping_metric", "FF_Hinton/Val_Acc_Epoch"
-    ).lower()
-    es_patience = train_config.get("early_stopping_patience", 10)
-    es_mode = train_config.get("early_stopping_mode", "max").lower()
-    es_min_delta = train_config.get("early_stopping_min_delta", 0.0)
+    es_enabled = es_policy["enabled"]
+    es_metric_key = es_policy["metric"]
+    es_patience = es_policy["patience"]
+    es_mode = es_policy["mode"]
+    es_min_delta = es_policy["min_delta"]
     epochs_no_improve = 0
     best_es_metric_value = -float("inf") if es_mode == "max" else float("inf")
     best_checkpoint_metric_value = best_es_metric_value
@@ -174,19 +174,10 @@ def train_ff_model(
             )
             es_enabled = False
         else:
-            if (es_mode == "min" and "acc" in es_metric_key) or (
-                es_mode == "max" and "loss" in es_metric_key
-            ):
-                logger.error(
-                    f"Early stopping mode '{es_mode}' incompatible with metric "
-                    f"key '{es_metric_key}'. Disabling."
-                )
-                es_enabled = False
-            else:
-                logger.info(
-                    f"Early stopping enabled: Metric Key='{es_metric_key}', "
-                    f"Patience={es_patience}, Mode='{es_mode}', MinDelta={es_min_delta}"
-                )
+            logger.info(
+                f"Early stopping enabled: Metric Key='{es_metric_key}', "
+                f"Patience={es_patience}, Mode='{es_mode}', MinDelta={es_min_delta}"
+            )
     else:
         logger.info("Early stopping disabled.")
 
@@ -441,6 +432,7 @@ def train_ff_model(
             "FF_Hinton/Cls_Loss_Epoch": avg_cls_loss,
             "FF_Hinton/Cls_Acc_Epoch": avg_cls_acc,
             "FF_Hinton/Val_Acc_Epoch": val_results.get("eval_accuracy", float("nan")),
+            "FF_Hinton/Val_Loss_Epoch": val_results.get("eval_loss", float("nan")),
             "FF_Hinton/Epoch_Duration_Sec": epoch_duration,
             "FF_Hinton/LR_FF_Layers": current_lr_ff,
             "FF_Hinton/LR_Downstream": current_lr_ds,
@@ -455,12 +447,17 @@ def train_ff_model(
             f"FF Epoch {epoch + 1}/{epochs} | Train Loss: {avg_epoch_loss:.4f}, "
             f"Cls Acc: {avg_cls_acc:.2f}% | "
             f"Val Acc: {val_results.get('eval_accuracy', 'N/A'):.2f}% | "
+            f"Val Loss: {val_results.get('eval_loss', float('nan')):.4f} | "
             f"Peak Mem: {peak_mem_epoch:.1f} MiB | "
             f"Duration: {format_time(epoch_duration)}"
         )
         logger.info(log_msg)
 
-        current_metric_value = val_results.get("eval_accuracy", float("nan"))
+        current_metric_value = (
+            val_results.get("eval_accuracy", float("nan"))
+            if "acc" in es_metric_key
+            else val_results.get("eval_loss", float("nan"))
+        )
         is_best_for_checkpointing = False
 
         if es_enabled:
@@ -610,6 +607,7 @@ def evaluate_ff_model(
     num_classes = model.num_classes
     logger.info("Evaluating FF (Hinton style) model using multi-pass inference.")
     total_correct, total_samples = 0, 0
+    loss_sum, loss_samples = 0.0, 0
     with torch.no_grad():
         pbar = tqdm(data_loader, desc="Evaluating FF (Hinton) Model", leave=False)
         for batch_idx, (images, labels) in enumerate(pbar):
@@ -675,6 +673,22 @@ def evaluate_ff_model(
                 predicted_labels = torch.zeros_like(labels)
             total_correct += (predicted_labels == labels).sum().item()
             total_samples += batch_size
+
+            # Goodness scores are the only class-conditional score FF produces, so the
+            # shared val_loss stopping metric is cross-entropy over them.
+            scorable = torch.isfinite(batch_total_goodness).all(dim=1)
+            if torch.any(scorable):
+                batch_loss = F.cross_entropy(
+                    batch_total_goodness[scorable],
+                    labels[scorable],
+                    reduction="sum",
+                )
+                loss_sum += batch_loss.item()
+                loss_samples += int(scorable.sum().item())
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
-    logger.info(f"FF Evaluation Accuracy (Hinton Multi-Pass): {accuracy:.2f}%")
-    return {"eval_accuracy": accuracy, "eval_loss": float("nan")}
+    eval_loss = loss_sum / loss_samples if loss_samples > 0 else float("nan")
+    logger.info(
+        f"FF Evaluation (Hinton Multi-Pass): Accuracy {accuracy:.2f}%, "
+        f"Loss {eval_loss:.4f}"
+    )
+    return {"eval_accuracy": accuracy, "eval_loss": eval_loss}

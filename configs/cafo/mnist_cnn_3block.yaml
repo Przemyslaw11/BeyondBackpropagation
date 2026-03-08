@@ -31,14 +31,16 @@ algorithm_params:
   loss_type: CrossEntropyLoss
   epochs_per_block: 500
   log_interval: 200
-  predictor_early_stopping_enabled: true
-  predictor_early_stopping_metric: val_loss
-  predictor_early_stopping_patience: 8
-  predictor_early_stopping_mode: min
-  predictor_early_stopping_min_delta: 0.0005
   predictor_lr: 0.00042136234742798395
-  num_epochs_per_block: 227
   predictor_weight_decay: 1.6585525961391826e-06
+legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
+  algorithm_params:
+    num_epochs_per_block: 227
+    predictor_early_stopping_enabled: true
+    predictor_early_stopping_metric: val_loss
+    predictor_early_stopping_patience: 8
+    predictor_early_stopping_mode: min
+    predictor_early_stopping_min_delta: 0.0005
 logging:
   level: INFO
   wandb:

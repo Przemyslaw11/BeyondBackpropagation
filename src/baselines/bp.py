@@ -13,6 +13,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.utils.early_stopping import resolve_early_stopping
 from src.utils.helpers import (
     create_directory_if_not_exists,
     format_time,
@@ -186,7 +187,8 @@ def train_bp_model(
     optimizer_params_extra = optimizer_config.get("params", {})
 
     criterion_name = train_config.get("criterion", "CrossEntropyLoss")
-    epochs = train_config.get("epochs", 10)
+    es_policy = resolve_early_stopping(config)
+    epochs = es_policy["max_epochs"]
     scheduler_name = train_config.get("scheduler", None)
     scheduler_params = train_config.get("scheduler_params", {})
     log_interval = train_config.get("log_interval", 100)
@@ -195,11 +197,11 @@ def train_bp_model(
     save_best_metric = checkpoint_config.get("save_best_metric", "bp_val_loss").lower()
     save_best_metric_mode = "max" if "accuracy" in save_best_metric else "min"
 
-    es_enabled = train_config.get("early_stopping_enabled", True)
-    es_metric = train_config.get("early_stopping_metric", "bp_val_loss").lower()
-    es_patience = train_config.get("early_stopping_patience", 10)
-    es_mode = train_config.get("early_stopping_mode", "min").lower()
-    es_min_delta = train_config.get("early_stopping_min_delta", 0.0)
+    es_enabled = es_policy["enabled"]
+    es_metric = es_policy["metric"]
+    es_patience = es_policy["patience"]
+    es_mode = es_policy["mode"]
+    es_min_delta = es_policy["min_delta"]
 
     if es_enabled:
         if val_loader is None:
@@ -213,16 +215,6 @@ def train_bp_model(
                 f"Early stopping enabled: Metric='{es_metric}', "
                 f"Patience={es_patience}, Mode='{es_mode}', MinDelta={es_min_delta}"
             )
-            metric_is_accuracy = "accuracy" in es_metric
-            metric_is_loss = "loss" in es_metric
-            if (es_mode == "min" and metric_is_accuracy) or (
-                es_mode == "max" and metric_is_loss
-            ):
-                logger.error(
-                    f"Early stopping mode '{es_mode}' is incompatible with metric "
-                    f"'{es_metric}'. Disabling."
-                )
-                es_enabled = False
             epochs_no_improve = 0
             best_es_metric_value = float("inf") if es_mode == "min" else -float("inf")
     else:
@@ -374,10 +366,9 @@ def train_bp_model(
                 )
 
             if es_enabled:
-                if es_metric == "bp_val_accuracy":
-                    current_es_metric_value = val_acc
-                elif es_metric == "bp_val_loss":
-                    current_es_metric_value = val_loss
+                current_es_metric_value = (
+                    val_acc if "acc" in es_metric else val_loss
+                )
 
                 metric_is_invalid = current_es_metric_value is None or torch.isnan(
                     torch.tensor(current_es_metric_value)
