@@ -26,12 +26,16 @@ algorithm_params:
   optimizer_type: "Adam"
   lr: 0.00017277890583771544
   weight_decay: 0.0
-  epochs_per_layer: 8
   log_interval: 9999
+  # CIFAR training uses random crop/flip, so cached activations would go stale.
+  activation_cache: recompute
 
-  mf_early_stopping_enabled: true
-  mf_early_stopping_patience: 4
-  mf_early_stopping_min_delta: 0.0001
+legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
+  algorithm_params:
+    epochs_per_layer: 8
+    mf_early_stopping_enabled: true
+    mf_early_stopping_patience: 4
+    mf_early_stopping_min_delta: 0.0001
 
 logging:
   level: "INFO"

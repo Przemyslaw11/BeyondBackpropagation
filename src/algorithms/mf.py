@@ -8,10 +8,11 @@ import pynvml
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, RandomSampler
 from tqdm import tqdm
 
 from src.architectures.mf_mlp import MF_MLP
+from src.utils.early_stopping import resolve_early_stopping
 from src.utils.helpers import (
     create_directory_if_not_exists,
     save_checkpoint,
@@ -24,6 +25,130 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+ACTIVATION_CACHE_STRATEGIES = ("recompute", "cache_device", "cache_host")
+
+# Caching a_i across epochs is only sound where the frozen prefix makes a_i a pure
+# function of the sample, which needs layer-sequential training AND no input randomness.
+LAYER_SEQUENTIAL_ALGORITHMS = frozenset({"mf"})
+
+
+class _IndexedDataset(Dataset):
+    """Wraps a dataset so every item carries its index, keying the activation cache."""
+
+    def __init__(self, base: Dataset) -> None:
+        """Stores the wrapped dataset."""
+        self.base = base
+
+    def __len__(self) -> int:
+        """Returns the length of the wrapped dataset."""
+        return len(self.base)
+
+    def __getitem__(self, index: int) -> Tuple[Any, Any, int]:
+        """Returns the wrapped item followed by its index."""
+        image, label = self.base[index]
+        return image, label, index
+
+
+def _with_sample_indices(loader: DataLoader) -> DataLoader:
+    """Rebuilds a loader over the same dataset so batches also yield sample indices.
+
+    Sampler type and length are preserved, so the shuffling sequence drawn from the
+    global RNG is identical to the original loader's.
+    """
+    return DataLoader(
+        dataset=_IndexedDataset(loader.dataset),
+        batch_size=loader.batch_size,
+        shuffle=isinstance(loader.sampler, RandomSampler),
+        num_workers=loader.num_workers,
+        pin_memory=loader.pin_memory,
+        drop_last=loader.drop_last,
+        persistent_workers=loader.num_workers > 0,
+    )
+
+
+def _stochastic_transform_names(dataset: Dataset) -> List[str]:
+    """Names the random transforms reachable from a dataset, if any."""
+    transform = getattr(dataset, "transform", None)
+    candidates = getattr(transform, "transforms", [transform] if transform else [])
+    return [
+        type(op).__name__
+        for op in candidates
+        if op is not None and type(op).__name__.lower().startswith("random")
+    ]
+
+
+def assert_activation_cache_allowed(
+    config: Dict[str, Any], train_loader: DataLoader, strategy: str
+) -> None:
+    """Raises unless caching frozen activations is mathematically sound here."""
+    if strategy not in ACTIVATION_CACHE_STRATEGIES:
+        raise ValueError(
+            f"Unknown activation_cache '{strategy}'. "
+            f"Expected one of {list(ACTIVATION_CACHE_STRATEGIES)}."
+        )
+
+    algorithm = config.get("algorithm", {}).get("name", "").lower()
+    if algorithm not in LAYER_SEQUENTIAL_ALGORITHMS:
+        raise ValueError(
+            f"activation_cache='{strategy}' requires a layer-sequential algorithm "
+            f"that detaches its inputs; '{algorithm or 'unknown'}' propagates joint "
+            "gradients, so cached activations would go stale."
+        )
+
+    stochastic = _stochastic_transform_names(train_loader.dataset)
+    if stochastic:
+        raise ValueError(
+            f"activation_cache='{strategy}' requires a deterministic input pipeline; "
+            f"the training transform applies {stochastic}, so a_i differs per epoch."
+        )
+
+
+class _ActivationCache:
+    """Holds a_i for every training sample so the frozen prefix runs once per layer."""
+
+    def __init__(self, num_samples: int, storage: torch.device, device: torch.device):
+        """Allocates lazily; ``storage`` is where activations live between epochs."""
+        self._storage = storage
+        self._device = device
+        self._buffer: Optional[torch.Tensor] = None
+        self._filled = torch.zeros(num_samples, dtype=torch.bool)
+
+    def get(self, indices: torch.Tensor) -> Optional[torch.Tensor]:
+        """Returns the cached batch, or None if any sample is still missing."""
+        if self._buffer is None or not bool(self._filled[indices].all()):
+            return None
+        return self._buffer[indices].to(self._device, non_blocking=True)
+
+    def put(self, indices: torch.Tensor, values: torch.Tensor) -> None:
+        """Stores a freshly computed batch of activations."""
+        if self._buffer is None:
+            # Pinning only helps, and is only allocatable, when a CUDA device consumes it.
+            pin = self._storage.type == "cpu" and self._device.type == "cuda"
+            self._buffer = torch.empty(
+                (self._filled.numel(), *values.shape[1:]),
+                dtype=values.dtype,
+                device=self._storage,
+                pin_memory=pin,
+            )
+        self._buffer[indices] = values.to(self._storage, non_blocking=True)
+        self._filled[indices] = True
+
+    def release(self) -> None:
+        """Drops the buffer so the next layer starts from an empty cache."""
+        self._buffer = None
+        self._filled.fill_(False)
+
+
+def _make_activation_cache(
+    strategy: str, num_samples: int, device: torch.device
+) -> Optional[_ActivationCache]:
+    """Builds the cache for a strategy, or None when activations are recomputed."""
+    if strategy == "cache_device":
+        return _ActivationCache(num_samples, device, device)
+    if strategy == "cache_host":
+        return _ActivationCache(num_samples, torch.device("cpu"), device)
+    return None
 
 
 def mf_local_loss_fn(
@@ -127,14 +252,14 @@ def train_mf_matrix_only(
     final_avg_epoch_loss = float("nan")
     epochs_trained = 0
 
-    es_enabled = early_stopping_config.get("mf_early_stopping_enabled", False)
+    es_enabled = early_stopping_config.get("enabled", False)
     if es_enabled and val_loader is None:
         logger.warning(f"{log_prefix}: ES enabled but no val_loader. Disabling.")
         es_enabled = False
 
     if es_enabled:
-        es_patience = early_stopping_config.get("mf_early_stopping_patience", 10)
-        es_min_delta = early_stopping_config.get("mf_early_stopping_min_delta", 0.0)
+        es_patience = early_stopping_config.get("patience", 10)
+        es_min_delta = early_stopping_config.get("min_delta", 0.0)
         epochs_no_improve = 0
         best_es_metric_value = float("inf")
         logger.info(
@@ -298,19 +423,27 @@ def train_mf_model(
     lr = algo_config.get("lr", 0.001)
     weight_decay = algo_config.get("weight_decay", 0.0)
     optimizer_extra_kwargs = {}
-    epochs_per_layer = algo_config.get("epochs_per_layer", 5)
+    es_policy = resolve_early_stopping(config)
+    epochs_per_layer = es_policy["max_epochs"]
     log_interval = algo_config.get("log_interval", 100)
     checkpoint_dir = config.get("checkpointing", {}).get("checkpoint_dir", None)
     mf_criterion = nn.CrossEntropyLoss()
 
-    es_enabled = algo_config.get("mf_early_stopping_enabled", False)
-    es_patience = algo_config.get("mf_early_stopping_patience", 10)
-    es_min_delta = algo_config.get("mf_early_stopping_min_delta", 0.0)
+    # MF stops each layer independently; the policy values are the shared ones.
+    es_enabled = es_policy["enabled"]
+    es_patience = es_policy["patience"]
+    es_min_delta = es_policy["min_delta"]
     mf_early_stopping_config = {
-        "mf_early_stopping_enabled": es_enabled,
-        "mf_early_stopping_patience": es_patience,
-        "mf_early_stopping_min_delta": es_min_delta,
+        "enabled": es_enabled,
+        "patience": es_patience,
+        "min_delta": es_min_delta,
     }
+
+    cache_strategy = str(algo_config.get("activation_cache", "recompute")).lower()
+    layer_loader = train_loader
+    if cache_strategy != "recompute":
+        assert_activation_cache_allowed(config, train_loader, cache_strategy)
+        layer_loader = _with_sample_indices(train_loader)
 
     peak_mem_train = 0.0
     total_epochs_trained_all_layers = 0
@@ -392,6 +525,9 @@ def train_mf_model(
         epochs_trained_this_layer = 0
         epochs_no_improve = 0
         best_es_val_loss = float("inf")
+        activation_cache = _make_activation_cache(
+            cache_strategy, len(layer_loader.dataset), device
+        )
 
         for epoch in range(epochs_per_layer):
             epochs_trained_this_layer = epoch + 1
@@ -402,19 +538,30 @@ def train_mf_model(
             projection_matrix.requires_grad_(True)
 
             pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs_per_layer}"
-            pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
+            pbar = tqdm(layer_loader, desc=pbar_desc, leave=False)
 
-            for batch_idx, (images, labels) in enumerate(pbar):
+            for batch_idx, batch in enumerate(pbar):
                 step_ref[0] += 1
+                if activation_cache is None:
+                    images, labels = batch
+                    indices = None
+                else:
+                    images, labels, indices = batch
                 images, labels = images.to(device), labels.to(device)
 
                 # Get input for the current layer W_i+1, which is activation a_i
-                with torch.no_grad():
-                    prev_activation = input_adapter(images)
-                    for k in range(i):  # Recompute forward pass up to layer i-1
-                        temp_linear = model.layers[k * 2]
-                        temp_act_fn = model.layers[k * 2 + 1]
-                        prev_activation = temp_act_fn(temp_linear(prev_activation))
+                prev_activation = (
+                    None if indices is None else activation_cache.get(indices)
+                )
+                if prev_activation is None:
+                    with torch.no_grad():
+                        prev_activation = input_adapter(images)
+                        for k in range(i):  # Recompute forward pass up to layer i-1
+                            temp_linear = model.layers[k * 2]
+                            temp_act_fn = model.layers[k * 2 + 1]
+                            prev_activation = temp_act_fn(temp_linear(prev_activation))
+                    if activation_cache is not None:
+                        activation_cache.put(indices, prev_activation)
 
                 # Forward through W_i+1 to get a_i+1, with grads for W_i+1
                 pre_act_z = model.layers[i * 2](prev_activation.detach())
@@ -464,6 +611,8 @@ def train_mf_model(
 
         total_epochs_trained_all_layers += epochs_trained_this_layer
         peak_mem_train = max(peak_mem_train, peak_mem_layer_train)
+        if activation_cache is not None:
+            activation_cache.release()
         for p in params_to_optimize:
             p.requires_grad_(False)
         model.eval()
