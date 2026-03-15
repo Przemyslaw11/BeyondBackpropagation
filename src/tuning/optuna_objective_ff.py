@@ -13,6 +13,7 @@ from src.algorithms.ff import evaluate_ff_model, train_ff_model
 from src.architectures.ff_mlp import FF_MLP
 from src.data_utils.datasets import get_dataloaders
 from src.utils.backend_policy import get_execution_backend
+from src.utils.early_stopping import resolve_tuning_max_epochs
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ def _setup_ff_trial(
     cfg["algorithm_params"]["downstream_weight_decay"] = trial.suggest_float(
         "ds_wd", *tuning_cfg.get("ds_wd_range", [1e-5, 1e-2]), log=True
     )
-    cfg["training"]["epochs"] = tuning_cfg.get("num_epochs", 50)
+    cfg.setdefault("early_stopping", {})["max_epochs"] = resolve_tuning_max_epochs(cfg)
 
     # Setup environment
     trial_seed = cfg.get("general", {}).get("seed", 42) + trial.number

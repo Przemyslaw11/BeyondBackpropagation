@@ -26,8 +26,8 @@ algorithm_params:
   optimizer_type: "Adam"
   lr: 0.0001329291894316216
   weight_decay: 0.0
-  epochs_per_layer: 29
   log_interval: 9999
+  activation_cache: recompute
 
 logging:
   level: "INFO"
@@ -51,4 +51,4 @@ tuning:
   sampler: "TPE"
   pruner: "None"
   mf_lr_range: [1.0e-5, 1.0e-2]
-  mf_epochs_per_layer_range: [5, 30]
+  mf_wd_range: [1.0e-6, 1.0e-3]

@@ -16,7 +16,6 @@ algorithm_params:
   predictor_lr: 0.001
   predictor_weight_decay: 0.0
   loss_type: "CrossEntropyLoss"
-  num_epochs_per_block: 125
   log_interval: 9999
   aggregation_method: "sum"
 
@@ -34,6 +33,5 @@ tuning:
   pruner: "None"
   cafo_predictor_lr_range: [2.0e-4, 5.0e-3]
   cafo_predictor_wd_range: [1.0e-7, 1.0e-4]
-  cafo_epochs_per_block_range: [80, 180]
   cafo_block_lr_range: [2.0e-5, 5.0e-4]
   cafo_block_wd_range: [1.0e-7, 1.0e-4]

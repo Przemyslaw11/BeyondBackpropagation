@@ -13,6 +13,7 @@ from src.algorithms.mf import evaluate_mf_model, train_mf_model
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import get_model_and_adapter
 from src.utils.backend_policy import get_execution_backend
+from src.utils.early_stopping import resolve_tuning_max_epochs
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -32,11 +33,12 @@ def _setup_mf_trial(
 
     # Suggest hyperparameters
     lr_range = tuning_cfg.get("mf_lr_range", tuning_cfg.get("lr_range", [1e-5, 1e-2]))
-    epochs_range = tuning_cfg.get("mf_epochs_per_layer_range", [5, 50])
+    wd_range = tuning_cfg.get("mf_wd_range", tuning_cfg.get("wd_range", [1e-6, 1e-3]))
     cfg["algorithm_params"]["lr"] = trial.suggest_float("lr", *lr_range, log=True)
-    cfg["algorithm_params"]["epochs_per_layer"] = trial.suggest_int(
-        "epochs_per_layer", *epochs_range
+    cfg["algorithm_params"]["weight_decay"] = trial.suggest_float(
+        "wd", *wd_range, log=True
     )
+    cfg.setdefault("early_stopping", {})["max_epochs"] = resolve_tuning_max_epochs(cfg)
 
     # Setup environment
     trial_seed = cfg.get("general", {}).get("seed", 42) + trial.number
@@ -80,12 +82,10 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             download=data_config.get("download", True),
         )
 
-        es_enabled = cfg.get("algorithm_params", {}).get(
-            "mf_early_stopping_enabled", False
-        )
+        es_enabled = cfg.get("early_stopping", {}).get("enabled", False)
         if not val_loader and es_enabled:
             logger.warning("MF Early stopping enabled but no val_loader. Disabling ES.")
-            cfg["algorithm_params"]["mf_early_stopping_enabled"] = False
+            cfg["early_stopping"]["enabled"] = False
         logger.info(f"Trial {trial.number}: Data loaded.")
 
         model, input_adapter = get_model_and_adapter(cfg, device)

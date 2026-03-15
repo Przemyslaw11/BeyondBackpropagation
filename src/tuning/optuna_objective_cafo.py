@@ -14,6 +14,7 @@ from src.algorithms.cafo import evaluate_cafo_model, train_cafo_model
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import get_model_and_adapter
 from src.utils.backend_policy import get_execution_backend
+from src.utils.early_stopping import resolve_tuning_max_epochs
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -35,18 +36,15 @@ def _setup_cafo_trial(
     lr_range_fallback = tuning_cfg.get("lr_range", [1e-5, 1e-2])
     wd_range_fallback = tuning_cfg.get("wd_range", [1e-6, 1e-3])
     pred_lr_range = tuning_cfg.get("cafo_predictor_lr_range", lr_range_fallback)
-    epochs_range = tuning_cfg.get("cafo_epochs_per_block_range", [10, 200])
     pred_wd_range = tuning_cfg.get("cafo_predictor_wd_range", wd_range_fallback)
 
     cfg["algorithm_params"]["predictor_lr"] = trial.suggest_float(
         "pred_lr", *pred_lr_range, log=True
     )
-    cfg["algorithm_params"]["num_epochs_per_block"] = trial.suggest_int(
-        "epochs_per_block", *epochs_range
-    )
     cfg["algorithm_params"]["predictor_weight_decay"] = trial.suggest_float(
         "pred_wd", *pred_wd_range, log=True
     )
+    cfg.setdefault("early_stopping", {})["max_epochs"] = resolve_tuning_max_epochs(cfg)
 
     if cfg.get("algorithm_params", {}).get("train_blocks", False):
         logger.info("Block training enabled, suggesting block hyperparameters.")
