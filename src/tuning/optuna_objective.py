@@ -21,6 +21,7 @@ from src.training.engine import (
     get_model_and_adapter,
 )
 from src.utils.backend_policy import get_execution_backend
+from src.utils.early_stopping import resolve_tuning_max_epochs
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ def _run_bp_trial_epoch_loop(
     tuning_cfg = cfg["tuning"]
     metric_to_optimize = tuning_cfg.get("metric", "val_accuracy").lower()
     optimization_direction = tuning_cfg.get("direction", "maximize").lower()
-    num_epochs = tuning_cfg.get("num_epochs", 10)
+    num_epochs = resolve_tuning_max_epochs(cfg)
     best_val_metric_for_trial = (
         -float("inf") if optimization_direction == "maximize" else float("inf")
     )

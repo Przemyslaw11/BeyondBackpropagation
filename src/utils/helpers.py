@@ -1,5 +1,6 @@
 """Helper functions for general utility tasks."""
 
+import hashlib
 import logging
 import os
 import random
@@ -9,6 +10,46 @@ import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
+
+
+def architecture_identifier(config: Dict[str, Any]) -> str:
+    """Builds a stable string identifying the architecture a config trains.
+
+    Includes the optimiser variants because two studies can otherwise share a
+    model name, dataset and layer widths while being genuinely different studies.
+    """
+    model_config = config.get("model", {})
+    model_params = model_config.get("params", {})
+    algo_params = config.get("algorithm_params", {})
+
+    parts = [str(model_config.get("name", "unknown"))]
+    for key in ("hidden_dims", "block_channels"):
+        value = model_params.get(key)
+        if value is not None:
+            parts.append(f"{key}={list(value)}")
+    for key in ("optimizer_type", "predictor_optimizer_type"):
+        value = algo_params.get(key)
+        if value is not None:
+            parts.append(f"{key}={value}")
+    optimizer_type = config.get("optimizer", {}).get("type")
+    if optimizer_type is not None:
+        parts.append(f"optimizer={optimizer_type}")
+    if algo_params.get("train_blocks", False):
+        parts.append("dfa_blocks")
+    return "|".join(parts)
+
+
+def derive_study_seed(
+    algorithm_name: str, dataset_name: str, architecture_id: str
+) -> int:
+    """Derives a reproducible sampler seed unique to one tuning study.
+
+    Seeding every study from ``general.seed`` makes independent searches explore
+    the same sequence of points, which biases cross-algorithm comparisons.
+    """
+    key = f"{algorithm_name.upper()}|{dataset_name.upper()}|{architecture_id}"
+    digest = hashlib.blake2b(key.encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(digest, "big")
 
 
 def set_seed(seed: int) -> None:

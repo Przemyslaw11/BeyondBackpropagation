@@ -17,7 +17,11 @@ from src.tuning.optuna_objective_cafo import objective_cafo
 from src.tuning.optuna_objective_ff import objective_ff
 from src.tuning.optuna_objective_mf import objective_mf
 from src.utils.config_parser import load_config
-from src.utils.helpers import create_directory_if_not_exists
+from src.utils.helpers import (
+    architecture_identifier,
+    create_directory_if_not_exists,
+    derive_study_seed,
+)
 from src.utils.logging_utils import logger, setup_logging
 
 
@@ -129,7 +133,16 @@ def main() -> None:
             f"{algorithm_name} Optuna objective reports only final metric. Pruner "
             f"'{pruner_type}' might not be effective. Consider 'NONE'."
         )
-    optuna_seed = config.get("general", {}).get("seed", 42)
+    optuna_seed = derive_study_seed(
+        algorithm_name,
+        config.get("data", {}).get("name", "unknown"),
+        architecture_identifier(config),
+    )
+    logger.info(
+        f"Derived sampler seed {optuna_seed} for "
+        f"({algorithm_name}, {config.get('data', {}).get('name', 'unknown')}, "
+        f"{architecture_identifier(config)})."
+    )
     sampler_map = {
         "TPE": optuna.samplers.TPESampler(seed=optuna_seed),
         "RANDOM": optuna.samplers.RandomSampler(seed=optuna_seed),
