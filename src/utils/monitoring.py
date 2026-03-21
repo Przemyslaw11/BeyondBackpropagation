@@ -1,12 +1,15 @@
 """GPU monitoring utilities using the pynvml library."""
 
 import atexit
+import csv
 import logging
+import os
 import threading
 import time
 from types import TracebackType
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Dict, List, NamedTuple, Optional, Tuple, Type
 
+import psutil
 import pynvml
 
 logger = logging.getLogger(__name__)
@@ -14,6 +17,20 @@ logger = logging.getLogger(__name__)
 _nvml_initialized = False
 _nvml_lock = threading.Lock()
 _gpu_handles: Dict[int, pynvml.c_nvmlDevice_t] = {}
+
+
+class MonitorSample(NamedTuple):
+    """One instant of the hardware time series written to the per-run CSV."""
+
+    timestamp_sec: float
+    power_watts: Optional[float]
+    gpu_util_percent: Optional[int]
+    mem_util_percent: Optional[int]
+    gpu_mem_used_mib: Optional[float]
+    gpu_temp_celsius: Optional[int]
+    sm_clock_mhz: Optional[int]
+    compute_processes: Optional[int]
+    process_rss_mib: Optional[float]
 
 
 def _log_nvml_version_info() -> None:
@@ -172,28 +189,79 @@ def get_gpu_memory_usage(
         return None
 
 
+def get_gpu_utilization(
+    handle: pynvml.c_nvmlDevice_t,
+) -> Optional[Tuple[int, int]]:
+    """Gets (SM utilisation, memory-bandwidth utilisation) as percentages."""
+    if not handle or not _nvml_initialized:
+        return None
+    try:
+        rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
+        return int(rates.gpu), int(rates.memory)
+    except pynvml.NVMLError:
+        return None
+
+
+def get_gpu_temperature(handle: pynvml.c_nvmlDevice_t) -> Optional[int]:
+    """Gets the GPU core temperature in degrees Celsius."""
+    if not handle or not _nvml_initialized:
+        return None
+    try:
+        return int(pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU))
+    except pynvml.NVMLError:
+        return None
+
+
+def get_gpu_sm_clock_mhz(handle: pynvml.c_nvmlDevice_t) -> Optional[int]:
+    """Gets the current SM clock frequency in MHz."""
+    if not handle or not _nvml_initialized:
+        return None
+    try:
+        return int(pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_SM))
+    except pynvml.NVMLError:
+        return None
+
+
+def get_gpu_compute_process_count(handle: pynvml.c_nvmlDevice_t) -> Optional[int]:
+    """Counts compute contexts on the GPU, exposing contention from other jobs."""
+    if not handle or not _nvml_initialized:
+        return None
+    try:
+        return len(pynvml.nvmlDeviceGetComputeRunningProcesses(handle))
+    except pynvml.NVMLError:
+        return None
+
+
 class GPUEnergyMonitor:
     """Monitors GPU energy consumption using background thread sampling.
 
     MODIFIED: Added check for non-positive time delta during energy calculation.
     """
 
-    def __init__(self, device_index: int = 0, interval_sec: float = 0.2) -> None:
+    def __init__(
+        self,
+        device_index: int = 0,
+        interval_sec: float = 0.2,
+        csv_path: Optional[str] = None,
+    ) -> None:
         """Initializes the GPUEnergyMonitor.
 
         Args:
             device_index: The index of the GPU to monitor.
             interval_sec: The sampling interval in seconds.
+            csv_path: Where to write the per-run time series, or None to skip it.
         """
         if interval_sec <= 0:
             raise ValueError("Sampling interval must be positive.")
 
         self._device_index = device_index
         self._interval_sec = interval_sec
+        self._csv_path = csv_path
+        self._process = psutil.Process(os.getpid())
         self._handle: Optional[pynvml.c_nvmlDevice_t] = None
         self._monitoring_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._samples: List[Tuple[float, Optional[float]]] = []
+        self._samples: List[MonitorSample] = []
         self._samples_lock = threading.Lock()
         self._is_running = False
         self._total_energy_joules: Optional[float] = None
@@ -212,24 +280,55 @@ class GPUEnergyMonitor:
         else:
             logger.error("EnergyMonitor disabled: NVML initialization failed.")
 
+    def _take_sample(self, timestamp: float) -> MonitorSample:
+        """Reads every instrumented counter once, tolerating unsupported queries."""
+        power_watts = None
+        utilization: Optional[Tuple[int, int]] = None
+        memory: Optional[Tuple[float, float, float]] = None
+        temperature = None
+        sm_clock = None
+        compute_processes = None
+
+        if self._handle:
+            power_watts = get_gpu_power_usage(self._handle)
+            if power_watts is None and not self._power_error_logged:
+                logger.warning(
+                    "EnergyMonitor GPU %s: could not get power reading.",
+                    self._device_index,
+                )
+                self._power_error_logged = True
+            utilization = get_gpu_utilization(self._handle)
+            memory = get_gpu_memory_usage(self._handle)
+            temperature = get_gpu_temperature(self._handle)
+            sm_clock = get_gpu_sm_clock_mhz(self._handle)
+            compute_processes = get_gpu_compute_process_count(self._handle)
+
+        try:
+            rss_mib = self._process.memory_info().rss / (1024**2)
+        except psutil.Error:
+            rss_mib = None
+
+        return MonitorSample(
+            timestamp_sec=timestamp,
+            power_watts=power_watts,
+            gpu_util_percent=utilization[0] if utilization else None,
+            mem_util_percent=utilization[1] if utilization else None,
+            gpu_mem_used_mib=memory[0] if memory else None,
+            gpu_temp_celsius=temperature,
+            sm_clock_mhz=sm_clock,
+            compute_processes=compute_processes,
+            process_rss_mib=rss_mib,
+        )
+
     def _monitor_energy(self) -> None:
         logger.debug(f"Energy monitoring thread started for GPU {self._device_index}.")
         last_sample_time = time.monotonic()
 
         while not self._stop_event.is_set():
-            current_time = time.monotonic()
-            power_watts = None
-            if self._handle:
-                power_watts = get_gpu_power_usage(self._handle)
-                if power_watts is None and not self._power_error_logged:
-                    logger.warning(
-                        "EnergyMonitor GPU %s: could not get power reading.",
-                        self._device_index,
-                    )
-                    self._power_error_logged = True
+            sample = self._take_sample(time.monotonic())
 
             with self._samples_lock:
-                self._samples.append((current_time, power_watts))
+                self._samples.append(sample)
 
             next_sample_time = last_sample_time + self._interval_sec
             sleep_duration = next_sample_time - time.monotonic()
@@ -241,6 +340,45 @@ class GPUEnergyMonitor:
             last_sample_time = next_sample_time
 
         logger.debug(f"Energy monitoring thread stopped for GPU {self._device_index}.")
+
+    def _write_csv(self) -> None:
+        """Writes the sampled time series so per-run traces survive the process."""
+        if not self._csv_path:
+            return
+        with self._samples_lock:
+            samples = list(self._samples)
+        if not samples:
+            logger.warning("No monitoring samples collected; skipping CSV write.")
+            return
+
+        origin = samples[0].timestamp_sec
+        directory = os.path.dirname(self._csv_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        try:
+            with open(self._csv_path, "w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(MonitorSample._fields)
+                for sample in samples:
+                    row = sample._replace(
+                        timestamp_sec=sample.timestamp_sec - origin
+                    )
+                    writer.writerow(row)
+            logger.info(
+                f"Wrote {len(samples)} monitoring samples to {self._csv_path}."
+            )
+        except OSError as error:
+            logger.error(f"Failed to write monitoring CSV: {error}")
+
+    def get_peak(self, field: str) -> Optional[float]:
+        """Returns the maximum recorded value of a MonitorSample field."""
+        with self._samples_lock:
+            values = [
+                getattr(sample, field)
+                for sample in self._samples
+                if getattr(sample, field) is not None
+            ]
+        return max(values) if values else None
 
     def _calculate_energy(self) -> Optional[float]:
         """Calculates total energy using the trapezoidal rule, handling None values."""
@@ -254,8 +392,11 @@ class GPUEnergyMonitor:
 
             total_energy = 0.0
             for i in range(len(self._samples) - 1):
-                t1, p1 = self._samples[i]
-                t2, p2 = self._samples[i + 1]
+                t1, p1 = self._samples[i].timestamp_sec, self._samples[i].power_watts
+                t2, p2 = (
+                    self._samples[i + 1].timestamp_sec,
+                    self._samples[i + 1].power_watts,
+                )
 
                 time_delta = t2 - t1
                 if time_delta <= 0:
@@ -346,6 +487,7 @@ class GPUEnergyMonitor:
         self._is_running = False
         logger.info(f"Stopped energy monitoring for GPU {self._device_index}.")
 
+        self._write_csv()
         return self._calculate_energy()
 
     def get_total_energy_joules(self) -> Optional[float]:

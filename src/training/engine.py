@@ -68,10 +68,29 @@ def _create_mlp_model(
             model = FF_MLP(config=config, device=device, **arch_params)
             logger.debug("Using native modified FF_MLP structure.")
     elif arch_name == "mf_mlp":
-        model = MF_MLP(**arch_params)
-        logger.info(
-            "Using MF_MLP for %s", "BP baseline" if is_bp_baseline else "native MF."
-        )
+        if is_bp_baseline:
+            logger.info(
+                "Adapting MF_MLP structure for BP baseline -> nn.Sequential MLP."
+            )
+            hidden_dims = arch_params.get("hidden_dims", [])
+            activation_name = arch_params.get("activation", "ReLU").lower()
+            use_bias = arch_params.get("bias", True)
+            if not hidden_dims:
+                raise ValueError(
+                    "BP baseline creation failed: hidden_dims missing for MF_MLP."
+                )
+            layers = []
+            current_dim = arch_params["input_dim"]
+            act_cls = nn.ReLU if activation_name == "relu" else nn.Tanh
+            for h_dim in hidden_dims:
+                layers.append(nn.Linear(current_dim, h_dim, bias=use_bias))
+                layers.append(act_cls())
+                current_dim = h_dim
+            layers.append(nn.Linear(current_dim, num_classes, bias=use_bias))
+            model = nn.Sequential(*layers)
+        else:
+            model = MF_MLP(**arch_params)
+            logger.debug("Using native MF_MLP structure.")
     return model
 
 
@@ -228,8 +247,23 @@ def _setup_hardware_monitors(
                     f"Initial GPU Mem: {mem_info[0]:.2f} / {mem_info[1]:.2f} MiB"
                 )
             if monitoring_config.get("energy_enabled", True):
-                monitor = GPUEnergyMonitor(device_index=gpu_index)
-                logger.info("GPU Energy monitor initialized.")
+                backend = get_execution_backend(config)
+                monitoring_dir = os.path.join(
+                    backend.resolve_results_dir(config), "monitoring"
+                )
+                run_tag = config.get("experiment_name", "run")
+                seed_tag = config.get("general", {}).get("seed", 0)
+                csv_path = os.path.join(
+                    monitoring_dir,
+                    f"{run_tag}_seed{seed_tag}_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                )
+                monitor = GPUEnergyMonitor(
+                    device_index=gpu_index,
+                    interval_sec=monitoring_config.get("energy_interval_sec", 0.2),
+                    csv_path=csv_path,
+                )
+                results["monitoring_csv_path"] = csv_path
+                logger.info(f"GPU Energy monitor initialized (CSV: {csv_path}).")
         else:
             nvml_active = False
 
@@ -348,6 +382,9 @@ def _finalize_run(
     if total_energy_joules is not None:
         results["total_gpu_energy_joules"] = total_energy_joules
         results["total_gpu_energy_wh"] = total_energy_joules / 3600.0
+    if monitor:
+        results["peak_process_rss_mib"] = monitor.get_peak("process_rss_mib")
+        results["peak_gpu_util_percent"] = monitor.get_peak("gpu_util_percent")
 
     if nvml_active and gpu_handle and (mem_info := get_gpu_memory_usage(gpu_handle)):
         logger.info(f"GPU Mem (End): {mem_info[0]:.2f} / {mem_info[1]:.2f} MiB")
@@ -362,6 +399,15 @@ def _finalize_run(
         "final/Test_Loss": results.get("test_loss", float("nan")),
         "final/peak_gpu_mem_used_mib": results.get(
             "peak_gpu_mem_used_mib", float("nan")
+        ),
+        "final/peak_torch_alloc_mib": results.get(
+            "peak_torch_alloc_mib", float("nan")
+        ),
+        "final/peak_process_rss_mib": results.get(
+            "peak_process_rss_mib", float("nan")
+        ),
+        "final/peak_gpu_util_percent": results.get(
+            "peak_gpu_util_percent", float("nan")
         ),
         "final/total_gpu_energy_joules": results.get(
             "total_gpu_energy_joules", float("nan")
@@ -441,6 +487,8 @@ def run_training(
         train_loop_start_time = time.time()
         algo_name = config.get("algorithm", {}).get("name", "").lower()
         training_fn = get_training_function(algo_name)
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
         with monitor if monitor else contextlib.nullcontext():
             train_args = {
                 "model": model,
@@ -458,6 +506,12 @@ def run_training(
             results["peak_gpu_mem_used_mib"] = (
                 train_output if isinstance(train_output, (float, int)) else float("nan")
             )
+        # Device-wide NVML memory includes the ~800 MiB CUDA context; this one does not.
+        results["peak_torch_alloc_mib"] = (
+            torch.cuda.max_memory_allocated(device) / (1024**2)
+            if device.type == "cuda"
+            else float("nan")
+        )
         results["training_duration_sec"] = time.time() - train_loop_start_time
         logger.info(
             f"Training finished in {format_time(results['training_duration_sec'])}."
