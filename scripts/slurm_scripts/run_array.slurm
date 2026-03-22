@@ -10,7 +10,7 @@
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-25
+#SBATCH --array=1-81
 
 CONFIG_FILES=(
     # --- BP Baselines ---
@@ -39,7 +39,7 @@ CONFIG_FILES=(
     # --- FF ---
     "configs/ff/fashion_mnist_mlp_4x2000.yaml"
     "configs/ff/mnist_mlp_3x1000_ADAMW.yaml"
-    "configs/ff/mnist_mlp_3x1000_SGD_ref.yaml"
+    "configs/ff/mnist_mlp_3x1000_SGD.yaml"
     "configs/ff/mnist_mlp_4x2000.yaml"
 
     # --- MF ---
@@ -49,23 +49,31 @@ CONFIG_FILES=(
     "configs/mf/mnist_mlp_2x1000.yaml"
 )
 
+# The array is a flattened (config x seed) grid; keep --array in sync with their product.
+SEEDS=(42 43 44)
+
 NUM_CONFIGS=${#CONFIG_FILES[@]}
-echo "INFO: Number of config files listed: ${NUM_CONFIGS}. Slurm array range set to 1-${SLURM_ARRAY_TASK_MAX}"
-if [ "${SLURM_ARRAY_TASK_MAX}" -ne "${NUM_CONFIGS}" ]; then
+NUM_SEEDS=${#SEEDS[@]}
+NUM_JOBS=$((NUM_CONFIGS * NUM_SEEDS))
+echo "INFO: ${NUM_CONFIGS} configs x ${NUM_SEEDS} seeds = ${NUM_JOBS} jobs. Slurm array range set to 1-${SLURM_ARRAY_TASK_MAX}"
+if [ "${SLURM_ARRAY_TASK_MAX}" -ne "${NUM_JOBS}" ]; then
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    echo "!! WARNING: Slurm --array range (1-${SLURM_ARRAY_TASK_MAX}) DOES NOT MATCH the number   !!"
-    echo "!!          of config files listed in this script (${NUM_CONFIGS}). Check the script!            !!"
+    echo "!! WARNING: Slurm --array range (1-${SLURM_ARRAY_TASK_MAX}) DOES NOT MATCH n_configs x n_seeds (${NUM_JOBS}).  !!"
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 fi
 
-INDEX=$((SLURM_ARRAY_TASK_ID - 1))
+FLAT_INDEX=$((SLURM_ARRAY_TASK_ID - 1))
 
-if [ $INDEX -lt 0 ] || [ $INDEX -ge $NUM_CONFIGS ]; then
-    echo "Error: Invalid SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID) for ${NUM_CONFIGS} configs." >&2
+if [ $FLAT_INDEX -lt 0 ] || [ $FLAT_INDEX -ge $NUM_JOBS ]; then
+    echo "Error: Invalid SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID) for ${NUM_JOBS} jobs." >&2
     exit 1
 fi
 
+INDEX=$((FLAT_INDEX / NUM_SEEDS))
+SEED_INDEX=$((FLAT_INDEX % NUM_SEEDS))
+
 CONFIG_FILE=${CONFIG_FILES[$INDEX]}
+export EXPERIMENT_SEED=${SEEDS[$SEED_INDEX]}
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Error: Config file '${CONFIG_FILE}' not found for task ID $SLURM_ARRAY_TASK_ID." >&2
@@ -79,6 +87,7 @@ echo "Job Name: $SLURM_JOB_NAME"
 echo "Running on host: $(hostname)"
 echo "Executing command in: $(pwd)"
 echo "Using config file (${INDEX}): $CONFIG_FILE"
+echo "Using seed: $EXPERIMENT_SEED"
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 
