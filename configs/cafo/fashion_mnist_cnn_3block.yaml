@@ -29,13 +29,14 @@ algorithm_params:
   lr: 0.001
   weight_decay: 0.0
   loss_type: CrossEntropyLoss
-  epochs_per_block: 5000
   log_interval: 200
   predictor_lr: 0.0013737845955327983
   predictor_weight_decay: 2.937538457632828e-07
 legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
   algorithm_params:
     num_epochs_per_block: 145
+    # Stale even before Phase 2: the code read num_epochs_per_block, never this.
+    epochs_per_block: 5000
     # These five keys were mistakenly at top level, so they never reached CaFo.
     predictor_early_stopping_enabled: true
     predictor_early_stopping_metric: val_loss
