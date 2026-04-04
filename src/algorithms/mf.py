@@ -118,20 +118,19 @@ class _ActivationCache:
         """Returns the cached batch, or None if any sample is still missing."""
         if self._buffer is None or not bool(self._filled[indices].all()):
             return None
-        return self._buffer[indices].to(self._device, non_blocking=True)
+        # Blocking transfers only: indexing yields a pageable temporary either way, so an
+        # async copy would buy nothing and could be read before the device had written it.
+        return self._buffer[indices].to(self._device)
 
     def put(self, indices: torch.Tensor, values: torch.Tensor) -> None:
         """Stores a freshly computed batch of activations."""
         if self._buffer is None:
-            # Pinning only helps, and is only allocatable, when a CUDA device consumes it.
-            pin = self._storage.type == "cpu" and self._device.type == "cuda"
             self._buffer = torch.empty(
                 (self._filled.numel(), *values.shape[1:]),
                 dtype=values.dtype,
                 device=self._storage,
-                pin_memory=pin,
             )
-        self._buffer[indices] = values.to(self._storage, non_blocking=True)
+        self._buffer[indices] = values.to(self._storage)
         self._filled[indices] = True
 
     def release(self) -> None:
