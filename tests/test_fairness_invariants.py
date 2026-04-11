@@ -16,7 +16,9 @@ from src.utils.early_stopping import resolve_early_stopping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASE_CONFIG = REPO_ROOT / "configs" / "base.yaml"
-EXPERIMENT_DIRS = ("bp_baselines", "cafo", "ff", "mf")
+# The ladder rungs added in Phase 3 have no pre-Phase-2 protocol to preserve.
+LEGACY_EXPERIMENT_DIRS = ("bp_baselines", "cafo", "ff", "mf")
+EXPERIMENT_DIRS = LEGACY_EXPERIMENT_DIRS + ("bp_ds", "mf_joint")
 
 TUNED_HYPERPARAMETERS = (
     ("optimizer", "lr"),
@@ -31,6 +33,7 @@ TUNED_HYPERPARAMETERS = (
     ("algorithm_params", "downstream_weight_decay"),
     ("algorithm_params", "mf_lr"),
     ("algorithm_params", "mf_weight_decay"),
+    ("algorithm_params", "aux_weight"),
 )
 
 # Config pairs known to carry an identical tuned value that was copied rather than
@@ -249,6 +252,8 @@ class FairnessInvariantTests(unittest.TestCase):
 
     def test_legacy_hyperparameters_are_preserved(self) -> None:
         for path, config in self.experiment_configs.items():
+            if path.parent.name not in LEGACY_EXPERIMENT_DIRS:
+                continue
             self.assertIn(
                 "legacy_hyperparameters",
                 config,

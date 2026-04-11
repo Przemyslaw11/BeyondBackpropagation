@@ -1,0 +1,45 @@
+experiment_name: mf_joint_fashion_mnist_mlp_2x1000
+algorithm:
+  name: MF_JOINT
+
+data:
+  name: FashionMNIST
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [1000, 1000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "Adam"
+
+algorithm_params:
+  log_interval: 9999
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
