@@ -13,9 +13,11 @@ from dotenv import load_dotenv
 
 from src.utils.backend_policy import get_execution_backend
 from src.tuning.optuna_objective import objective as objective_bp
+from src.tuning.optuna_objective_bpds import objective_bpds
 from src.tuning.optuna_objective_cafo import objective_cafo
 from src.tuning.optuna_objective_ff import objective_ff
 from src.tuning.optuna_objective_mf import objective_mf
+from src.tuning.optuna_objective_mfjoint import objective_mfjoint
 from src.utils.config_parser import load_config
 from src.utils.helpers import (
     architecture_identifier,
@@ -29,7 +31,8 @@ def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description=(
-            "Run Optuna hyperparameter search for BP, MF, CaFo, or FF algorithms."
+            "Run Optuna hyperparameter search for BP, BP-DS, MF-Joint, MF, CaFo, "
+            "or FF algorithms."
         )
     )
     parser.add_argument(
@@ -88,6 +91,12 @@ def main() -> None:
     elif algorithm_name == "BP":
         objective_func = objective_bp
         logger.info("Selected Backpropagation (BP) Optuna objective.")
+    elif algorithm_name == "BP_DS":
+        objective_func = objective_bpds
+        logger.info("Selected deeply-supervised Backpropagation (BP-DS) objective.")
+    elif algorithm_name == "MF_JOINT":
+        objective_func = objective_mfjoint
+        logger.info("Selected joint-gradient Mono-Forward (MF-Joint) objective.")
     elif algorithm_name == "CAFO":
         objective_func = objective_cafo
         logger.info("Selected Cascaded Forward (CaFo) Optuna objective.")
@@ -97,7 +106,7 @@ def main() -> None:
     else:
         logger.error(
             f"Unsupported algorithm '{algorithm_name}' for Optuna tuning. "
-            "Supported: BP, MF, CaFo, FF."
+            "Supported: BP, BP_DS, MF_JOINT, MF, CaFo, FF."
         )
         return
 
@@ -128,7 +137,7 @@ def main() -> None:
     storage_path = f"sqlite:///{os.path.join(output_dir, f'{study_name}.db')}"
     sampler_type = tuning_config.get("sampler", "TPE").upper()
     pruner_type = tuning_config.get("pruner", "Median").upper()
-    if algorithm_name in ["MF", "CAFO", "FF"] and pruner_type != "NONE":
+    if algorithm_name in ["MF", "CAFO", "FF", "BP_DS", "MF_JOINT"] and pruner_type != "NONE":
         logger.warning(
             f"{algorithm_name} Optuna objective reports only final metric. Pruner "
             f"'{pruner_type}' might not be effective. Consider 'NONE'."

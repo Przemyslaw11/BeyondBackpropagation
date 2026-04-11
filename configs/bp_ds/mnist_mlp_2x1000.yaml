@@ -1,0 +1,47 @@
+experiment_name: bp_ds_mnist_mlp_2x1000
+algorithm:
+  name: BP_DS
+
+data:
+  name: MNIST
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [1000, 1000]
+    activation: "ReLU"
+    bias: true
+
+# The ladder's optimiser crossing sits here: rungs 1-2 use AdamW, rungs 3-6 use Adam.
+optimizer:
+  type: "AdamW"
+
+algorithm_params:
+  log_interval: 9999
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+# Every rung reports wall time and energy, and per-epoch checkpoint I/O differs per rung.
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
