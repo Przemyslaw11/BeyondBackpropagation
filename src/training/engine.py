@@ -2,8 +2,10 @@
 """Core training and evaluation engine for experiments."""
 
 import contextlib
+import json
 import os
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -357,8 +359,37 @@ def _read_codecarbon_emissions(carbon_csv_path: str) -> Tuple[float, float]:
     return float("nan"), float("nan")
 
 
+def _write_run_summary(config: Dict[str, Any], results: Dict[str, Any]) -> None:
+    """Writes one JSON summary per run so analysis does not depend on W&B."""
+    experiment_name = config.get("experiment_name", "unnamed_experiment")
+    model_params = config.get("model", {}).get("params", {})
+    record = {
+        "experiment_name": experiment_name,
+        "algorithm": config.get("algorithm", {}).get("name", ""),
+        "dataset": config.get("data", {}).get("name", ""),
+        "architecture": model_params.get("hidden_dims")
+        or model_params.get("block_channels"),
+        "activation_cache": config.get("algorithm_params", {}).get(
+            "activation_cache", "recompute"
+        ),
+        **results,
+    }
+
+    out_dir = Path("results") / "runs" / experiment_name
+    seed = results.get("seed")
+    out_path = out_dir / f"{experiment_name}_seed{seed}.json"
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", encoding="utf-8") as handle:
+            json.dump(record, handle, indent=2, default=str)
+        logger.info(f"Wrote run summary to {out_path}")
+    except OSError as exc:
+        logger.warning(f"Could not write run summary to {out_path}: {exc}")
+
+
 def _finalize_run(
     run_start_time: float,
+    config: Dict[str, Any],
     results: Dict[str, Any],
     step_ref: List[int],
     tracker: Optional[Any],
@@ -433,6 +464,8 @@ def _finalize_run(
     if nvml_active:
         shutdown_nvml()
 
+    _write_run_summary(config, results)
+
 
 def run_training(
     config: Dict[str, Any], wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None
@@ -444,6 +477,7 @@ def run_training(
 
     try:
         seed, device, wandb_run = _setup_environment_and_wandb(config, wandb_run)
+        results["seed"] = seed
         backend = get_execution_backend(config)
 
         (
@@ -557,6 +591,7 @@ def run_training(
     finally:
         _finalize_run(
             run_start_time,
+            config,
             results,
             step_ref,
             tracker,
