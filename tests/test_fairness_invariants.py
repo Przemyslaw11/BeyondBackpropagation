@@ -39,6 +39,35 @@ TUNED_HYPERPARAMETERS = (
 # Config pairs known to carry an identical tuned value that was copied rather than
 # searched. Phase 3 re-tunes them; until then the collision is acknowledged, not hidden.
 SHARED_HYPERPARAMETER_OPT_OUT = {
+    # Ladder rungs 4, 5 and 6 differ only by the activation cache. They MUST share
+    # rung 4's hyperparameters, otherwise the comparison measures the search too.
+    *(
+        (section, name, owner, other)
+        for section, name in (
+            ("algorithm_params", "lr"),
+            ("algorithm_params", "weight_decay"),
+        )
+        for owner, other in (
+            ("mnist_mlp_2x1000.yaml", "mnist_mlp_2x1000_cache_device.yaml"),
+            ("mnist_mlp_2x1000.yaml", "mnist_mlp_2x1000_cache_host.yaml"),
+            (
+                "mnist_mlp_2x1000_cache_device.yaml",
+                "mnist_mlp_2x1000_cache_host.yaml",
+            ),
+            (
+                "fashion_mnist_mlp_2x1000.yaml",
+                "fashion_mnist_mlp_2x1000_cache_device.yaml",
+            ),
+            (
+                "fashion_mnist_mlp_2x1000.yaml",
+                "fashion_mnist_mlp_2x1000_cache_host.yaml",
+            ),
+            (
+                "fashion_mnist_mlp_2x1000_cache_device.yaml",
+                "fashion_mnist_mlp_2x1000_cache_host.yaml",
+            ),
+        )
+    ),
     ("optimizer", "lr", "mnist_mlp_3x1000_bp.yaml", "mnist_mlp_4x2000_bp.yaml"),
     (
         "optimizer",
