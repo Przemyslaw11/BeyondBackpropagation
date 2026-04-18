@@ -225,6 +225,22 @@ def main() -> None:
             best_config_update["algorithm_params"]["optimizer_type"] = config.get(
                 "algorithm_params", {}
             ).get("optimizer_type", "Adam")
+        elif algorithm_name in ("BP_DS", "MF_JOINT"):
+            # These rungs tune the optimiser like BP does, plus the weight on the
+            # summed auxiliary losses, which lives in algorithm_params.
+            best_config_update = {"optimizer": {}, "algorithm_params": {}}
+            update_section_name = "optimizer + algorithm_params"
+            for key, value in params_to_log.items():
+                logger.info(f"    {key}: {value}")
+                if key == "aux_weight":
+                    best_config_update["algorithm_params"]["aux_weight"] = value
+                else:
+                    best_config_update["optimizer"][
+                        "weight_decay" if key == "wd" else key
+                    ] = value
+            best_config_update["optimizer"]["type"] = config.get("optimizer", {}).get(
+                "type", "AdamW" if algorithm_name == "BP_DS" else "Adam"
+            )
         elif algorithm_name == "CAFO":
             best_config_update = {"algorithm_params": {}}
             update_section_name = "algorithm_params"

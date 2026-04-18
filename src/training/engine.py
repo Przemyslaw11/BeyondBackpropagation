@@ -208,6 +208,20 @@ def _setup_environment_and_wandb(
     set_seed(seed)
     logger.info(f"Using random seed: {seed}")
 
+    # Seeds of the same config run concurrently across the array and every
+    # algorithm writes checkpoints under a fixed, seed-free filename. BP then
+    # restores the best checkpoint before test evaluation, so without this a run
+    # can be scored on another seed's weights.
+    checkpoint_config = config.get("checkpointing", {})
+    checkpoint_dir = checkpoint_config.get("checkpoint_dir")
+    if checkpoint_dir:
+        checkpoint_config["checkpoint_dir"] = os.path.join(
+            checkpoint_dir, f"seed_{seed}"
+        )
+        logger.info(
+            f"Isolating checkpoints per seed: {checkpoint_config['checkpoint_dir']}"
+        )
+
     device_pref = general_config.get("device", "auto")
     device = backend.resolve_device(device_pref)
     logger.info(
