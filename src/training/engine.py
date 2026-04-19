@@ -214,6 +214,22 @@ def _setup_environment_and_wandb(
     # can be scored on another seed's weights.
     checkpoint_config = config.get("checkpointing", {})
     checkpoint_dir = checkpoint_config.get("checkpoint_dir")
+    if checkpoint_dir and os.environ.get("BBP_DISABLE_CHECKPOINTS", "") not in (
+        "",
+        "0",
+        "false",
+        "False",
+    ):
+        # The ablation ladder needs one evaluation protocol across all six rungs.
+        # BP restores its best-validation weights before testing and MF never
+        # does, so leaving that in place would hand rung 1 an accuracy advantage
+        # that no other rung gets and confound every accuracy contrast.
+        logger.info(
+            "BBP_DISABLE_CHECKPOINTS set: discarding checkpoint_dir "
+            f"'{checkpoint_dir}'. Every rung is scored on its final weights."
+        )
+        checkpoint_config["checkpoint_dir"] = None
+        checkpoint_dir = None
     if checkpoint_dir:
         checkpoint_config["checkpoint_dir"] = os.path.join(
             checkpoint_dir, f"seed_{seed}"
