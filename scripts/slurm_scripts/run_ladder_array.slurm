@@ -110,6 +110,13 @@ source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
 
 export WANDB_MODE=online
 
+# One evaluation protocol for all six rungs. BP restores its best-validation
+# weights before testing and MF never does, so leaving that in would hand rung 1
+# an accuracy advantage no other rung gets and confound every accuracy contrast.
+# With this set, every rung is scored on its final weights and no rung pays for
+# checkpoint I/O inside the measured wall time.
+export BBP_DISABLE_CHECKPOINTS=1
+
 srun python scripts/run_experiment.py --config "$CONFIG_FILE"
 EXIT_CODE=$?
 
