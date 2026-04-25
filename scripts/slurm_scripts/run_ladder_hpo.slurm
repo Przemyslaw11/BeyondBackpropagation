@@ -81,6 +81,9 @@ module load Python/3.10.4
 module load CUDA/12.4.0
 source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
 
+# Python puts the script's own directory on sys.path, not the working directory,
+# so without this 'import src' fails.
+export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
 export WANDB_MODE=online
 
 srun python scripts/run_optuna_search.py --config "$CONFIG_FILE"
