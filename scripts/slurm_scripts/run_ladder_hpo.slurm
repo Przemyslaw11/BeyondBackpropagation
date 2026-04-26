@@ -12,18 +12,22 @@
 # 5-10 trials while the forward-only methods got 50, and the ladder must not
 # inherit that budget asymmetry.
 #
+# Submitted as 16 INDEPENDENT jobs, not as an array. A 16-task array is scheduled
+# as one unit against the partition's limits, so the whole ladder waits on the
+# worst-placed task. Independent jobs backfill into gaps and start as slots free.
+# Select the study with LADDER_HPO_INDEX (1-16); SLURM_ARRAY_TASK_ID still works.
+#
 #SBATCH --job-name=BBP_LadderHPO
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128000M
-#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32000M
+#SBATCH --time=08:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-gpu-a100
-#SBATCH --output=slurm_logs/%x-%A_%a.out
-#SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-16
+#SBATCH --output=slurm_logs/phase3/%x-%j.out
+#SBATCH --error=slurm_logs/phase3/%x-%j.err
 
 TUNE_CONFIGS=(
     # --- Rung 1: BP ---
@@ -52,13 +56,15 @@ TUNE_CONFIGS=(
 )
 
 NUM_CONFIGS=${#TUNE_CONFIGS[@]}
-if [ "${SLURM_ARRAY_TASK_MAX}" -ne "${NUM_CONFIGS}" ]; then
-    echo "!! WARNING: --array range (1-${SLURM_ARRAY_TASK_MAX}) does not match ${NUM_CONFIGS} studies. !!"
+TASK_ID="${SLURM_ARRAY_TASK_ID:-${LADDER_HPO_INDEX}}"
+if [ -z "$TASK_ID" ]; then
+    echo "Error: set LADDER_HPO_INDEX (1-${NUM_CONFIGS}) or submit as an array." >&2
+    exit 1
 fi
 
-INDEX=$((SLURM_ARRAY_TASK_ID - 1))
+INDEX=$((TASK_ID - 1))
 if [ $INDEX -lt 0 ] || [ $INDEX -ge $NUM_CONFIGS ]; then
-    echo "Error: Invalid SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID) for ${NUM_CONFIGS} studies." >&2
+    echo "Error: Invalid study index ($TASK_ID) for ${NUM_CONFIGS} studies." >&2
     exit 1
 fi
 
@@ -69,7 +75,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 echo "#####################################################################"
-echo "Ladder HPO task $SLURM_ARRAY_TASK_ID / ${NUM_CONFIGS}"
+echo "Ladder HPO study $TASK_ID / ${NUM_CONFIGS}"
 echo "Config: $CONFIG_FILE"
 echo "Host: $(hostname)   GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
@@ -98,9 +104,9 @@ deactivate
 
 echo "#####################################################################"
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "Ladder HPO task $SLURM_ARRAY_TASK_ID finished successfully."
+    echo "Ladder HPO study $TASK_ID finished successfully."
 else
-    echo "Ladder HPO task $SLURM_ARRAY_TASK_ID failed (Exit Code: $EXIT_CODE)."
+    echo "Ladder HPO study $TASK_ID failed (Exit Code: $EXIT_CODE)."
 fi
 date
 echo "#####################################################################"
