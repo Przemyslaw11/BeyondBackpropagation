@@ -92,7 +92,23 @@ source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
 export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
 export WANDB_MODE=online
 
-srun python scripts/run_optuna_search.py --config "$CONFIG_FILE"
+# A fixed name, so a job resuming this study finds the existing SQLite database
+# instead of starting an empty timestamped one.
+STUDY_NAME="ladder_$(basename "$CONFIG_FILE" .yaml)"
+
+# The grant's fair-share priority is zero, so a job only ever starts by
+# backfilling into a gap and a short wall clock is the only way in. Each job
+# therefore tops the study up for LADDER_HPO_TIMEOUT seconds and exits; the next
+# one continues from the same database.
+TIMEOUT_ARGS=()
+if [ -n "${LADDER_HPO_TIMEOUT}" ]; then
+    TIMEOUT_ARGS=(--timeout "${LADDER_HPO_TIMEOUT}")
+fi
+
+srun python scripts/run_optuna_search.py \
+    --config "$CONFIG_FILE" \
+    --study-name "$STUDY_NAME" \
+    "${TIMEOUT_ARGS[@]}"
 EXIT_CODE=$?
 
 WANDB_LOCAL_DIR="${WANDB_DIR:-$SLURM_SUBMIT_DIR}/wandb"

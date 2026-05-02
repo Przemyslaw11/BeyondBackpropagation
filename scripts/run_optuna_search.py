@@ -54,7 +54,19 @@ def parse_args() -> argparse.Namespace:
         "--n-trials",
         type=int,
         default=None,
-        help="Number of trials to run (overrides config).",
+        help=(
+            "Target TOTAL number of completed trials in the study, not the number "
+            "to add. Resuming a study tops it up to this figure."
+        ),
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help=(
+            "Stop starting new trials after this many seconds. Lets a job finish "
+            "cleanly inside a short wall clock so the study can resume later."
+        ),
     )
     parser.add_argument(
         "--backend",
@@ -183,10 +195,25 @@ def main() -> None:
             pruner=pruner,
             load_if_exists=True,
         )
-        logger.info(
-            f"Starting Optuna optimization ({algorithm_name}) with {n_trials} trials..."
+        completed = sum(
+            1 for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
         )
-        study.optimize(lambda trial: objective_func(trial, config), n_trials=n_trials)
+        remaining = max(0, n_trials - completed)
+        if remaining == 0:
+            logger.info(
+                f"Study already holds {completed} completed trials, at or above the "
+                f"target of {n_trials}. Reporting the best trial without running more."
+            )
+        else:
+            logger.info(
+                f"Starting Optuna optimization ({algorithm_name}): {completed} trials "
+                f"already complete, running {remaining} more toward {n_trials}."
+            )
+            study.optimize(
+                lambda trial: objective_func(trial, config),
+                n_trials=remaining,
+                timeout=args.timeout,
+            )
 
         logger.info("Optimization finished.")
         logger.info(f"Number of finished trials: {len(study.trials)}")
