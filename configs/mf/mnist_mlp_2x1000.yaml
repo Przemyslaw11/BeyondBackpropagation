@@ -21,9 +21,9 @@ model:
     activation: ReLU
     bias: true
 algorithm_params:
-  lr: 0.001570297088405539
+  lr: 0.00046569899460719333
   optimizer_type: Adam
-  weight_decay: 0.0
+  weight_decay: 2.815630680397746e-05
   log_interval: 9999
   activation_cache: recompute
 legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.

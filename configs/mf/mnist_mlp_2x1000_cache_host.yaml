@@ -23,9 +23,9 @@ model:
 # Ladder rung 6. Identical to rung 5 except that the cache lives in host memory,
 # so the difference between them is where the activations sit and nothing else.
 algorithm_params:
-  lr: 0.001570297088405539
+  lr: 0.00046569899460719333
   optimizer_type: Adam
-  weight_decay: 0.0
+  weight_decay: 2.815630680397746e-05
   log_interval: 9999
   activation_cache: cache_host
 legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
