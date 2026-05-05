@@ -275,9 +275,6 @@ final/total_gpu_energy_wh: <watt_hours>
 final/peak_gpu_mem_used_mib: <mib>
 final/codecarbon_emissions_gCO2e: <grams>
 ```
-
-Evaluation-only / inference-only command: [PLACEHOLDER: add a checkpoint loading script such as `scripts/evaluate_checkpoint.py`; the current entry point evaluates immediately after training.]
-
 ## Configuration
 
 Configs are plain YAML and are merged with `configs/base.yaml` by `src/utils/config_parser.py`.
