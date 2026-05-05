@@ -1,289 +1,382 @@
-# Beyond Backpropagation: Exploring Innovative Algorithms for Energy-Efficient Deep Neural Network Training
- 
- This repository contains the code for a Master's thesis investigating the performance and energy efficiency of alternative, backpropagation-free deep learning training algorithms compared to standard backpropagation.
- 
- ## Project Goal
- 
- The primary objective is to rigorously compare the training performance (accuracy, convergence) and energy efficiency (energy consumption, time, FLOPs, memory) of three alternative algorithms:
- 
- 1.  **Forward-Forward (FF)** \cite{hinton2022forward}
- 2.  **Cascaded Forward (CaFo)** \cite{zhao2023cafo}
- 3.  **Mono-Forward (MF)** \cite{gong2025mono}
- 
- These are compared against standard **Backpropagation (BP)** baselines using identical network architectures to isolate the effect of the training algorithm itself. Experiments are conducted on MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100 datasets using a consistent, modern software environment.
- 
- ## Repository Structure
+# Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Evaluation of Forward-Only Algorithms
+
+Hardware-validated FF, CaFo, and Mono-Forward experiments for testing when forward-only training can beat tuned backpropagation on identical neural architectures.
+
+[![arXiv](https://img.shields.io/badge/arXiv-2511.01061-b31b1b.svg)](https://arxiv.org/abs/2511.01061)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10-blue.svg?style=flat-square)](#installation--requirements)
+[![Stars](https://img.shields.io/github/stars/Przemyslaw11/BeyondBackpropagation?style=social)](https://github.com/Przemyslaw11/BeyondBackpropagation/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/Przemyslaw11/BeyondBackpropagation?style=flat-square)](https://github.com/Przemyslaw11/BeyondBackpropagation/commits/main)
+
+**Paper:** [arXiv:2511.01061](https://arxiv.org/abs/2511.01061)<br>
+**Authors:** Przemyslaw Spyra, Witold Dzwinel<br>
+**Institution:** AGH University of Krakow, Faculty of Computer Science
+
+<p align="center">
+  <img src="plots/teaser_mf_all_datasets.png" alt="Mono-Forward versus matched backpropagation baselines across MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100: accuracy, time, energy, and memory deltas" width="100%">
+</p>
+
+<p align="center"><em>Mono-Forward improves accuracy on every tested MLP benchmark, with the largest efficiency gains on CIFAR-10 and consistent energy gains on three of four datasets.</em></p>
+
+## Abstract / TL;DR
+
+Backpropagation is powerful, but it is not the only viable training signal for deep networks. This repository implements and evaluates three backpropagation-free algorithms - Forward-Forward (FF), Cascaded Forward (CaFo), and Mono-Forward (MF) - against backpropagation baselines that use the same native architectures and systematic Optuna tuning. The main result is that MF consistently exceeds the tuned BP baseline on MLP classification accuracy while reducing energy and time on the harder CIFAR MLP tasks. The experiments also show that "no backward pass" does not automatically mean lower memory use; direct hardware measurement is necessary.
+
+In this paper, we...
+
+- define a fair comparison protocol: identical native architectures, universal hyperparameter search, early stopping, and direct hardware-level metrics;
+- validate Mono-Forward as a practical BP-free MLP training algorithm with higher accuracy than tuned BP baselines;
+- quantify real energy, time, peak memory, GFLOPs, and CO2e rather than relying only on theoretical savings;
+- show that FF is competitive in accuracy but inefficient in wall-clock time and energy;
+- show that CaFo exposes a sharp feature-quality trade-off: random features save some resources but lose accuracy, while DFA features improve accuracy at high cost.
+
+## Highlights / Key Results
+
+Published comparisons are against equally tuned BP baselines on identical native architectures. They are not external dataset-leaderboard SOTA claims against modern CNNs or Transformers.
+
+### Representative measured results
+
+All values are reported on the held-out test split and averaged over 3 runs in the paper. Higher accuracy is better; lower time, energy, and memory are better.
+
+| Dataset | Architecture | Algorithm | Test accuracy (%) | Train time (s) | Energy (Wh) | Peak memory (MiB) |
+|---|---:|---|---:|---:|---:|---:|
+| Fashion-MNIST | MLP 4x2000 | FF-AdamW | **89.63** | 574.60 | 14.28 | 1190 |
+| Fashion-MNIST | MLP 4x2000 | BP baseline | 88.88 | **43.09** | **1.48** | **1168** |
+| CIFAR-10 | MLP 3x2000 | MF | **62.34** | **177.70** | **3.17** | **1120** |
+| CIFAR-10 | MLP 3x2000 | BP baseline | 61.13 | 268.45 | 5.35 | 1184 |
+
+### Full published delta summary vs BP
+
+`Delta Acc. (%)` is the absolute test-accuracy difference. Other deltas are relative percent changes. Bold values favor the forward-only method.
+
+| Family | Dataset | Architecture / variant | Delta Acc. (%) | Delta time | Delta energy | Delta memory |
+|---|---|---|---:|---:|---:|---:|
+| FF | Fashion-MNIST | MLP 4x2000 | **+0.75** | +1233.26% | +862.35% | +1.88% |
+| FF | MNIST | MLP 3x1000 | **+0.24** | +342.11% | +339.95% | +0.85% |
+| FF | MNIST | MLP 4x2000 | -0.01 | +305.08% | +236.88% | +1.88% |
+| CaFo-Rand-CE | MNIST | 3-block CNN | -0.32 | +88.48% | +32.65% | **-6.67%** |
+| CaFo-DFA-CE | MNIST | 3-block CNN | **+0.08** | +124.82% | +81.83% | +1.11% |
+| CaFo-Rand-CE | Fashion-MNIST | 3-block CNN | **+1.11** | +205.00% | +115.99% | **-6.67%** |
+| CaFo-DFA-CE | Fashion-MNIST | 3-block CNN | **+2.47** | +206.51% | +201.43% | +1.11% |
+| CaFo-Rand-CE | CIFAR-10 | 3-block CNN | -13.23 | **-2.96%** | **-19.24%** | **-8.98%** |
+| CaFo-DFA-CE | CIFAR-10 | 3-block CNN | -1.72 | +287.17% | +301.94% | +1.26% |
+| CaFo-Rand-CE | CIFAR-100 | 3-block CNN | -11.44 | +246.27% | +188.87% | **-5.02%** |
+| CaFo-DFA-CE | CIFAR-100 | 3-block CNN | -4.43 | +557.19% | +576.82% | +2.51% |
+| MF | MNIST | MLP 2x1000 | **+0.09** | **-12.07%** | **-13.34%** | +0.86% |
+| MF | Fashion-MNIST | MLP 2x1000 | **+0.51** | +18.20% | +9.90% | +0.86% |
+| MF | CIFAR-10 | MLP 3x2000 | **+1.21** | **-33.81%** | **-40.78%** | **-5.41%** |
+| MF | CIFAR-100 | MLP 3x2000 | **+0.37** | **-1.28%** | **-12.48%** | **-4.19%** |
+
+## Repository Structure
+
+```text
+.
+|-- .gitignore                         # ignores generated data, checkpoints, results, wandb, caches
+|-- LICENSE                            # MIT license
+|-- README.md                          # this file
+|-- requirements.txt                   # Python runtime dependencies
+|-- configs/
+|   |-- base.yaml                      # shared defaults: device, data root, logging, monitoring, tuning
+|   |-- bp_baselines/                  # tuned BP baselines matching FF/MF/CaFo architectures
+|   |-- ff/                            # final Forward-Forward experiment configs
+|   |-- cafo/                          # final Cascaded Forward and CaFo-DFA configs
+|   |-- mf/                            # final Mono-Forward experiment configs
+|   `-- tuning/                        # Optuna search configs for BP, FF, CaFo, and MF
+|-- scripts/
+|   |-- run_experiment.py              # single train-and-test entry point
+|   |-- run_optuna_search.py           # Optuna HPO entry point
+|   |-- slurm_scripts/
+|   |   |-- run_single_experiment.slurm
+|   |   |-- run_array.slurm
+|   |   `-- run_optuna.slurm
+|   `-- tuning_utils/                  # utilities that update YAML configs from Optuna studies
+|-- slurm_logs/
+|   |-- bp/                            # recorded BP experiment stdout/stderr
+|   |-- ff/                            # recorded FF experiment stdout/stderr
+|   |-- cafo/                          # recorded CaFo experiment stdout/stderr
+|   `-- mf/                            # recorded MF experiment stdout/stderr
+`-- src/
+    |-- algorithms/                    # FF, CaFo, and MF training/evaluation loops
+    |-- architectures/                 # FF_MLP, MF_MLP, and CaFo_CNN modules
+    |-- baselines/                     # standard BP training baseline
+    |-- data_utils/                    # torchvision datasets, splits, transforms
+    |-- training/                      # experiment orchestration engine
+    |-- tuning/                        # Optuna objective functions
+    `-- utils/                         # config parsing, logging, monitoring, profiling, metrics
 ```
- .
-├── LICENSE
-├── README.md
-├── configs
-│   ├── base.yaml
-│   ├── bp_baselines
-│   │   ├── cifar100_cnn_3block_bp.yaml
-│   │   ├── cifar100_mlp_3x2000_bp.yaml
-│   │   ├── cifar10_cnn_3block_bp.yaml
-│   │   ├── cifar10_mlp_3x2000_bp.yaml
-│   │   ├── fashion_mnist_cnn_3block_bp.yaml
-│   │   ├── fashion_mnist_mlp_2x1000_bp.yaml
-│   │   ├── fashion_mnist_mlp_4x2000_bp.yaml
-│   │   ├── mnist_cnn_3block_bp.yaml
-│   │   ├── mnist_mlp_2x1000_bp.yaml
-│   │   ├── mnist_mlp_3x1000_bp.yaml
-│   │   └── mnist_mlp_4x2000_bp.yaml
-│   ├── cafo
-│   │   ├── cafodfa_cifar100_cnn_3block.yaml
-│   │   ├── cafodfa_cifar10_cnn_3block.yaml
-│   │   ├── cafodfa_fashion_mnist_cnn_3block.yaml
-│   │   ├── cafodfa_mnist_cnn_3block.yaml
-│   │   ├── cifar100_cnn_3block.yaml
-│   │   ├── cifar10_cnn_3block.yaml
-│   │   ├── fashion_mnist_cnn_3block.yaml
-│   │   └── mnist_cnn_3block.yaml
-│   ├── ff
-│   │   ├── fashion_mnist_mlp_4x2000.yaml
-│   │   ├── mnist_mlp_3x1000_ADAMW.yaml
-│   │   ├── mnist_mlp_3x1000_SGD.yaml
-│   │   └── mnist_mlp_4x2000.yaml
-│   ├── mf
-│   │   ├── cifar100_mlp_3x2000.yaml
-│   │   ├── cifar10_mlp_3x2000.yaml
-│   │   ├── fashion_mnist_mlp_2x1000.yaml
-│   │   └── mnist_mlp_2x1000.yaml
-│   ├── test
-│   │   ├── test_bp_fmnist_mlp_2x1000.yaml
-│   │   ├── test_cafo_fmnist_cnn_3block.yaml
-│   │   ├── test_ff_fmnist_mlp_4x2000.yaml
-│   │   └── test_mf_fmnist_mlp_2x1000.yaml
-│   └── tuning
-│       ├── cafo_cafodfa_cifar100_cnn_3block_tune.yaml
-│       ├── cafo_cafodfa_cifar10_cnn_3block_tune.yaml
-│       ├── cafo_cafodfa_fashion_mnist_cnn_3block_tune.yaml
-│       ├── cafo_cafodfa_mnist_cnn_3block_tune.yaml
-│       ├── cafo_cifar100_cnn_3block_tune.yaml
-│       ├── cafo_cifar10_cnn_3block_tune.yaml
-│       ├── cafo_fashion_mnist_cnn_3block_tune.yaml
-│       ├── cafo_mnist_cnn_3block_tune.yaml
-│       ├── ff_fashion_mnist_mlp_4x2000_tune.yaml
-│       ├── ff_mnist_mlp_3x1000_ADAMW_tune.yaml
-│       ├── ff_mnist_mlp_3x1000_SGD_tune.yaml
-│       ├── ff_mnist_mlp_4x2000_tune.yaml
-│       ├── mf_cifar100_mlp_3x2000_mf_tune.yaml
-│       ├── mf_cifar10_mlp_3x2000_mf_tune.yaml
-│       ├── mf_fashion_mnist_mlp_2x1000_mf_tune.yaml
-│       └── mf_mnist_mlp_2x1000_mf_tune.yaml
-├── data
-├── requirements.txt
-├── results
-├── scripts
-│   ├── run_alt_optuna_search.py
-│   ├── run_experiment.py
-│   ├── run_optuna_search.py
-│   ├── slurm_scripts
-│   │   ├── run_alt_optuna.slurm
-│   │   ├── run_array.slurm
-│   │   ├── run_optuna.slurm
-│   │   ├── run_single_experiment.slurm
-│   │   └── run_test_experiment.slurm
-│   └── tuning_utils
-│       ├── update_bp_configs.py
-│       ├── update_cafo_configs.py
-│       ├── update_ff_configs.py
-│       └── update_mf_configs.py
-├── slurm_logs
-├── src
-│   ├── __init__.py
-│   ├── algorithms
-│   │   ├── __init__.py
-│   │   ├── cafo.py
-│   │   ├── ff.py
-│   │   └── mf.py
-│   ├── architectures
-│   │   ├── __init__.py
-│   │   ├── cafo_cnn.py
-│   │   ├── ff_mlp.py
-│   │   └── mf_mlp.py
-│   ├── baselines
-│   │   ├── __init__.py
-│   │   └── bp.py
-│   ├── data_utils
-│   │   ├── __init__.py
-│   │   ├── datasets.py
-│   │   └── preprocessing.py
-│   ├── training
-│   │   ├── __init__.py
-│   │   └── engine.py
-│   ├── tuning
-│   │   ├── __init__.py
-│   │   ├── alt_optuna_objective.py
-│   │   ├── optuna_objective.py
-│   │   ├── optuna_objective_cafo.py
-│   │   ├── optuna_objective_ff.py
-│   │   └── optuna_objective_mf.py
-│   └── utils
-│       ├── __init__.py
-│       ├── codecarbon_utils.py
-│       ├── config_parser.py
-│       ├── helpers.py
-│       ├── logging_utils.py
-│       ├── metrics.py
-│       ├── monitoring.py
-│       └── profiling.py
+
+Generated directories are intentionally absent from a clean checkout:
+
+- `data/`: created by torchvision when `data.download: true`;
+- `results/`: created by experiments and Optuna runs;
+- `checkpoints/`: created when a config enables checkpointing;
+- `wandb/`: created for local/offline Weights & Biases logs.
+
+## Installation & Requirements
+
+Tested paper environment:
+
+| Component | Version |
+|---|---|
+| OS | Rocky Linux 9.5 |
+| CPU | AMD EPYC 7742 @ 2.25 GHz |
+| GPU | NVIDIA A100-SXM4-40GB |
+| NVIDIA driver | 570.86.15 |
+| CUDA toolkit | 12.4.0 |
+| Python | 3.10.4 |
+| PyTorch | 2.4.0 + cu121 |
+| Torchvision | 0.19.0 |
+| Optuna | 4.2.1 |
+| CodeCarbon | 3.0.1 |
+| Weights & Biases | 0.19.8 |
+| pynvml | 12.0.0 |
+
+### Option A: virtualenv
+
+```bash
+git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
+cd BeyondBackpropagation
+python3.10 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
-## Setup
 
-### Local Setup (for development/testing)
+### Option B: conda
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
-    cd BeyondBackpropagation
-    ```
-2.  **Create and activate a Python virtual environment:** (Use a Python version compatible with `requirements.txt`, e.g., 3.10+)
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Download datasets:** Datasets will be automatically downloaded to the `data/` directory upon the first run if not present.
+```bash
+git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
+cd BeyondBackpropagation
+conda create -n beyond-bp python=3.10 -y
+conda activate beyond-bp
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
 
-### Athena Cluster Setup (Cyfronet)
+### Athena / SLURM environment
 
-Experiments are designed to run on the `plgrid-gpu-a100` partition of the Athena cluster using a consistent environment.
+```bash
+module purge
+module load Python/3.10.4
+module load CUDA/12.4.0
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-1.  **Log in to Athena:**
-    ```bash
-    ssh plgUSERNAME@pro.cyfronet.pl # Replace plgUSERNAME
-    ssh plgUSERNAME@athena.cyfronet.pl # Replace plgUSERNAME
-    ```
-2.  **Navigate to your `$SCRATCH` directory and clone the repository:**
-    ```bash
-    cd $SCRATCH
-    git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
-    cd BeyondBackpropagation
-    ```
-3.  **Set up the Python environment (Initial Setup):**
-    *   **Install Packages:** It's recommended to install packages from the **login node** due to potentially slow internet on compute nodes. If downloads are slow even on the login node, download wheels locally first (see Troubleshooting below).
-        *   Load modules on the login node:
-            ```bash
-            module purge
-            module load Python/3.10.4
-            module load CUDA/12.4.0 # Ensure compatibility with PyTorch build (+cu121)
-            module list
-            ```
-        *   Create and activate the virtual environment:
-            ```bash
-            python3 -m venv venv
-            source venv/bin/activate
-            ```
-        *   Install dependencies (will install into `venv/`):
-            ```bash
-            # Ensure you are in $SCRATCH/BeyondBackpropagation
-            pip install -r requirements.txt
-            # If pip is slow, use the offline method (download wheels locally, transfer, then use pip install --no-index --find-links=...)
-            ```
-    *   **Key Runtime Environment Versions:**
-        *   Python: `3.10.4` (via `module load Python/3.10.4`)
-        *   CUDA Toolkit (Module): `12.4.0` (via `module load CUDA/12.4.0`)
-        *   PyTorch: `2.4.0 (+cu121)` (Check with `pip show torch`)
-        *   Torchvision: `0.19.0`
-        *   Optuna: `4.2.1`
-        *   Weights & Biases: `0.19.8`
-        *   pynvml: `12.0.0`
-        *   CodeCarbon: `3.0.1`
+Before submitting jobs, edit the account line in `scripts/slurm_scripts/*.slurm`:
 
-## Running Experiments
+```bash
+#SBATCH -A <your_grant_name>-gpu-a100
+```
 
-All commands below assume you are in the project's root directory (`$SCRATCH/<your_login>/BeyondBackpropagation/`). **Remember to edit the Slurm scripts in `scripts/slurm_scripts/` to set your grant account correctly: `#SBATCH -A <your_grant_name>-gpu-a100`**.
+Common install pitfalls:
 
-### Running a Single Experiment
+- If `torch.cuda.is_available()` is `False` on a login node, test inside a GPU allocation or SLURM job.
+- If PyTorch installs a CPU wheel, reinstall the CUDA-compatible wheel for your cluster.
+- If `pynvml` reports missing drivers, run on an NVIDIA GPU node with NVML available.
+- If package installation is slow on Athena, download wheels elsewhere and install from the wheel directory.
 
-*   **On Athena (using Slurm):**
-    1.  Verify/Edit `scripts/slurm_scripts/run_single_experiment.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and the loaded modules match the setup (Python 3.10.4, CUDA 12.4.0).
-    2.  **Offline Wandb:** The Slurm scripts are configured to run Weights & Biases in offline mode (`export WANDB_MODE=offline`). Logs will be stored locally in the `wandb/` directory within the project root.
-    3.  Submit the job using `sbatch`, passing the *final* config file path (e.g., from `configs/ff/`, `configs/cafo/`, `configs/mf/`, `configs/bp_baselines/`) relative to the project root.
-        ```bash
-        # Example: Running final FF MNIST SGD experiment
-        sbatch --job-name="FF_MNIST_SGD_final" scripts/slurm_scripts/run_single_experiment.slurm configs/ff/mnist_mlp_3x1000_SGD_ref.yaml
-        # Example: Running final CaFo-DFA CIFAR-100 experiment
-        sbatch --job-name="CaFoDFA_C100_final" scripts/slurm_scripts/run_single_experiment.slurm configs/cafo/cafodfa_cifar100_cnn_3block.yaml
-        # Example: Running a BP baseline
-        sbatch --job-name="BP_CNN_C10_final" scripts/slurm_scripts/run_single_experiment.slurm configs/bp_baselines/cifar10_cnn_3block_bp.yaml
-        ```
-    4.  Slurm output logs go to `slurm_logs/`. Experiment results go to `results/`. Wandb offline logs are in `wandb/`. CodeCarbon offline logs are in `results/carbon/`.
-    5.  **Syncing Offline Wandb:** After completion, sync using `wandb sync --sync-all` from the login node.
+```bash
+pip install --no-index --find-links=./wheels -r requirements.txt
+```
 
-### Running Hyperparameter Optimization (Optuna)
+- If W&B cannot reach the network on compute nodes, run offline and sync later.
 
-*   **On Athena (using Slurm):**
-    1.  Verify/Edit `scripts/slurm_scripts/run_optuna.slurm`, ensuring the `-A <your_grant_name>-gpu-a100` line is correct and modules match. Wandb is typically disabled for Optuna trials (`use_wandb: false` in the `tuning:` section of the config). CodeCarbon is also disabled by default in base Optuna configs.
-    2.  Submit the job using `sbatch`, passing the **tuning configuration file path** (from `configs/tuning/` for FF/CaFo/MF, or `configs/bp_baselines/` for BP) and optionally the number of trials.
-        ```bash
-        # Example: Tuning CaFo-DFA for CIFAR-100 CNN with 50 trials
-        sbatch --job-name="Optuna_CaFoDFA_C100" scripts/slurm_scripts/run_optuna.slurm configs/tuning/cafo_cafodfa_cifar100_cnn_3block_tune.yaml 50
+```bash
+export WANDB_MODE=offline
+```
 
-        # Example: Tuning FF (AdamW) for MNIST 4x2000 MLP using config's trial count
-        sbatch --job-name="Optuna_FF_MNIST_4x2000" scripts/slurm_scripts/run_optuna.slurm configs/tuning/ff_mnist_mlp_4x2000_tune.yaml
+## Data Preparation
 
-        # Example: Tuning BP for the MF CIFAR-10 MLP baseline using config's trial count
-        sbatch --job-name="Optuna_BP_MF_C10" scripts/slurm_scripts/run_optuna.slurm configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml
-        ```
-    3.  The Optuna study database (`.db`) will be saved in `results/optuna/`. Slurm logs are in `slurm_logs/`. The script outputs best parameters to the Slurm `.out` file and saves them to `_best_params.yaml`.
-    4.  **IMPORTANT:** The `run_optuna.slurm` script attempts to **automatically update** the corresponding *final* `.yaml` config file (e.g., `configs/ff/mnist_mlp_4x2000.yaml` if tuning was run with `configs/tuning/ff_mnist_mlp_4x2000_tune.yaml`) using the appropriate utility script from `scripts/tuning_utils/` after the search completes.
-        *   **Check the Slurm `.out` log** to confirm if the automatic update succeeded or failed.
-        *   If it failed, or for manual updates, use the output YAML snippet from the log or the `_best_params.yaml` file to update the `optimizer` (for BP) or `algorithm_params` (for FF/CaFo/MF) section in the *final* algorithm config file (e.g., in `configs/ff/`, `configs/cafo/`, `configs/mf/`).
-        *   **A backup** of the original config file (`.bak_<timestamp>`) is created by the update script before automatic update.
+The code uses torchvision datasets and downloads them automatically when `data.download: true` or `data.root: ./data` is present in the config.
 
-### Running Multiple Experiments (Slurm Job Array - Example)
+| Dataset | Source | Config names |
+|---|---|---|
+| MNIST | https://yann.lecun.com/exdb/mnist/ | `MNIST` |
+| Fashion-MNIST | https://github.com/zalandoresearch/fashion-mnist | `FashionMNIST` |
+| CIFAR-10 | https://www.cs.toronto.edu/~kriz/cifar.html | `CIFAR10` |
+| CIFAR-100 | https://www.cs.toronto.edu/~kriz/cifar.html | `CIFAR100` |
 
-The `scripts/slurm_scripts/run_array.slurm` script provides an example for submitting multiple *final* experiments defined in an array within the script.
+Expected layout after first download:
 
-1.  Modify `scripts/slurm_scripts/run_array.slurm`:
-    *   Set the correct account: `-A <your_grant_name>-gpu-a100`.
-    *   Update the `CONFIG_FILES` array with desired *final* config paths (from `configs/ff/`, `configs/cafo/`, `configs/mf/`, `configs/bp_baselines/`).
-    *   Adjust the `--array=1-N` range (where N is the *exact* number of configs listed).
-    *   Ensure loaded modules match the setup. (Wandb and CodeCarbon will run offline per task).
-2.  Submit the job array:
-    ```bash
-    sbatch scripts/slurm_scripts/run_array.slurm
-    ```
-3.  After completion, sync all offline runs using `wandb sync --sync-all`.
+```text
+data/
+|-- MNIST/
+|   `-- raw/
+|-- FashionMNIST/
+|   `-- raw/
+|-- cifar-10-batches-py/
+`-- cifar-100-python/
+```
 
-## Monitoring and Logging
+Splits and preprocessing:
 
-*   **Weights & Biases (WandB):** Experiments log to WandB. When running on Athena compute nodes, logs are saved offline to the `wandb/` directory. Sync them later using `wandb sync --sync-all` from the login node. Project: `BeyondBackpropagation`, Entity: `przspyra11` (can be changed in `configs/base.yaml`).
-*   **Local Logs:** Python logs are saved to `results/<experiment_name>/<experiment_name>_run.log`. Optuna logs are saved to `results/optuna/<study_name>.log`.
-*   **Slurm Logs:** Standard output/error from Slurm jobs are saved to `slurm_logs/`. Check these first for submission/environment errors.
-*   **Energy Monitoring (NVML):** GPU energy consumption is monitored using `pynvml` during training and logged to WandB (`total_gpu_energy_joules`, `total_gpu_energy_wh`) in the final summary. Requires NVML to be functional.
-*   **Memory Monitoring (NVML):** Peak GPU memory usage during the training loop is sampled using `pynvml` and logged to WandB (`final/peak_gpu_mem_used_mib`). Requires NVML.
-*   **Carbon Tracking (CodeCarbon):**
-    *   Tracks estimated carbon footprint (CO2 emissions equivalent).
-    *   Enabled/disabled via the `carbon_tracker:` section in `configs/base.yaml`.
-    *   Runs in **offline mode** on Athena, saving detailed results to a CSV file in `results/carbon/<experiment_name>_carbon.csv`.
-    *   Uses the `country_iso_code` specified in the config (e.g., "POL" for Poland) to estimate grid intensity.
-    *   The final estimated emissions (`final/codecarbon_emissions_gCO2e`) are logged to the console output and WandB summary at the end of the run.
-*   **Profiling (torch.profiler):** FLOPs and parameter counts are estimated using `torch.profiler` (for FLOPs) and standard PyTorch parameter counting at the start of the run and logged to WandB.
+- MNIST uses a fixed 50k train / 10k validation split, plus the official 10k test split.
+- Fashion-MNIST, CIFAR-10, and CIFAR-100 use `val_split: 0.1` from the training set unless changed in YAML.
+- CIFAR training uses random crop and horizontal flip; validation/test uses normalization only.
+- No separate preprocessing command is required.
+
+To use pre-downloaded data, set `data.root` in the config:
+
+```yaml
+data:
+  root: /path/to/datasets
+  download: false
+```
+
+## Quickstart / Usage
+
+The simplest reproducible path is to run a single MF experiment. The command trains, evaluates on the test split, and logs final metrics.
+
+```bash
+python scripts/run_experiment.py --config configs/mf/mnist_mlp_2x1000.yaml
+```
+
+Main CIFAR-10 MF result from the paper:
+
+```bash
+python scripts/run_experiment.py --config configs/mf/cifar10_mlp_3x2000.yaml
+```
+
+BP baseline for the same CIFAR-10 MLP architecture:
+
+```bash
+python scripts/run_experiment.py --config configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml
+```
+
+Representative FF and CaFo runs:
+
+```bash
+python scripts/run_experiment.py --config configs/ff/fashion_mnist_mlp_4x2000.yaml
+python scripts/run_experiment.py --config configs/cafo/cafodfa_cifar10_cnn_3block.yaml
+```
+
+Run hyperparameter search:
+
+```bash
+python scripts/run_optuna_search.py --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --n-trials 50
+```
+
+Run on SLURM:
+
+```bash
+sbatch --job-name="MF_CIFAR10" scripts/slurm_scripts/run_single_experiment.slurm configs/mf/cifar10_mlp_3x2000.yaml
+```
+
+Expected final log fields:
+
+```text
+Test Set Results: Acc: <test_accuracy>%, Loss: <test_loss>
+final/training_duration_sec: <seconds>
+final/total_gpu_energy_wh: <watt_hours>
+final/peak_gpu_mem_used_mib: <mib>
+final/codecarbon_emissions_gCO2e: <grams>
+```
+
+Evaluation-only / inference-only command: [PLACEHOLDER: add a checkpoint loading script such as `scripts/evaluate_checkpoint.py`; the current entry point evaluates immediately after training.]
+
+## Configuration
+
+Configs are plain YAML and are merged with `configs/base.yaml` by `src/utils/config_parser.py`.
+
+Key fields:
+
+| Field | Meaning |
+|---|---|
+| `experiment_name` | Run name used for logs, W&B, results, and checkpoints. |
+| `algorithm.name` | One of `BP`, `FF`, `CaFo`, or `MF`. |
+| `data.name` | One of `MNIST`, `FashionMNIST`, `CIFAR10`, `CIFAR100`. |
+| `data.root` | Dataset directory. Defaults to `./data`. |
+| `data.val_split` | Validation fraction for non-MNIST datasets. |
+| `data_loader.batch_size` | Training batch size. |
+| `model.name` | `FF_MLP`, `MF_MLP`, or `CaFo_CNN`. |
+| `model.params.hidden_dims` | MLP hidden widths for FF and MF. |
+| `model.params.block_channels` | CNN block channels for CaFo. |
+| `optimizer.lr`, `optimizer.weight_decay` | BP optimizer settings. |
+| `algorithm_params.lr` | MF layer-local optimizer learning rate. |
+| `algorithm_params.epochs_per_layer` | Number of local MF epochs per layer. |
+| `algorithm_params.ff_learning_rate` | FF local goodness optimizer learning rate. |
+| `algorithm_params.downstream_learning_rate` | FF downstream classifier learning rate. |
+| `algorithm_params.predictor_lr` | CaFo local predictor learning rate. |
+| `algorithm_params.num_epochs_per_block` | CaFo block/predictor training budget. |
+| `monitoring.energy_enabled` | Enables NVML energy sampling. |
+| `profiling.enabled` | Enables forward-pass GFLOP profiling. |
+| `carbon_tracker.enabled` | Enables CodeCarbon emissions estimation. |
+
+Point to a custom dataset:
+
+```yaml
+data:
+  name: CIFAR10
+  root: /absolute/path/to/data
+  download: false
+```
+
+Add a new dataset by extending:
+
+- `src/data_utils/datasets.py`
+- `src/data_utils/preprocessing.py`
+
+Add a new model by extending:
+
+- `src/architectures/`
+- `src/training/engine.py`
+
+## Pretrained Models / Checkpoints
+
+Pretrained checkpoints are not shipped in the repository. Configs write checkpoints under `checkpoints/<experiment_name>/`, and `checkpoints/` is gitignored.
+
+| Model | Status | Parameters | Training data | Published score |
+|---|---|---:|---|---|
+| MF MLP 2x1000 | coming soon | 1.82M instantiated trainable params | MNIST | +0.09% accuracy vs BP |
+| MF MLP 2x1000 | coming soon | 1.82M instantiated trainable params | Fashion-MNIST | +0.51% accuracy vs BP |
+| MF MLP 3x2000 | coming soon | 14.26M instantiated trainable params | CIFAR-10 | 62.34% test accuracy, 40.78% less energy than BP |
+| MF MLP 3x2000 | coming soon | 15.26M instantiated trainable params | CIFAR-100 | +0.37% accuracy, 12.48% less energy than BP |
+
+Expected future checkpoint layout:
+
+```text
+checkpoints/
+|-- mf_mnist_mlp_2x1000/
+|-- mf_fashion_mnist_mlp_2x1000/
+|-- mf_cifar10_mlp_3x2000/
+`-- mf_cifar100_mlp_3x2000/
+```
+
+## Scope and Limitations
+
+- MF is validated here on MLP architectures; CNN and Transformer adaptations remain open work.
+- FF and CaFo are included as evolutionary baselines, not as the recommended high-efficiency path.
+- Memory savings are empirical, not guaranteed by removing the backward pass.
+- Energy numbers depend on hardware, driver, CUDA, PyTorch, and NVML behavior.
+- The repository currently has train-and-test scripts, but no standalone checkpoint inference CLI.
 
 ## Citation
 
-If you use this code or methodology, please cite the relevant papers for the algorithms:
+```bibtex
+@misc{spyra2025energyefficientdeeplearningwithout,
+  title         = {Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Evaluation of Forward-Only Algorithms},
+  author        = {Przemys{\l}aw Spyra and Witold Dzwinel},
+  year          = {2025},
+  eprint        = {2511.01061},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  doi           = {10.48550/arXiv.2511.01061},
+  url           = {https://arxiv.org/abs/2511.01061}
+}
+```
 
-*   **FF:** Hinton, G. (2022). The Forward-Forward Algorithm: Some Preliminary Investigations. *arXiv preprint arXiv:2212.13345*.
-*   **CaFo:** Zhao, Q., et al. (2023). Cascaded Forward-Forward Algorithm for Green AI. *arXiv preprint arXiv:2311.15170*. Code: `https://github.com/Graph-ZKY/CaFo`
-*   **MF:** Gong, J., et al. (2025). Mono-Forward: Backpropagation-Free Algorithm for Efficient Neural Network Training Harnessing Local Errors. *arXiv preprint arXiv:2501.09238*.
+## License & Acknowledgements
 
-## Troubleshooting
+This repository is released under the [MIT License](LICENSE).
 
-*   **Slow `pip install` on Athena:** Compute nodes (and sometimes login nodes) have slow external internet. Download wheels locally first using `pip download -r requirements.txt -d ./wheels/`, transfer the `wheels` directory to Athena's `$SCRATCH`, then install offline on the login node using `pip install --no-index --find-links=./wheels -r requirements.txt` inside the activated venv (after loading modules).
-*   **`CUDA available: False`:** This is normal on the *login node*. Verify CUDA availability within an interactive GPU job (`srun --gres=gpu:1 --pty /bin/bash -l`) or check the output of your actual experiment Slurm jobs.
-*   **Module/Environment Conflicts:** Always `module purge` before loading your specific required modules (`Python/3.10.4`, `CUDA/12.4.0`). Ensure you activate the correct virtual environment (`source venv/bin/activate`). Check Slurm log files (`slurm_logs/`) for errors related to module loading or environment activation.
-*   **Wandb Errors:** If you see network errors related to Wandb in `.err` files, ensure your Slurm script sets `export WANDB_MODE=offline`. Remember to sync runs later using `wandb sync --sync-all`. If syncing fails, check your `WANDB_API_KEY` and internet connection.
-*   **NVML Errors:** Errors like `NVML_ERROR_LIBRARY_NOT_FOUND` or `NVML_ERROR_DRIVER_NOT_LOADED` usually indicate issues with the NVIDIA driver or the node environment. Report persistent NVML errors on compute nodes to Cyfronet support. Warnings about missing version info are generally harmless.
-*   **CodeCarbon Errors:**
-    *   If you see "CodeCarbon library not found", ensure it's installed (`pip install codecarbon` or check `requirements.txt`).
-    *   Errors related to country detection might occur if `country_iso_code` is not set and auto-detection fails. Specify it in `configs/base.yaml`.
-    *   Errors writing the CSV file could be due to permissions in the `results/carbon/` directory.
-*   **Optuna Config Update Errors:** Check the Slurm log for the `run_optuna.slurm` job. Common issues include incorrect database path (`--db-path`), target config path (`--config-path`), or study name (`--study-name`), or file permission errors. Ensure the `.db` file exists and the update script (now located in `scripts/tuning_utils/`) has write permission for the target `.yaml` file in `configs/<algo>/` or `configs/bp_baselines/`.
+Acknowledgements:
+
+- Geoffrey Hinton for the Forward-Forward algorithm.
+- Zhao et al. for the Cascaded Forward algorithm and CaFo formulation.
+- Gong, Li, and Abdulla for the Mono-Forward algorithm.
+- torchvision dataset maintainers for MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100 loaders.
+- ACK Cyfronet AGH / Athena for A100 compute used in the reported experiments.
