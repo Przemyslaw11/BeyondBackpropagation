@@ -2,7 +2,7 @@
   <h1 align="center">Energy-Efficient Deep Learning<br>Without Backpropagation</h1>
   <p align="center"><b>A Rigorous Evaluation of Forward-Only Algorithms</b></p>
   <p align="center">
-    Hardware-validated FF, CaFo, and Mono-Forward experiments — testing when<br>
+    Hardware-validated FF, CaFo, and Mono-Forward experiments, testing when<br>
     forward-only training beats tuned backpropagation on identical architectures.
   </p>
 </p>
