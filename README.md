@@ -3,14 +3,30 @@
 Hardware-validated FF, CaFo, and Mono-Forward experiments for testing when forward-only training can beat tuned backpropagation on identical neural architectures.
 
 [![arXiv](https://img.shields.io/badge/arXiv-2511.01061-b31b1b.svg)](https://arxiv.org/abs/2511.01061)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10-blue.svg?style=flat-square)](#installation--requirements)
-[![Stars](https://img.shields.io/github/stars/Przemyslaw11/BeyondBackpropagation?style=social)](https://github.com/Przemyslaw11/BeyondBackpropagation/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](./LICENSE)
+[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg?style=flat-square)](#installation--requirements)
+[![GitHub Stars](https://img.shields.io/github/stars/Przemyslaw11/BeyondBackpropagation?style=social)](https://github.com/Przemyslaw11/BeyondBackpropagation/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/Przemyslaw11/BeyondBackpropagation?style=flat-square)](https://github.com/Przemyslaw11/BeyondBackpropagation/commits/main)
 
-**Paper:** [arXiv:2511.01061](https://arxiv.org/abs/2511.01061)<br>
-**Authors:** Przemyslaw Spyra, Witold Dzwinel<br>
-**Institution:** AGH University of Krakow, Faculty of Computer Science
+---
+
+- [Abstract / TL;DR](#abstract--tldr)
+- [Highlights / Key Results](#highlights--key-results)
+- [Repository Structure](#repository-structure)
+- [Installation & Requirements](#installation--requirements)
+- [Data Preparation](#data-preparation)
+- [Quickstart / Usage](#quickstart--usage)
+- [Configuration](#configuration)
+- [Pretrained Models / Checkpoints](#pretrained-models--checkpoints)
+- [Scope and Limitations](#scope-and-limitations)
+- [Citation](#citation)
+- [License & Acknowledgements](#license--acknowledgements)
+
+---
+
+> **Paper:** [arXiv:2511.01061](https://arxiv.org/abs/2511.01061) &nbsp;|&nbsp;
+> **Authors:** Przemyslaw Spyra, Witold Dzwinel &nbsp;|&nbsp;
+> **Institution:** AGH University of Krakow, Faculty of Computer Science
 
 <p align="center">
   <img src="plots/teaser_mf_all_datasets.png" alt="Mono-Forward versus matched backpropagation baselines across MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100: accuracy, time, energy, and memory deltas" width="100%">
@@ -19,6 +35,17 @@ Hardware-validated FF, CaFo, and Mono-Forward experiments for testing when forwa
 <p align="center"><em>Mono-Forward improves accuracy on every tested MLP benchmark, with the largest efficiency gains on CIFAR-10 and consistent energy gains on three of four datasets.</em></p>
 
 ## Abstract / TL;DR
+
+### How the algorithms differ
+
+| Algorithm | Backward pass? | Local or global loss? | Key constraint | Best on |
+|---|---|---|---|---|
+| BP | Yes | Global end-to-end | Backward locking | Strong baseline |
+| FF | No | Local goodness | Slow convergence | Simple MLPs |
+| CaFo | No | Local predictors | Feature-quality trade-off | CNN studies |
+| MF | No | Local projection losses | MLP-only validated | MLP benchmarks |
+
+Full experimental protocol is in the paper.
 
 Backpropagation is powerful, but it is not the only viable training signal for deep networks. This repository implements and evaluates three backpropagation-free algorithms - Forward-Forward (FF), Cascaded Forward (CaFo), and Mono-Forward (MF) - against backpropagation baselines that use the same native architectures and systematic Optuna tuning. The main result is that MF consistently exceeds the tuned BP baseline on MLP classification accuracy while reducing energy and time on the harder CIFAR MLP tasks. The experiments also show that "no backward pass" does not automatically mean lower memory use; direct hardware measurement is necessary.
 
@@ -269,12 +296,14 @@ sbatch --job-name="MF_CIFAR10" scripts/slurm_scripts/run_single_experiment.slurm
 Expected final log fields:
 
 ```text
-Test Set Results: Acc: <test_accuracy>%, Loss: <test_loss>
-final/training_duration_sec: <seconds>
-final/total_gpu_energy_wh: <watt_hours>
-final/peak_gpu_mem_used_mib: <mib>
-final/codecarbon_emissions_gCO2e: <grams>
+Test Set Results: Acc: 62.34%
+final/training_duration_sec: 177.70
+final/total_gpu_energy_wh: 3.17
+final/peak_gpu_mem_used_mib: 1120
 ```
+
+Values are from the paper (3-run mean); your run may vary slightly.
+
 ## Configuration
 
 Configs are plain YAML and are merged with `configs/base.yaml` by `src/utils/config_parser.py`.
@@ -332,6 +361,36 @@ Pretrained checkpoints are not shipped in the repository. Configs write checkpoi
 | MF MLP 2x1000 | coming soon | 1.82M instantiated trainable params | Fashion-MNIST | +0.51% accuracy vs BP |
 | MF MLP 3x2000 | coming soon | 14.26M instantiated trainable params | CIFAR-10 | 62.34% test accuracy, 40.78% less energy than BP |
 | MF MLP 3x2000 | coming soon | 15.26M instantiated trainable params | CIFAR-100 | +0.37% accuracy, 12.48% less energy than BP |
+
+<details>
+<summary>Generate checkpoints yourself</summary>
+
+Enable checkpointing by setting `checkpointing.checkpoint_dir` in the config:
+
+```yaml
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_cifar10_mlp_3x2000"
+```
+
+The CIFAR-10 MF config already enables this path. Run:
+
+```bash
+python scripts/run_experiment.py --config configs/mf/cifar10_mlp_3x2000.yaml
+```
+
+Checkpoint files will appear under:
+
+```text
+checkpoints/mf_cifar10_mlp_3x2000/
+|-- mf_matrix_M0_complete.pth
+|-- mf_layer_1_complete.pth
+|-- mf_layer_2_complete.pth
+`-- mf_layer_3_complete.pth
+```
+
+The "coming soon" rows above will be replaced with direct download links when checkpoints are uploaded.
+
+</details>
 
 Expected future checkpoint layout:
 
