@@ -439,15 +439,14 @@ checkpoints/
 ## Citation
 
 ```bibtex
-@misc{spyra2025energyefficientdeeplearningwithout,
-  title         = {Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Evaluation of Forward-Only Algorithms},
-  author        = {Przemys{\l}aw Spyra and Witold Dzwinel},
-  year          = {2025},
-  eprint        = {2511.01061},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  doi           = {10.48550/arXiv.2511.01061},
-  url           = {https://arxiv.org/abs/2511.01061}
+@misc{spyra2025energyefficientdeeplearningbackpropagation,
+      title={Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Evaluation of Forward-Only Algorithms}, 
+      author={Przemysław Spyra and Witold Dzwinel},
+      year={2025},
+      eprint={2511.01061},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2511.01061}, 
 }
 ```
 
