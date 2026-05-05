@@ -1,14 +1,31 @@
-# Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Evaluation of Forward-Only Algorithms
+<p align="center">
+  <h1 align="center">Energy-Efficient Deep Learning<br>Without Backpropagation</h1>
+  <p align="center"><b>A Rigorous Evaluation of Forward-Only Algorithms</b></p>
+  <p align="center">
+    Hardware-validated FF, CaFo, and Mono-Forward experiments — testing when<br>
+    forward-only training beats tuned backpropagation on identical architectures.
+  </p>
+</p>
 
-Hardware-validated FF, CaFo, and Mono-Forward experiments for testing when forward-only training can beat tuned backpropagation on identical neural architectures.
+<p align="center">
+  <a href="https://arxiv.org/abs/2511.01061"><img alt="arXiv" src="https://img.shields.io/badge/arXiv-2511.01061-b31b1b.svg?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square"></a>
+  <a href="#installation--requirements"><img alt="Python 3.10" src="https://img.shields.io/badge/python-3.10-blue.svg?style=flat-square"></a>
+  <a href="https://github.com/Przemyslaw11/BeyondBackpropagation/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/Przemyslaw11/BeyondBackpropagation?style=social"></a>
+  <a href="https://github.com/Przemyslaw11/BeyondBackpropagation/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/Przemyslaw11/BeyondBackpropagation?style=flat-square"></a>
+</p>
 
-[![arXiv](https://img.shields.io/badge/arXiv-2511.01061-b31b1b.svg)](https://arxiv.org/abs/2511.01061)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](./LICENSE)
-[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg?style=flat-square)](#installation--requirements)
-[![GitHub Stars](https://img.shields.io/github/stars/Przemyslaw11/BeyondBackpropagation?style=social)](https://github.com/Przemyslaw11/BeyondBackpropagation/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/Przemyslaw11/BeyondBackpropagation?style=flat-square)](https://github.com/Przemyslaw11/BeyondBackpropagation/commits/main)
+<p align="center">
+  <a href="https://arxiv.org/abs/2511.01061">Paper</a> ·
+  <a href="#highlights--key-results">Key Results</a> ·
+  <a href="#quickstart--usage">Quickstart</a> ·
+  <a href="#installation--requirements">Installation</a> ·
+  <a href="#citation">Citation</a>
+</p>
 
 ---
+
+**Table of Contents**
 
 - [Abstract / TL;DR](#abstract--tldr)
 - [Highlights / Key Results](#highlights--key-results)
@@ -29,10 +46,19 @@ Hardware-validated FF, CaFo, and Mono-Forward experiments for testing when forwa
 > **Institution:** AGH University of Krakow, Faculty of Computer Science
 
 <p align="center">
-  <img src="plots/teaser_mf_all_datasets.png" alt="Mono-Forward versus matched backpropagation baselines across MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100: accuracy, time, energy, and memory deltas" width="100%">
+  <img
+    src="plots/teaser_mf_all_datasets.png"
+    alt="Mono-Forward versus matched backpropagation baselines across MNIST, Fashion-MNIST, CIFAR-10, and CIFAR-100: accuracy, time, energy, and memory deltas"
+    width="100%"
+  >
 </p>
-
-<p align="center"><em>Mono-Forward improves accuracy on every tested MLP benchmark, with the largest efficiency gains on CIFAR-10 and consistent energy gains on three of four datasets.</em></p>
+<p align="center">
+  <em>
+    Mono-Forward improves accuracy on every tested MLP benchmark,
+    with the largest efficiency gains on CIFAR-10 and consistent energy
+    gains on three of four datasets.
+  </em>
+</p>
 
 ## Abstract / TL;DR
 
