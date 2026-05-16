@@ -31,15 +31,13 @@ log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
 log "driver starting: studies ${INDICES}, at most ${MAX_JOBS} chunks"
 
 # --- 1. yield the single plgrid-now slot to the ladder ---------------------
-while pgrep -f 'drive_ladder_now\.sh' > /dev/null 2>&1; do
+# Matched exactly, because a substring match also catches every shell whose
+# command line merely mentions the script, an ssh status check included.
+while pgrep -x -f "bash scripts/drive_ladder_now.sh" > /dev/null 2>&1 \
+   || squeue -h -u "$USER" -p plgrid-now -n L_now 2>/dev/null | grep -q .; do
     sleep 120
 done
-log "ladder driver has exited"
-
-while squeue -h -u "$USER" -p plgrid-now 2>/dev/null | grep -q .; do
-    sleep 60
-done
-log "plgrid-now queue is clear"
+log "ladder driver has exited and plgrid-now is clear"
 
 # --- 2. make sure nothing else can touch these studies ---------------------
 if [ "$DRAIN" = "1" ]; then
