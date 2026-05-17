@@ -53,6 +53,9 @@ CONFIG_FILES=(
     "configs/bp_ds/cifar100_mlp_3x2000.yaml"
     "configs/mf_joint/cifar100_mlp_3x2000.yaml"
     "configs/mf/cifar100_mlp_3x2000.yaml"
+
+    # --- Task 10 diagnostic, index 20, flat 401-420. Not a rung. ---
+    "configs/diagnostics/cifar10_mlp_3x2000_legacy_es.yaml"
 )
 
 SEEDS=(42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61)
@@ -104,7 +107,8 @@ for FLAT in $(seq "$START_INDEX" "$END_INDEX"); do
     SEED=${SEEDS[$SEED_IDX]}
 
     EXP_NAME=$(python -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))['experiment_name'])" "$CONFIG_FILE")
-    RESULT="results/runs/${EXP_NAME}/${EXP_NAME}_seed${SEED}.json"
+    RESULT_ROOT=$(python -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get('run_summary_dir','results/runs'))" "$CONFIG_FILE")
+    RESULT="${RESULT_ROOT}/${EXP_NAME}/${EXP_NAME}_seed${SEED}.json"
     if [ -f "$RESULT" ]; then
         SKIPPED=$((SKIPPED + 1))
         continue
