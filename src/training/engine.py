@@ -405,7 +405,13 @@ def _write_run_summary(config: Dict[str, Any], results: Dict[str, Any]) -> None:
         **results,
     }
 
-    out_dir = Path("results") / "runs" / experiment_name
+    # Diagnostics must stay out of results/runs: analyze_ablation_ladder.py globs
+    # that whole tree and keys runs by rung and seed, so a run that shares a rung
+    # identity with a ladder run would silently replace it.
+    # Deliberately not named results_dir: that key lives under backend.<name> and
+    # steers monitoring and optuna output, which this must not touch.
+    out_root = Path(str(config.get("run_summary_dir", "results/runs")))
+    out_dir = out_root / experiment_name
     seed = results.get("seed")
     out_path = out_dir / f"{experiment_name}_seed{seed}.json"
     try:

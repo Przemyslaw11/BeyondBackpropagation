@@ -31,7 +31,7 @@
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-400
+#SBATCH --array=1-420
 
 CONFIG_FILES=(
     # --- MNIST 2x1000: all six rungs ---
@@ -61,6 +61,10 @@ CONFIG_FILES=(
     "configs/bp_ds/cifar100_mlp_3x2000.yaml"
     "configs/mf_joint/cifar100_mlp_3x2000.yaml"
     "configs/mf/cifar100_mlp_3x2000.yaml"
+
+    # --- Task 10 diagnostic: rung 4 with the pre-Phase-2 stopping rule ---
+    # Writes to results/diagnostics, not results/runs. Flat indices 401-420.
+    "configs/diagnostics/cifar10_mlp_3x2000_legacy_es.yaml"
 )
 
 # Twenty seeds. The rungs share this list, which is what makes the analysis

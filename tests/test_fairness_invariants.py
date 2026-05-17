@@ -19,6 +19,16 @@ BASE_CONFIG = REPO_ROOT / "configs" / "base.yaml"
 # The ladder rungs added in Phase 3 have no pre-Phase-2 protocol to preserve.
 LEGACY_EXPERIMENT_DIRS = ("bp_baselines", "cafo", "ff", "mf")
 EXPERIMENT_DIRS = LEGACY_EXPERIMENT_DIRS + ("bp_ds", "mf_joint")
+# configs/diagnostics is deliberately absent: those configs exist to break the shared
+# stopping rule, so they get their own, stricter test rather than an exemption here.
+DIAGNOSTIC_EXEMPT_KEYS = {
+    "experiment_name",
+    "early_stopping",
+    "run_summary_dir",
+    "diagnostic_of",
+    "checkpointing",  # a separate checkpoint_dir, so the twin's files are not clobbered
+    "legacy_hyperparameters",  # the diagnostic applies them rather than recording them
+}
 
 TUNED_HYPERPARAMETERS = (
     ("optimizer", "lr"),
@@ -119,6 +129,10 @@ def _experiment_config_paths() -> List[Path]:
     for directory in EXPERIMENT_DIRS:
         paths.extend(sorted((REPO_ROOT / "configs" / directory).glob("*.yaml")))
     return paths
+
+
+def _diagnostic_config_paths() -> List[Path]:
+    return sorted((REPO_ROOT / "configs" / "diagnostics").glob("*.yaml"))
 
 
 def _tuning_config_paths() -> List[Path]:
@@ -287,6 +301,42 @@ class FairnessInvariantTests(unittest.TestCase):
                 "legacy_hyperparameters",
                 config,
                 f"{path.name} dropped its pre-Phase-2 settings; Phase 6 needs them.",
+            )
+
+    def test_diagnostics_differ_from_their_twin_only_by_early_stopping(self) -> None:
+        """The task 10 diagnostics sit outside EXPERIMENT_DIRS because they exist to
+        violate the shared stopping rule. That exemption is only sound if early
+        stopping is the single thing they change, so it is asserted here instead."""
+        paths = _diagnostic_config_paths()
+        self.assertTrue(paths, "configs/diagnostics is empty; task 10 has no condition.")
+        for path in paths:
+            twin_ref = _load_raw(path).get("diagnostic_of")
+            self.assertIsNotNone(
+                twin_ref, f"{path.name} must name the config it is a diagnostic of."
+            )
+            twin_path = REPO_ROOT / str(twin_ref)
+            self.assertTrue(twin_path.is_file(), f"{path.name} points at a missing {twin_ref}.")
+
+            diagnostic = _load(path)
+            twin = _load(twin_path)
+            self.assertNotEqual(
+                resolve_early_stopping(diagnostic),
+                resolve_early_stopping(twin),
+                f"{path.name} stops exactly like {twin_path.name}, so it measures nothing.",
+            )
+
+            # Everything else must move in lockstep, or the contrast silently picks up
+            # a second factor. Retuning the twin and forgetting this file fails here.
+            differences = {
+                key
+                for key in set(diagnostic) | set(twin)
+                if diagnostic.get(key) != twin.get(key)
+            }
+            self.assertEqual(
+                differences - DIAGNOSTIC_EXEMPT_KEYS,
+                set(),
+                f"{path.name} diverges from {twin_path.name} beyond early stopping: "
+                f"{sorted(differences - DIAGNOSTIC_EXEMPT_KEYS)}",
             )
 
 
