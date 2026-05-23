@@ -52,10 +52,14 @@ if [ "$DRAIN" = "1" ]; then
 fi
 
 # --- 3. top the studies up, one hour at a time -----------------------------
+# sbatch splits --export on commas, so passing the list through the flag would
+# assign only the first index and read the rest as variable names to forward.
+export HPO_NOW_INDICES="$INDICES"
+
 stall=0
 for (( i = 1; i <= MAX_JOBS; i++ )); do
     JID=$(sbatch --parsable \
-        --export=ALL,HPO_NOW_INDICES="$INDICES" \
+        --export=ALL \
         scripts/slurm_scripts/run_hpo_now.slurm 2>&1)
 
     if ! [[ "$JID" =~ ^[0-9]+$ ]]; then
