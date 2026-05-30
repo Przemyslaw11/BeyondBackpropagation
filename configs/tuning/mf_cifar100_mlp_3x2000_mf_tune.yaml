@@ -45,10 +45,7 @@ profiling:
 
 tuning:
   enabled: true
-  # Extended past the shared budget of 50 to probe MF's sensitivity to search.
-  # Trials 1-50 are unchanged by this, so the equal-budget comparison against the
-  # baselines is still read off the first 50; only that subset may reach configs/mf.
-  n_trials: 100
+  n_trials: 50
   direction: "maximize"
   metric: "val_accuracy"
   sampler: "TPE"
