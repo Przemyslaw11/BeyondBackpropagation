@@ -24,8 +24,11 @@ model:
 
 optimizer:
   type: "Adam"
+  lr: 0.00018792091899949145
+  weight_decay: 1.6676492206220718e-06
 
 algorithm_params:
+  aux_weight: 9.506237973739088
   log_interval: 9999
 
 logging:

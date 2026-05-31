@@ -24,8 +24,8 @@ model:
 
 algorithm_params:
   optimizer_type: "Adam"
-  lr: 0.00017277890583771544
-  weight_decay: 0.0
+  lr: 0.00027089684419387227
+  weight_decay: 7.204725563819985e-05
   log_interval: 9999
   # CIFAR training uses random crop/flip, so cached activations would go stale.
   activation_cache: recompute
