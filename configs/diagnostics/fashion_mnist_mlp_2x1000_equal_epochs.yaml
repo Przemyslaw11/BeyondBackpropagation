@@ -1,0 +1,65 @@
+# Phase 3: the equal-total-epoch condition for Fashion-MNIST rung 4.
+# See cifar10_mlp_3x2000_equal_epochs.yaml for the reasoning; the measured
+# medians here were BP 26 epochs against MF 112.
+#
+# This MF_MLP has 2 hidden layers, so MF trains 3 stages rather than 4:
+# 100 total epochs / 3 stages = 33; patience 7 holds BP's 20 percent of the cap.
+# Only max_epochs and patience move, so the epoch budget is the single factor.
+
+experiment_name: "mf_fashion_mnist_mlp_2x1000_equal_epochs"
+run_summary_dir: "results/equal_epochs"
+diagnostic_of: "configs/mf/fashion_mnist_mlp_2x1000.yaml"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "FashionMNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [1000, 1000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.0004173533352347702
+  weight_decay: 0.0003967779013101219
+  log_interval: 9999
+  activation_cache: recompute
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 7
+  max_epochs: 33
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_fashion_mnist_mlp_2x1000_equal_epochs"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
