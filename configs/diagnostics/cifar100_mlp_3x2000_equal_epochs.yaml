@@ -1,0 +1,64 @@
+# Phase 3: the equal-total-epoch condition for CIFAR-100 rung 4.
+# See cifar10_mlp_3x2000_equal_epochs.yaml for the reasoning; the measured
+# medians here were BP 42 epochs against MF 190.
+#
+# 100 total epochs / 4 stages = 25; patience 5 holds BP's 20 percent of the cap.
+# Only max_epochs and patience move, so the epoch budget is the single factor.
+
+experiment_name: "mf_cifar100_mlp_3x2000_equal_epochs"
+run_summary_dir: "results/equal_epochs"
+diagnostic_of: "configs/mf/cifar100_mlp_3x2000.yaml"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00027089684419387227
+  weight_decay: 7.204725563819985e-05
+  log_interval: 9999
+  activation_cache: recompute
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 5
+  max_epochs: 25
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_cifar100_mlp_3x2000_equal_epochs"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

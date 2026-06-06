@@ -56,6 +56,14 @@ CONFIG_FILES=(
 
     # --- Task 10 diagnostic, index 20, flat 401-420. Not a rung. ---
     "configs/diagnostics/cifar10_mlp_3x2000_legacy_es.yaml"
+
+    # --- Equal-total-epoch condition, indices 21-24, flat 421-500. Not a rung. ---
+    # Rung 4 under a total rather than a per-stage epoch cap. These write to
+    # results/equal_epochs, so they cannot collide with rung 4 in results/runs.
+    "configs/diagnostics/mnist_mlp_2x1000_equal_epochs.yaml"
+    "configs/diagnostics/fashion_mnist_mlp_2x1000_equal_epochs.yaml"
+    "configs/diagnostics/cifar10_mlp_3x2000_equal_epochs.yaml"
+    "configs/diagnostics/cifar100_mlp_3x2000_equal_epochs.yaml"
 )
 
 SEEDS=(42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61)
