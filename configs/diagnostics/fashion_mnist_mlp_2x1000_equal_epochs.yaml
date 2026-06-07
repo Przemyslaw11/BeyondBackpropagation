@@ -1,10 +1,11 @@
-# Phase 3: the equal-total-epoch condition for Fashion-MNIST rung 4.
+# Phase 3: MF at BP's realised epoch count -- the iso-compute condition.
 # See cifar10_mlp_3x2000_equal_epochs.yaml for the reasoning; the measured
 # medians here were BP 26 epochs against MF 112.
 #
-# This MF_MLP has 2 hidden layers, so MF trains 3 stages rather than 4:
-# 100 total epochs / 3 stages = 33; patience 7 holds BP's 20 percent of the cap.
-# Only max_epochs and patience move, so the epoch budget is the single factor.
+# This MF_MLP has 2 hidden layers, so MF trains 3 stages rather than 4. BP spent
+# 25.6 epochs on average: ceil(25.6 / 3) = 9, so MF trains 27 and is never given
+# less compute than BP had. Early stopping is off so the budget is spent exactly;
+# enabled and max_epochs are the only keys that differ from the rung 4 twin.
 
 experiment_name: "mf_fashion_mnist_mlp_2x1000_equal_epochs"
 run_summary_dir: "results/equal_epochs"
@@ -41,12 +42,12 @@ algorithm_params:
   activation_cache: recompute
 
 early_stopping:
-  enabled: true
+  enabled: false
   metric: "val_loss"
   mode: "min"
   min_delta: 0.0
-  patience: 7
-  max_epochs: 33
+  patience: 20
+  max_epochs: 9
 
 logging:
   level: "INFO"

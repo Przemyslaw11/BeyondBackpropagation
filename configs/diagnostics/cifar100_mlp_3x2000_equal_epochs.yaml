@@ -1,9 +1,11 @@
-# Phase 3: the equal-total-epoch condition for CIFAR-100 rung 4.
+# Phase 3: MF at BP's realised epoch count -- the iso-compute condition.
 # See cifar10_mlp_3x2000_equal_epochs.yaml for the reasoning; the measured
 # medians here were BP 42 epochs against MF 190.
 #
-# 100 total epochs / 4 stages = 25; patience 5 holds BP's 20 percent of the cap.
-# Only max_epochs and patience move, so the epoch budget is the single factor.
+# BP spent 42.9 epochs on average, over 4 stages: ceil(42.9 / 4) = 11, so MF
+# trains 44 and is never given less compute than BP had. Early stopping is off so
+# the budget is spent exactly; enabled and max_epochs are the only keys that
+# differ from the rung 4 twin.
 
 experiment_name: "mf_cifar100_mlp_3x2000_equal_epochs"
 run_summary_dir: "results/equal_epochs"
@@ -40,12 +42,12 @@ algorithm_params:
   activation_cache: recompute
 
 early_stopping:
-  enabled: true
+  enabled: false
   metric: "val_loss"
   mode: "min"
   min_delta: 0.0
-  patience: 5
-  max_epochs: 25
+  patience: 20
+  max_epochs: 11
 
 logging:
   level: "INFO"

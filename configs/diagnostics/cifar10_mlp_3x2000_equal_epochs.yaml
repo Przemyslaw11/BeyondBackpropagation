@@ -1,24 +1,20 @@
-# Phase 3: the equal-total-epoch condition for CIFAR-10 rung 4.
+# Phase 3: MF at BP's realised epoch count -- the iso-compute condition.
 #
-# The harmonised ladder gives every rung the same PER-STAGE budget: 100 epochs,
-# patience 20. BP has one stage, so it spends at most 100 epochs. MF trains its
-# stages sequentially, so on this architecture it spends at most 4 x 100. The
-# measured medians were BP 52 and MF 207, and that 4x gap is almost entirely the
-# epoch count rather than the cost of an epoch: 4.87 s/epoch for BP against
-# 4.73 s/epoch for MF.
+# The harmonised ladder gives every rung 100 epochs and patience 20 PER TRAINING
+# STAGE. BP has one stage; MF has one per hidden layer plus one, so MF's real cap
+# here is 4 x 100 and the measured medians came out BP 52 against MF 207. That
+# gap is the whole of MF's 4x wall-clock cost: an MF epoch takes 4.75 s against
+# BP's 4.87 s but draws 0.0818 Wh against 0.1038 Wh. MF is marginally faster and
+# 21 percent cheaper per epoch, and 4x more expensive per run.
 #
-# Per-stage parity and total parity are both defensible readings of "equal
-# budget" and they answer different questions. Per-stage parity asks how good MF
-# gets when each stage is trained to convergence. Total parity asks what MF
-# delivers for the same number of epochs BP is allowed. This config is the
-# second reading, fixed a priori rather than chosen after seeing the results:
-# the 100-epoch total cap is split evenly across the 4 stages of a 3-hidden-layer
-# MF_MLP, and patience keeps BP's ratio of 20 percent of the cap.
+# So this condition gives MF the same total epochs BP actually spent. The budget
+# is ceil(BP's mean epoch count / MF's stage count), which means rounding can
+# only ever hand MF more epochs than BP had, never fewer, and an energy saving
+# cannot be an artefact of a smaller budget. BP is not rerun: it keeps its early
+# stopping and is never pushed past the point it chose to stop.
 #
-# Only max_epochs and patience move. metric, mode and min_delta stay at the
-# harmonised values so the epoch budget is the single factor, which is what
-# separates this from cifar10_mlp_3x2000_legacy_es.yaml: that one restores the
-# whole pre-Phase-2 rule including min_delta.
+# Early stopping is off so the budget is spent exactly rather than approached.
+# enabled and max_epochs are the only keys that differ from the rung 4 twin.
 #
 # run_summary_dir keeps these out of results/runs, where analyze_ablation_ladder.py
 # would key them to rung 4's (algorithm, cache) slot and overwrite it.
@@ -57,14 +53,14 @@ algorithm_params:
   log_interval: 9999
   activation_cache: recompute
 
-# 100 total epochs / 4 stages = 25; patience 5 holds BP's 20 percent of the cap.
+# BP spent 52.0 epochs here, over 4 stages: ceil(52.0 / 4) = 13, so MF trains 52.
 early_stopping:
-  enabled: true
+  enabled: false
   metric: "val_loss"
   mode: "min"
   min_delta: 0.0
-  patience: 5
-  max_epochs: 25
+  patience: 20
+  max_epochs: 13
 
 logging:
   level: "INFO"
