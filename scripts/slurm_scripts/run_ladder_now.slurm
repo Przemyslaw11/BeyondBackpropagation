@@ -57,9 +57,10 @@ CONFIG_FILES=(
     # --- Task 10 diagnostic, index 20, flat 401-420. Not a rung. ---
     "configs/diagnostics/cifar10_mlp_3x2000_legacy_es.yaml"
 
-    # --- Equal-total-epoch condition, indices 21-24, flat 421-500. Not a rung. ---
-    # Rung 4 under a total rather than a per-stage epoch cap. These write to
-    # results/equal_epochs, so they cannot collide with rung 4 in results/runs.
+    # --- Iso-compute condition, indices 21-24, flat 421-500. Not a rung. ---
+    # Rung 4 given the total epoch count BP actually spent, rather than BP's
+    # per-stage cap. Writes to results/equal_epochs, so it cannot collide with
+    # rung 4 in results/runs. BP is not rerun and keeps its early stopping.
     "configs/diagnostics/mnist_mlp_2x1000_equal_epochs.yaml"
     "configs/diagnostics/fashion_mnist_mlp_2x1000_equal_epochs.yaml"
     "configs/diagnostics/cifar10_mlp_3x2000_equal_epochs.yaml"
