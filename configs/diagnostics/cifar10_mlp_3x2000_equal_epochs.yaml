@@ -13,8 +13,9 @@
 # cannot be an artefact of a smaller budget. BP is not rerun: it keeps its early
 # stopping and is never pushed past the point it chose to stop.
 #
-# Early stopping is off so the budget is spent exactly rather than approached.
-# enabled and max_epochs are the only keys that differ from the rung 4 twin.
+# Early stopping stays on but cannot fire within the budget, so the budget is
+# spent exactly while MF keeps the per-epoch validation pass BP also runs.
+# patience and max_epochs are the only keys that differ from the rung 4 twin.
 #
 # run_summary_dir keeps these out of results/runs, where analyze_ablation_ladder.py
 # would key them to rung 4's (algorithm, cache) slot and overwrite it.
@@ -53,13 +54,19 @@ algorithm_params:
   log_interval: 9999
   activation_cache: recompute
 
+# Early stopping is left ON but cannot fire: patience equals the budget, and the
+# first epoch always sets the baseline, so the counter tops out one short. That
+# spends the budget exactly while keeping the per-epoch validation pass, which
+# BP runs unconditionally -- disabling early stopping would skip it here and
+# credit MF for work BP does.
+#
 # BP spent 52.0 epochs here, over 4 stages: ceil(52.0 / 4) = 13, so MF trains 52.
 early_stopping:
-  enabled: false
+  enabled: true
   metric: "val_loss"
   mode: "min"
   min_delta: 0.0
-  patience: 20
+  patience: 13
   max_epochs: 13
 
 logging:

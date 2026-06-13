@@ -3,9 +3,11 @@
 # medians here were BP 42 epochs against MF 190.
 #
 # BP spent 42.9 epochs on average, over 4 stages: ceil(42.9 / 4) = 11, so MF
-# trains 44 and is never given less compute than BP had. Early stopping is off so
-# the budget is spent exactly; enabled and max_epochs are the only keys that
-# differ from the rung 4 twin.
+# trains 44 and is never given less compute than BP had. Early stopping stays on
+# but cannot fire -- patience equals the budget and the first epoch sets the
+# baseline -- so the budget is spent exactly while MF keeps the per-epoch
+# validation pass BP runs unconditionally. patience and max_epochs are the only
+# keys that differ from the rung 4 twin.
 
 experiment_name: "mf_cifar100_mlp_3x2000_equal_epochs"
 run_summary_dir: "results/equal_epochs"
@@ -42,11 +44,11 @@ algorithm_params:
   activation_cache: recompute
 
 early_stopping:
-  enabled: false
+  enabled: true
   metric: "val_loss"
   mode: "min"
   min_delta: 0.0
-  patience: 20
+  patience: 11
   max_epochs: 11
 
 logging:
