@@ -4,8 +4,11 @@
 #
 # This MF_MLP has 2 hidden layers, so MF trains 3 stages rather than 4. BP spent
 # 25.4 epochs on average: ceil(25.4 / 3) = 9, so MF trains 27 and is never given
-# less compute than BP had. Early stopping is off so the budget is spent exactly;
-# enabled and max_epochs are the only keys that differ from the rung 4 twin.
+# less compute than BP had. Early stopping stays on but cannot fire -- patience
+# equals the budget and the first epoch sets the baseline -- so the budget is
+# spent exactly while MF keeps the per-epoch validation pass BP runs
+# unconditionally. patience and max_epochs are the only keys that differ from
+# the rung 4 twin.
 
 experiment_name: "mf_mnist_mlp_2x1000_equal_epochs"
 run_summary_dir: "results/equal_epochs"
@@ -42,11 +45,11 @@ algorithm_params:
   activation_cache: recompute
 
 early_stopping:
-  enabled: false
+  enabled: true
   metric: "val_loss"
   mode: "min"
   min_delta: 0.0
-  patience: 20
+  patience: 9
   max_epochs: 9
 
 logging:
