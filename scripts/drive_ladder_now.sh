@@ -18,7 +18,12 @@ cd "$REPO" || exit 1
 
 LOGDIR="$REPO/slurm_logs/phase3"
 mkdir -p "$LOGDIR"
-LOG="$LOGDIR/ladder_now_driver.log"
+
+# Which pilot to drive. The top-up runner (task 11) has the same submit/wait/resubmit
+# shape and the same PILOT_SUMMARY contract, so it only needs a different script name.
+SCRIPT=${LADDER_NOW_SCRIPT:-scripts/slurm_scripts/run_ladder_now.slurm}
+JOBNAME=${LADDER_NOW_JOBNAME:-L_now}
+LOG="$LOGDIR/${JOBNAME}_driver.log"
 
 START=${LADDER_NOW_START:-1}
 END=${LADDER_NOW_END:-240}
@@ -27,13 +32,13 @@ STALL_LIMIT=3
 
 log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
 
-log "driver starting: indices ${START}-${END}, at most ${MAX_JOBS} pilots"
+log "driver starting: ${SCRIPT} indices ${START}-${END}, at most ${MAX_JOBS} pilots"
 
 stall=0
 for (( i = 1; i <= MAX_JOBS; i++ )); do
     JID=$(sbatch --parsable \
-        --export=ALL,LADDER_NOW_START="$START",LADDER_NOW_END="$END" \
-        scripts/slurm_scripts/run_ladder_now.slurm 2>&1)
+        --export=ALL,LADDER_NOW_START="$START",LADDER_NOW_END="$END",TOPUP_NOW_START="$START",TOPUP_NOW_END="$END" \
+        "$SCRIPT" 2>&1)
 
     if ! [[ "$JID" =~ ^[0-9]+$ ]]; then
         log "submit rejected (${JID//$'\n'/ }); retrying in 120s"
@@ -46,7 +51,7 @@ for (( i = 1; i <= MAX_JOBS; i++ )); do
         sleep 60
     done
 
-    SUMMARY=$(grep -h PILOT_SUMMARY "$LOGDIR/L_now-${JID}.out" 2>/dev/null | tail -1)
+    SUMMARY=$(grep -h PILOT_SUMMARY "$LOGDIR/${JOBNAME}-${JID}.out" 2>/dev/null | tail -1)
     log "pilot ${JID} finished: ${SUMMARY:-<no summary written>}"
 
     DONE_N=$(sed -n 's/.*completed=\([0-9]\{1,\}\).*/\1/p' <<< "$SUMMARY")
