@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 import pynvml
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from tqdm import tqdm
@@ -650,6 +651,7 @@ def evaluate_mf_model(
     model.eval()
     model.to(device)
     total_correct, total_samples = 0, 0
+    loss_sum = 0.0
 
     num_layers = model.num_hidden_layers
     last_activation_index = num_layers
@@ -688,6 +690,14 @@ def evaluate_mf_model(
         total_correct += (predicted_labels == labels).sum().item()
         total_samples += labels.size(0)
 
+        # Goodness scores are the only class-conditional score MF produces, and are
+        # the same tensor the prediction argmax reads, so the reported test loss is
+        # cross-entropy over them. This mirrors evaluate_ff_model.
+        loss_sum += F.cross_entropy(goodness_scores, labels, reduction="sum").item()
+
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
-    logger.info(f"MF Evaluation Results (MLP): Accuracy: {accuracy:.2f}%")
-    return {"eval_accuracy": accuracy, "eval_loss": float("nan")}
+    eval_loss = loss_sum / total_samples if total_samples > 0 else float("nan")
+    logger.info(
+        f"MF Evaluation Results (MLP): Accuracy: {accuracy:.2f}%, Loss: {eval_loss:.4f}"
+    )
+    return {"eval_accuracy": accuracy, "eval_loss": eval_loss}
