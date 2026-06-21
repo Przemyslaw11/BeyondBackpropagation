@@ -627,6 +627,9 @@ def train_mf_model(
                 checkpoint_dir=checkpoint_dir,
             )
 
+    config.setdefault("_run_stats", {})[
+        "epochs_completed"
+    ] = total_epochs_trained_all_layers
     logger.info(
         f"Finished all layer-wise MF training. Total Epochs (Sum): "
         f"{total_epochs_trained_all_layers}"

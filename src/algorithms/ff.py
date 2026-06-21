@@ -536,6 +536,7 @@ def train_ff_model(
             )
 
     total_training_time = time.time() - run_start_time
+    config.setdefault("_run_stats", {})["epochs_completed"] = epoch + 1
     logger.info(
         "Finished Forward-Forward (Hinton) training loop. Total time: "
         f"{format_time(total_training_time)}"
