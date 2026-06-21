@@ -465,6 +465,7 @@ def train_bp_model(
                 logger.error(f"Failed to step scheduler: {e}", exc_info=True)
 
     total_training_time = time.time() - start_time
+    config.setdefault("_run_stats", {})["epochs_completed"] = epoch + 1
     logger.info(
         "Finished standard Backpropagation training. Total time: "
         f"{format_time(total_training_time)}"

@@ -453,6 +453,22 @@ def _finalize_run(
         results["peak_process_rss_mib"] = monitor.get_peak("process_rss_mib")
         results["peak_gpu_util_percent"] = monitor.get_peak("gpu_util_percent")
 
+    # Totals depend on where early stopping fires; the per-epoch rates do not, so
+    # they are the figures that survive a change of stopping rule. For MF, FF and
+    # CaFo the count is summed over stages, i.e. optimiser epochs of actual work.
+    epochs = config.get("_run_stats", {}).get("epochs_completed")
+    results["epochs_completed"] = epochs if epochs else float("nan")
+    if epochs:
+        results["gpu_energy_wh_per_epoch"] = (
+            results.get("total_gpu_energy_wh", float("nan")) / epochs
+        )
+        results["training_sec_per_epoch"] = (
+            results.get("training_duration_sec", float("nan")) / epochs
+        )
+    else:
+        results["gpu_energy_wh_per_epoch"] = float("nan")
+        results["training_sec_per_epoch"] = float("nan")
+
     if nvml_active and gpu_handle and (mem_info := get_gpu_memory_usage(gpu_handle)):
         logger.info(f"GPU Mem (End): {mem_info[0]:.2f} / {mem_info[1]:.2f} MiB")
 
@@ -480,6 +496,13 @@ def _finalize_run(
             "total_gpu_energy_joules", float("nan")
         ),
         "final/total_gpu_energy_wh": results.get("total_gpu_energy_wh", float("nan")),
+        "final/epochs_completed": results.get("epochs_completed", float("nan")),
+        "final/gpu_energy_wh_per_epoch": results.get(
+            "gpu_energy_wh_per_epoch", float("nan")
+        ),
+        "final/training_sec_per_epoch": results.get(
+            "training_sec_per_epoch", float("nan")
+        ),
         "final/estimated_fwd_gflops": results.get("estimated_fwd_gflops", float("nan")),
         "final/estimated_bp_update_gflops": results.get(
             "estimated_bp_update_gflops", float("nan")

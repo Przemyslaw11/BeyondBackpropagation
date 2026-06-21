@@ -576,7 +576,28 @@ wall-time delta between `recompute` and the two cache strategies on one config. 
 memory and peak RSS for all three strategies.
 
 ---
-## PHASE 3 — Ablation ladder: implementation and critical experiments
+## PHASE 3 — Ablation ladder: implementation and critical experiments  [COMPLETE 2026-09-11]
+
+> **STATUS: EXECUTED. Do not re-run.** 712 runs in `results/runs`, 16 HPO studies at 50/50
+> trials, analysis pre-registered in `f397266` before any result was inspected.
+> **Headline outcomes:**
+> - **R3's hypothesis is REFUTED.** Adding matched layer-wise auxiliary losses to BP *hurts*
+>   (-1.65 pp CIFAR-10, -1.06 pp CIFAR-100). MF beats that control by **+5.6 / +6.1 pp**.
+>   The gain is attributable to gradient locality, not to localised objectives.
+> - Decomposition (energy/time): auxiliary supervision and readout are minor; **locality
+>   accounts for ~220-250 pp of the energy increase**. Caching buys nothing.
+> - **Per-epoch cost is the protocol-independent result**: MF ~62 W vs BP ~77 W at equal
+>   throughput on 3x2000; 16-21% less Wh/epoch. Advantage grows with width.
+> - Iso-compute (corrected, validation ON): **CIFAR-100 12.5% less energy + 24.6% less
+>   memory at EQUIVALENT accuracy**; CIFAR-10 19.9% / 27.5% for -1.11 pp.
+> - **Sigma is 0.284 pooled, up to 0.43 on 3x2000.** Published 0.28 understates CIFAR;
+>   thesis 0.05 is wrong by 5-8x.
+> - Activation cache proven **bit-exact** on an A100 (max|dloss| = max|dweight| = 0).
+> - Coverage 400/480 on the ladder: rungs 5-6 are **structurally impossible on CIFAR**
+>   because random crop/flip make a cached activation stale by construction. Report honestly.
+>
+> **Do NOT put "MF needed only 13 trials" in the paper** — refuted; MF gained +1.44 pp
+> between trial 13 and 50, and CIFAR-10's best landed on the final trial.
 
 <SHARED CONTEXT>
 
@@ -693,22 +714,135 @@ statistically equivalent to MF — this determines whether the paper's framing m
 
 <SHARED CONTEXT>
 
-### Preconditions
-Phase 2 merged and green. Phase 3 may run concurrently — this phase touches different
-configs and does not depend on the ladder.
+### Preconditions — ALL MET. Phases 0, 1, 2 and 3 are COMPLETE as of 2026-09-11.
+You are starting with a working, instrumented, statistically validated pipeline. Nothing
+blocks you. Read the inherited-state block below before touching anything: several of the
+findings there will silently corrupt your results if you do not know them.
 
+---
+### INHERITED STATE — read this before your first command
+
+**Repository.** Local `main` and the Athena clone are both at `4373312`, identical, clean.
+There are **24 commits that exist ONLY on those two machines.** `git push` to GitHub fails
+with 403 (`Permission to Przemyslaw11/BeyondBackpropagation.git denied to pspyra11` — the
+credential is a different account from the repo owner). **Raise this with the user before
+you generate more data;** the camera-ready, 712 run summaries and all code have exactly two
+copies, one of which is a cluster home directory with a 10 GiB quota that has already
+overflowed once. Ask; do not attempt credential surgery yourself.
+
+To move commits laptop -> cluster, use the bundle (works reliably, used ~10 times):
+```bash
+REMOTE=$(ssh athena 'cd ~/BeyondBackpropagation && git rev-parse HEAD')
+git bundle create /tmp/bbp_sync.bundle main --not "$REMOTE"
+scp -q /tmp/bbp_sync.bundle athena:~/bbp_sync.bundle
+ssh athena 'cd ~/BeyondBackpropagation && git pull -q ~/bbp_sync.bundle main && rm -f ~/bbp_sync.bundle'
+```
+
+**Existing data — do not disturb.**
+| Path | Contents | Status |
+|---|---|---|
+| `results/runs/` | **712** ladder JSONs | Phase 3 output. **NEVER let a non-ladder run write here** — the analysis globs `**/*.json` and would silently absorb your runs. |
+| `results/equal_epochs/` | 80 iso-compute runs | analysed, keep |
+| `results/equal_epochs_noval/` | 80 confounded runs | kept deliberately as evidence |
+| `results/ladder_analysis.json` | pre-registered analysis over all 712 | current |
+Every config you run must set its own `run_summary_dir`. Check it before submitting.
+
+**Phase 3 findings that will bite you in Phase 4:**
+
+1. **`early_stopping.max_epochs` is PER STAGE, not per run.** MF has `hidden_layers + 1`
+   stages, so a nominal cap of 100 was really 300-400. This produced an apparent "4x
+   slowdown" that was entirely epoch count. **FF and CaFo are also multi-stage** (FF trains
+   layer by layer, CaFo block by block), so the same multiplication applies to them and
+   **directly inflates the 13x FF time claim you are asked to re-measure in task 2.**
+   Before running FF or CaFo finals, measure the realised epoch count per stage and decide
+   explicitly whether you are comparing at per-stage parity or iso-compute. Report BOTH.
+   Choosing the protocol after seeing which flatters a method is exactly the analytic
+   flexibility the pre-registration forbids.
+2. **Disabling early stopping can disable validation itself.** `src/algorithms/mf.py:349`
+   guards the validation *pass* with `if es_enabled and val_loader is not None:`, whereas
+   `src/baselines/bp.py:368` guards only the stopping *decision* with `if es_enabled:`.
+   Setting `enabled: false` therefore made MF skip validation while BP still paid for it,
+   fabricating an energy saving. **Check whether `ff.py` and `cafo.py` have the same
+   coupling before you disable anything.** The safe idiom is `enabled: true` with
+   `patience == max_epochs`, which cannot fire.
+3. **Pooled sigma of test accuracy is 0.284, not 0.28-as-a-safe-number, and reaches 0.43
+   on the 3x2000 MLPs.** The thesis figure of 0.05 is wrong by 5-8x. At n = 5 the 95% CI
+   half-width is roughly +/-0.35 pp; at n = 7 roughly +/-0.26 pp. **You therefore cannot
+   certify parity at these seed counts** — n = 5-7 supports large-effect claims (FF's
+   accuracy deficit, the time ratio) and nothing near equivalence. If a Phase 4 comparison
+   lands near zero, report it as underpowered and say so. Never report a non-significant
+   p-value as evidence of equality.
+4. **Per-epoch power is the protocol-independent result.** MF draws ~62 W against BP's
+   ~77 W at equal throughput on 3x2000 MLPs. Wh/epoch and s/epoch survive any
+   early-stopping choice; totals do not. Emit both for every Phase 4 run.
+5. `test_loss` was `nan` for all MF runs until `4373312`; it now reports cross-entropy over
+   the goodness scores. The 712 existing runs keep `nan`. No table or figure reads it.
+
+**Cluster operations — learned the hard way, all verified.**
+```bash
+ssh athena                       # alias -> plgspyra@athena.cyfronet.pl, key-based
+cd ~/BeyondBackpropagation
+module load Python/3.10.4        # add CUDA/12.4.0 for GPU jobs
+source venv/bin/activate
+export PYTHONPATH=.              # required; imports fail without it
+```
+- Grant `-A plglscclass26-gpu-a100`. ~3600 GPU-h remained at Phase 0; Phase 4 needs ~49.
+- **`plgrid-gpu-a100` has FairShare pinned at 0** — jobs queue indefinitely. In practice
+  **`plgrid-now` is the only partition that runs**: `MaxSubmitJobsPU=1` (ONE job queued,
+  ever), `MaxTime=1h`, but it starts in seconds. Long campaigns must be chunked into
+  <1 h jobs and chained by a driver that submits the next only when the previous exits.
+  `scripts/drive_ladder_now.sh` already does this — it takes `LADDER_NOW_SCRIPT` and
+  `LADDER_NOW_JOBNAME`, so point it at your own runner rather than writing a new driver.
+  `scripts/slurm_scripts/run_topup_now.slurm` is the simplest example of a runner: an
+  explicit (config, seed) list, a wall-clock budget check, skip-if-exists, and a
+  `PILOT_SUMMARY completed=N skipped=N failed=N` line the driver greps.
+- Launch a detached driver like this — **the `{ ... & }` braces are required**, a bare `&`
+  backgrounds the whole `cd &&` chain and the rest runs in `$HOME`:
+  ```bash
+  ssh athena 'cd ~/BeyondBackpropagation && export VARS... && \
+    { nohup setsid bash scripts/drive_ladder_now.sh > /dev/null 2>&1 < /dev/null & } ; \
+    sleep 8; pgrep -x -f "bash scripts/drive_ladder_now.sh" >/dev/null \
+    && echo "DRIVER ALIVE" || echo "DRIVER DEAD"'
+  ```
+- `/tmp` on the login node is **not** shared with compute nodes — `srun /tmp/x.sh` fails
+  with `execve(): No such file or directory`. Put helper scripts in `$HOME` or the repo.
+- `srun` output dies with the SSH connection. For anything whose result matters use
+  `sbatch` with `#SBATCH -o slurm_logs/.../%x-%j.out` and read the file afterwards.
+- `pgrep -f script.sh` matches any shell merely mentioning it; use `pgrep -x -f "bash path"`.
+- Python on the cluster is **3.10**: f-string expressions cannot contain backslashes. Use
+  `%`-formatting inside heredocs.
+- Local: `.venv-local/bin/python` (3.12, torch 2.4.0, **no CUDA**) for tests and analysis.
+  The repo's `.venv` is a stub — do not use it. macOS has no `timeout`; in zsh a bare `==`
+  triggers equals-expansion, so quote it.
+
+---
 ### Seed policy
 n = 7 for FF and the remaining BP MLP baselines. n = 5 for CaFo and the CNN baselines.
-(The ladder is n = 20 and is Phase 3's responsibility.)
+(The ladder is n = 20 and was Phase 3's responsibility — do not re-run it.)
 Rationale: two reviewers called three runs insufficient. FF's claims are large-effect
-superiority (d ~ 6.6 on accuracy, ~13x on time), so 7 is ample there.
+superiority (d ~ 6.6 on accuracy, ~13x on time), so 7 is ample **for those effects only**
+— see inherited finding 3 for what these counts cannot support.
 
-### Tasks
-1. Re-tune and re-run FF at n = 7. Four configs. The 13x-slower claim is a headline and is
+### Tasks — DO TASK 1 FIRST; IT IS A STOP GATE
+1. **REPRODUCTION CHECK (was task 5 — promoted, because it gates ~49 GPU-h of tuning).**
+   Re-run ONE published configuration under the ORIGINAL (pre-Phase-2) settings and confirm
+   it reproduces the accepted paper's numbers within CI. This proves the from-scratch
+   pipeline is not silently different from the one that produced the accepted results.
+   **If it does not reproduce, STOP and report before proceeding.**
+   You are not starting cold: Phase 3's legacy early-stopping diagnostic already re-ran
+   CIFAR-10 3x2000 MF under the old rule at n = 20 and obtained **61.717% accuracy,
+   4.228 Wh**, against the same-seed BP baseline's **62.471%, 5.393 Wh** — i.e. MF using
+   **21.6% less energy for 0.75 pp less accuracy**, which is the published claim
+   reproduced. Treat that as strong prior evidence, not as the check itself. Use
+   `configs/diagnostics/cifar10_mlp_3x2000_legacy_es.yaml` as the model for how a legacy
+   config is expressed, and note it writes to its own `run_summary_dir`.
+2. Re-tune and re-run FF at n = 7. Four configs. The 13x-slower claim is a headline and is
    affected by the early-stopping metric mismatch fixed in Phase 2 (FF previously stopped
    on ACCURACY with min_delta 0.01 and patience 20, a far laxer rule than BP's loss-based
    min_delta 0.0). Expect the gap to move. ~13 GPU-h tuning + ~5 GPU-h finals.
-2. Re-tune and re-run CaFo: 8 configs (4 Rand-CE + 4 DFA-CE), 30 trials, n = 5.
+   **Apply inherited finding 1 here**: FF is multi-stage, so report per-stage AND
+   iso-compute, plus Wh/epoch and s/epoch.
+3. Re-tune and re-run CaFo: 8 configs (4 Rand-CE + 4 DFA-CE), 30 trials, n = 5.
    ~24 GPU-h tuning + ~10 GPU-h finals. This replaces the thesis table back-ported in
    Phase 1.
    NOTE: three CaFo configs were never independently tuned — cafodfa_cifar100_cnn_3block
@@ -716,44 +850,64 @@ superiority (d ~ 6.6 on accuracy, ~13x on time), so 7 is ample there.
    cafo/cifar100_cnn_3block shares predictor_lr and predictor_weight_decay with
    cafo/cifar10_cnn_3block. The Phase 2 per-study Optuna seed fix should prevent
    recurrence; verify the new values differ.
-3. Re-tune and re-run the BP CNN baselines and the remaining BP MLP baselines at n = 5-7.
+4. Re-tune and re-run the BP CNN baselines and the remaining BP MLP baselines at n = 5-7.
    ~12 GPU-h tuning + ~6 GPU-h finals.
    NOTE: bp_baselines/mnist_mlp_4x2000_bp.yaml is byte-identical to
    mnist_mlp_3x1000_bp.yaml (lr 0.0001329291894316216, wd 0.0007114476009343421) — the
    4x2000 baseline was never independently tuned. Verify the new values differ.
-4. Export the historical W&B run histories from project
+5. Export the historical W&B run histories from project
    `przspyra11/BeyondBackpropagation` via the wandb API into a local archive. These are
    NOT a data source for the camera-ready — they serve two verification purposes:
    confirming that the paper's existing hardware traces are W&B system panels rather than
    NVML, and cross-checking that the from-scratch pipeline reproduces the published
-   numbers.
-5. REPRODUCTION CHECK: re-run ONE published configuration under the ORIGINAL (pre-Phase-2)
-   settings and confirm it reproduces the accepted paper's numbers within CI. This proves
-   the from-scratch pipeline is not silently different from the one that produced the
-   accepted results. If it does not reproduce, STOP and report before proceeding.
+   numbers. **Phase 5 also depends on this**: the per-epoch convergence curves it must
+   rebuild live only in W&B, so its "byte-identical PDFs from the same inputs" criterion
+   is unachievable until this archive exists locally. Do not defer it.
 
 ### Constraints
-- Use the Phase 2 harmonised protocol for all new runs. The only exception is task 5,
+- Use the Phase 2 harmonised protocol for all new runs. The only exception is task 1,
   which deliberately uses the legacy settings.
-- Do NOT re-tune the ladder rungs — that is Phase 3's job and duplicating it wastes
-  ~13 GPU-h.
-- Respect the 8-hour SLURM wall clock; chunk the tuning campaigns accordingly.
+- Do NOT re-tune the ladder rungs — that was Phase 3's job and duplicating it wastes
+  ~13 GPU-h. Do NOT write into `results/runs/`.
+- Do NOT alter the pre-registered constants in `scripts/analyze_ablation_ladder.py`.
+- Respect the SLURM wall clock; on `plgrid-now` that means 1 h, so chunk accordingly.
 
 ### Fallback if the A100 queue is contended
-HPO is the bottleneck (~62 GPU-h across Phases 3 and 4, on the critical path in weeks
-2-4). The designated cut is CaFo re-tuning (~24 GPU-h): keep the thesis hyperparameters
-for CaFo only, disclosed in a footnote. CaFo is not a headline claim and the Phase 1
-back-ported table already satisfies reviewer R3b. Do NOT cut FF or the ladder.
+HPO is the bottleneck (~49 GPU-h remaining, on the critical path). The designated cut is
+CaFo re-tuning (~24 GPU-h): keep the thesis hyperparameters for CaFo only, disclosed in a
+footnote. CaFo is not a headline claim and the Phase 1 back-ported table already satisfies
+reviewer R3b. Do NOT cut FF, the reproduction check, or the W&B export.
+
+### Working guidelines
+- **Pre-flight every campaign**: confirm ZERO pre-existing summary JSONs in the target
+  directory. Every runner has skip-if-exists, so a stale file is silently adopted as a
+  result. Confirm the queue is empty and no driver is already running.
+- **Verify locally before submitting.** `PYTHONPATH=. .venv-local/bin/python -m pytest
+  tests/ -q` must stay green (73 passed at handover), and configs should be resolved with
+  `load_config` + `resolve_early_stopping` locally first. A typo costs a queue round trip.
+- **Prefer `sbatch` over `srun`,** always with an explicit `-o` path.
+- Poll progress by counting result JSONs, not by reading scrollback — `get_terminal_output`
+  on a backgrounded terminal returns stale buffer contents.
+- Commit in small, well-described units and bundle-sync to the cluster before launching.
+- A prediction that misses by more than ~5x in the direction that flatters your method is
+  a confound, not luck. Stop and find it. That heuristic caught the validation-skip bug.
 
 ### Acceptance criteria
+- The reproduction check in task 1 lands within CI of the published numbers, or the phase
+  stops.
 - Every config's new hyperparameters differ from every other config's, except where
   intentional and recorded in the test_fairness_invariants.py opt-out list.
-- All runs emit the extended per-run CSV from Phase 2.
-- The reproduction check in task 5 lands within CI of the published numbers.
+- All runs emit the extended per-run CSV from Phase 2 (power, GPU memory, utilisation,
+  temperature, SM clock, process RSS) plus Wh/epoch and s/epoch.
+- No run writes into `results/runs/`; the ladder set stays at 712.
+- `rtk pytest tests/` still green at the end.
 
 ### Report back
-Old versus new hyperparameters for every re-tuned config. The reproduction-check result.
-How much FF's time gap moved after early-stopping harmonisation.
+The reproduction-check result FIRST, with an explicit reproduce / does-not-reproduce
+verdict. Old versus new hyperparameters for every re-tuned config, with a line confirming
+no two configs collide. How much FF's time gap moved after early-stopping harmonisation,
+reported under BOTH per-stage parity and iso-compute, with Wh/epoch and s/epoch alongside.
+Any comparison your seed count cannot resolve, named as underpowered rather than equal.
 
 ---
 ## PHASE 5 — Plotting pipeline

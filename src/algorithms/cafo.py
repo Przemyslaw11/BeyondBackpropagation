@@ -740,6 +740,9 @@ def train_cafo_model(
 
         current_block_input_fn = create_next_input_fn(i, current_block_input_fn)
 
+    config.setdefault("_run_stats", {})[
+        "epochs_completed"
+    ] = total_epochs_trained_all_predictors
     logger.info(
         f"Finished all layer-wise CaFo predictor training. Total Epochs Trained "
         f"(Sum): {total_epochs_trained_all_predictors}"

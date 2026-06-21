@@ -353,6 +353,7 @@ def train_deep_supervised_model(
             )
             break
 
+    config.setdefault("_run_stats", {})["epochs_completed"] = epoch + 1
     logger.info(
         f"{log_prefix} training finished in {format_time(time.time() - start_time)}."
     )
