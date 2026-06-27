@@ -1,0 +1,6 @@
+# Phase 4, task 1: the reproduction check.
+#
+# Seeds 42, 123 and 7 are the ones the accepted paper reports, so the comparison is
+# against the same three draws rather than three fresh ones.
+configs/reproduction/cifar10_mlp_3x2000_mf_published.yaml 42,123,7
+configs/reproduction/cifar10_mlp_3x2000_bp_published.yaml 42,123,7
