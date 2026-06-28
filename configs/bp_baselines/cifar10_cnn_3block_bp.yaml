@@ -1,4 +1,5 @@
 experiment_name: bp_baseline_cifar10_cnn_3block
+run_summary_dir: results/phase4
 algorithm:
   name: BP
 data:
