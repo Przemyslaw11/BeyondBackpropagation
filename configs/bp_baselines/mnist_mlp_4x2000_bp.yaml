@@ -1,4 +1,5 @@
 experiment_name: bp_mnist_mlp_4x2000
+run_summary_dir: results/phase4
 algorithm:
   name: BP
 data:
