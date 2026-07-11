@@ -1,0 +1,19 @@
+# Phase 4 task 3 and the CNN half of task 4. n = 5, seeds 42-46.
+# BP last: if the queue runs out, the CaFo numbers this phase exists to replace
+# are the ones already on disk, whereas the BP comparator still has its published
+# value to fall back on.
+
+configs/cafo/mnist_cnn_3block.yaml 42,43,44,45,46
+configs/cafo/fashion_mnist_cnn_3block.yaml 42,43,44,45,46
+configs/cafo/cifar10_cnn_3block.yaml 42,43,44,45,46
+configs/cafo/cifar100_cnn_3block.yaml 42,43,44,45,46
+
+configs/cafo/cafodfa_mnist_cnn_3block.yaml 42,43,44,45,46
+configs/cafo/cafodfa_fashion_mnist_cnn_3block.yaml 42,43,44,45,46
+configs/cafo/cafodfa_cifar10_cnn_3block.yaml 42,43,44,45,46
+configs/cafo/cafodfa_cifar100_cnn_3block.yaml 42,43,44,45,46
+
+configs/bp_baselines/mnist_cnn_3block_bp.yaml 42,43,44,45,46
+configs/bp_baselines/fashion_mnist_cnn_3block_bp.yaml 42,43,44,45,46
+configs/bp_baselines/cifar10_cnn_3block_bp.yaml 42,43,44,45,46
+configs/bp_baselines/cifar100_cnn_3block_bp.yaml 42,43,44,45,46
