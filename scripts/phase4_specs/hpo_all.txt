@@ -1,0 +1,31 @@
+# Phase 4 hyperparameter searches, in the order they must survive a queue famine.
+# FF first (task 2, headline 13x claim), then the BP comparators (task 4), then
+# CaFo (task 3), which is the designated cut if the A100 queue stays contended.
+# Select a campaign with PHASE4_HPO_START / PHASE4_HPO_END.
+
+# 1-4  FF, 50 trials
+configs/tuning/ff_mnist_mlp_3x1000_ADAMW_tune.yaml
+configs/tuning/ff_mnist_mlp_3x1000_SGD_tune.yaml
+configs/tuning/ff_mnist_mlp_4x2000_tune.yaml
+configs/tuning/ff_fashion_mnist_mlp_4x2000_tune.yaml
+
+# 5-7  BP MLP baselines, 50 trials to match FF
+configs/tuning/bp_mnist_mlp_3x1000_tune.yaml
+configs/tuning/bp_mnist_mlp_4x2000_tune.yaml
+configs/tuning/bp_fashion_mnist_mlp_4x2000_tune.yaml
+
+# 8-11  BP CNN baselines, 30 trials to match CaFo
+configs/tuning/bp_mnist_cnn_3block_tune.yaml
+configs/tuning/bp_fashion_mnist_cnn_3block_tune.yaml
+configs/tuning/bp_cifar10_cnn_3block_tune.yaml
+configs/tuning/bp_cifar100_cnn_3block_tune.yaml
+
+# 12-19  CaFo, 30 trials. Rand-CE first, then DFA-CE.
+configs/tuning/cafo_mnist_cnn_3block_tune.yaml
+configs/tuning/cafo_fashion_mnist_cnn_3block_tune.yaml
+configs/tuning/cafo_cifar10_cnn_3block_tune.yaml
+configs/tuning/cafo_cifar100_cnn_3block_tune.yaml
+configs/tuning/cafo_cafodfa_mnist_cnn_3block_tune.yaml
+configs/tuning/cafo_cafodfa_fashion_mnist_cnn_3block_tune.yaml
+configs/tuning/cafo_cafodfa_cifar10_cnn_3block_tune.yaml
+configs/tuning/cafo_cafodfa_cifar100_cnn_3block_tune.yaml

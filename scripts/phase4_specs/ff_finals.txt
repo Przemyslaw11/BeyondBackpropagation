@@ -1,0 +1,13 @@
+# Phase 4 task 2 and the MLP half of task 4, run together because the 13x time
+# claim is a ratio: FF and its BP comparator have to come from the same campaign
+# or the comparison inherits whatever changed between two campaigns.
+# n = 7, seeds 42-48, matching the ladder's consecutive-from-42 convention.
+
+configs/ff/mnist_mlp_3x1000_ADAMW.yaml 42,43,44,45,46,47,48
+configs/ff/mnist_mlp_3x1000_SGD.yaml 42,43,44,45,46,47,48
+configs/ff/mnist_mlp_4x2000.yaml 42,43,44,45,46,47,48
+configs/ff/fashion_mnist_mlp_4x2000.yaml 42,43,44,45,46,47,48
+
+configs/bp_baselines/mnist_mlp_3x1000_bp.yaml 42,43,44,45,46,47,48
+configs/bp_baselines/mnist_mlp_4x2000_bp.yaml 42,43,44,45,46,47,48
+configs/bp_baselines/fashion_mnist_mlp_4x2000_bp.yaml 42,43,44,45,46,47,48
