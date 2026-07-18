@@ -445,6 +445,11 @@ def train_mf_model(
         assert_activation_cache_allowed(config, train_loader, cache_strategy)
         layer_loader = _with_sample_indices(train_loader)
 
+    # M0 postdates the published runs and feeds neither phase 2 nor evaluation.
+    train_m0 = bool(algo_config.get("mf_train_m0", True))
+    if not train_m0:
+        logger.info("Skipping the M0 stage; training W1..WL against M1..ML only.")
+
     peak_mem_train = 0.0
     total_epochs_trained_all_layers = 0
 
@@ -454,7 +459,7 @@ def train_mf_model(
     model.eval()
 
     # --- Phase 1: Train M0 (on input a0) ---
-    if num_m_matrices > 0:
+    if train_m0 and num_m_matrices > 0:
         m0_params = [model.get_projection_matrix(0)]
         model.get_projection_matrix(0).requires_grad_(True)
         m0_optimizer = getattr(optim, optimizer_name)(

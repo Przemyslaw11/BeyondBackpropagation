@@ -1,0 +1,5 @@
+# Phase 4, task 1: the reproduction check, second arm.
+#
+# The published MF runs trained three stages; the archived code trains four. This
+# arm restores the published schedule so both can be reported side by side.
+configs/reproduction/cifar10_mlp_3x2000_mf_published_no_m0.yaml 42,123,7
