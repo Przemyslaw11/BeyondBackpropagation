@@ -61,7 +61,7 @@ def export(args: argparse.Namespace) -> None:
     for i, run in enumerate(runs, start=1):
         if args.limit and i > args.limit:
             break
-        if args.match and args.match not in (run.name or ""):
+        if args.match and not any(m in (run.name or "") for m in args.match):
             continue
         target = runs_dir / f"{run.id}.json"
         if target.exists() and not args.force:
@@ -178,8 +178,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--match",
-        default="",
-        help="Only export runs whose name contains this substring.",
+        action="append",
+        default=[],
+        help="Only export runs whose name contains this substring. Repeatable.",
     )
     export(parser.parse_args())
 
