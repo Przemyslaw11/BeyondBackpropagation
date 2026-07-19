@@ -586,7 +586,14 @@ def train_mf_model(
 
                 epoch_loss += loss.item() * images.size(0)
                 epoch_samples += images.size(0)
-                # ... (logging and memory checking as in train_mf_matrix_only) ...
+
+                is_log_time = (batch_idx + 1) % log_interval == 0 or (
+                    batch_idx == len(layer_loader) - 1
+                )
+                if nvml_active and gpu_handle and is_log_time:
+                    mem_info = get_gpu_memory_usage(gpu_handle)
+                    if mem_info:
+                        peak_mem_layer_epoch = max(peak_mem_layer_epoch, mem_info[0])
 
             if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
                 break
