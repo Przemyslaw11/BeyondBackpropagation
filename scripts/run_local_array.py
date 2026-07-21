@@ -17,6 +17,8 @@ import os
 import sys
 import time
 
+from dotenv import load_dotenv
+
 from src.utils.backend_policy import get_execution_backend
 from src.utils.config_parser import load_config
 from src.utils.helpers import create_directory_if_not_exists
@@ -77,6 +79,7 @@ def run_experiment(config_path: str, backend_name: str) -> dict:
 
 
 def main() -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Run experiment configs sequentially on local backend.")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
