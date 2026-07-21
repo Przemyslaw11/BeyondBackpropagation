@@ -20,6 +20,7 @@ from src.data_utils.datasets import get_dataloaders
 from src.training.engine import (
     get_model_and_adapter,
 )
+from src.utils.backend_policy import get_execution_backend
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -52,12 +53,9 @@ def _get_trial_config(
 
 def _get_device(cfg: Dict[str, Any]) -> torch.device:
     """Sets up the device for a trial."""
-    device_name = cfg.get("general", {}).get("device", "auto").lower()
-    if device_name == "cuda" and torch.cuda.is_available():
-        return torch.device("cuda")
-    if device_name == "cpu":
-        return torch.device("cpu")
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    backend = get_execution_backend(cfg)
+    device_name = cfg.get("general", {}).get("device", "auto")
+    return backend.resolve_device(device_name)
 
 
 def _create_bp_optimizer(
@@ -195,8 +193,8 @@ def objective(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             data_root=data_config.get("root", "./data"),
             val_split=data_config.get("val_split", 0.1),
             seed=trial_seed,
-            num_workers=0,
-            pin_memory=False,
+            config=cfg,
+            backend=cfg.get("general", {}).get("backend", "slurm"),
             download=data_config.get("download", True),
         )
         if not val_loader:

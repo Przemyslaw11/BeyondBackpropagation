@@ -13,6 +13,7 @@ import torch.nn as nn
 from src.algorithms.cafo import evaluate_cafo_model, train_cafo_model
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import get_model_and_adapter
+from src.utils.backend_policy import get_execution_backend
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -61,13 +62,8 @@ def _setup_cafo_trial(
     # Setup environment
     trial_seed = cfg.get("general", {}).get("seed", 42) + trial.number
     set_seed(trial_seed)
-    device_name = cfg.get("general", {}).get("device", "auto").lower()
-    if device_name == "cuda" and torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif device_name == "cpu":
-        device = torch.device("cpu")
-    else:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    backend = get_execution_backend(cfg)
+    device = backend.resolve_device(cfg.get("general", {}).get("device", "auto"))
 
     return cfg, device, trial_seed
 
@@ -100,8 +96,8 @@ def objective_cafo(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             data_root=data_config.get("root", "./data"),
             val_split=data_config.get("val_split", 0.1),
             seed=trial_seed,
-            num_workers=0,
-            pin_memory=False,
+            config=cfg,
+            backend=cfg.get("general", {}).get("backend", "slurm"),
             download=data_config.get("download", True),
         )
         if not val_loader:

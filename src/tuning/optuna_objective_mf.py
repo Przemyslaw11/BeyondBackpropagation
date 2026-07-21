@@ -12,6 +12,7 @@ import torch
 from src.algorithms.mf import evaluate_mf_model, train_mf_model
 from src.data_utils.datasets import get_dataloaders
 from src.training.engine import get_model_and_adapter
+from src.utils.backend_policy import get_execution_backend
 from src.utils.helpers import format_time, set_seed
 
 logger = logging.getLogger(__name__)
@@ -40,11 +41,8 @@ def _setup_mf_trial(
     # Setup environment
     trial_seed = cfg.get("general", {}).get("seed", 42) + trial.number
     set_seed(trial_seed)
-    device_name = cfg.get("general", {}).get("device", "auto").lower()
-    if device_name == "cuda" and torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
+    backend = get_execution_backend(cfg)
+    device = backend.resolve_device(cfg.get("general", {}).get("device", "auto"))
 
     return cfg, device, trial_seed
 
@@ -77,8 +75,8 @@ def objective_mf(trial: optuna.Trial, base_config: Dict[str, Any]) -> float:
             data_root=data_config.get("root", "./data"),
             val_split=data_config.get("val_split", 0.1),
             seed=trial_seed,
-            num_workers=0,
-            pin_memory=False,
+            config=cfg,
+            backend=cfg.get("general", {}).get("backend", "slurm"),
             download=data_config.get("download", True),
         )
 

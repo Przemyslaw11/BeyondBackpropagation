@@ -9,7 +9,9 @@ from datetime import datetime
 
 import optuna
 import yaml
+from dotenv import load_dotenv
 
+from src.utils.backend_policy import get_execution_backend
 from src.tuning.optuna_objective import objective as objective_bp
 from src.tuning.optuna_objective_cafo import objective_cafo
 from src.tuning.optuna_objective_ff import objective_ff
@@ -47,6 +49,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Number of trials to run (overrides config).",
     )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["slurm", "local"],
+        default=None,
+        help="Execution backend to use. Defaults to the config value or Slurm.",
+    )
     return parser.parse_args()
 
 
@@ -56,6 +65,9 @@ def main() -> None:
 
     try:
         config = load_config(args.config)
+        if args.backend:
+            config.setdefault("general", {})["backend"] = args.backend
+        backend = get_execution_backend(config)
         logger.info(f"Loaded configuration from: {args.config}")
         logger.info("Initial Config for Optuna:")
         config_str = pprint.pformat(config)
@@ -85,19 +97,20 @@ def main() -> None:
         )
         return
 
-    create_directory_if_not_exists(args.output_dir)
+    output_dir = args.output_dir or os.path.join(backend.resolve_results_dir(config), "optuna")
+    create_directory_if_not_exists(output_dir)
     if args.study_name is None:
         config_filename = os.path.splitext(os.path.basename(args.config))[0]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         study_name = f"{config_filename}_optuna_{algorithm_name}_{timestamp}"
     else:
         study_name = args.study_name
-    log_file = os.path.join(args.output_dir, f"{study_name}.log")
+    log_file = os.path.join(output_dir, f"{study_name}.log")
 
     log_level_str = config.get("logging", {}).get("level", "INFO")
     setup_logging(log_level=log_level_str, log_file=log_file)
     logger.info(f"Optuna study name: {study_name}")
-    logger.info(f"Saving logs and study database to: {args.output_dir}")
+    logger.info(f"Saving logs and study database to: {output_dir}")
 
     tuning_config = config.get("tuning", {})
     if not tuning_config or not tuning_config.get("enabled", False):
@@ -108,7 +121,7 @@ def main() -> None:
         if args.n_trials is not None
         else tuning_config.get("n_trials", 20)
     )
-    storage_path = f"sqlite:///{os.path.join(args.output_dir, f'{study_name}.db')}"
+    storage_path = f"sqlite:///{os.path.join(output_dir, f'{study_name}.db')}"
     sampler_type = tuning_config.get("sampler", "TPE").upper()
     pruner_type = tuning_config.get("pruner", "Median").upper()
     if algorithm_name in ["MF", "CAFO", "FF"] and pruner_type != "NONE":
@@ -255,9 +268,7 @@ def main() -> None:
             + "\n"
         )
 
-        best_params_file = os.path.join(
-            args.output_dir, f"{study_name}_best_params.yaml"
-        )
+        best_params_file = os.path.join(output_dir, f"{study_name}_best_params.yaml")
         study_results_summary = {
             "study_name": study_name,
             "algorithm": algorithm_name,
@@ -288,6 +299,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    load_dotenv()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )

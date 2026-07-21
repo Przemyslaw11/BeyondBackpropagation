@@ -17,3 +17,6 @@ scikit-learn       # Allow latest compatible
 tqdm               # Allow latest compatible
 
 codecarbon         # Add CodeCarbon library
+
+# Environment
+python-dotenv       # Load .env files automatically
