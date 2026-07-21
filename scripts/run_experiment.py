@@ -9,6 +9,7 @@ import sys
 
 import yaml
 
+from src.utils.backend_policy import get_execution_backend
 from src.training.engine import run_training
 from src.utils.config_parser import load_config
 from src.utils.helpers import create_directory_if_not_exists
@@ -24,21 +25,22 @@ def main(args: argparse.Namespace) -> None:
     print(f"Loading and merging configuration from: {args.config}")
     try:
         config = load_config(args.config)
+        if args.backend:
+            config.setdefault("general", {})["backend"] = args.backend
+        backend = get_execution_backend(config)
         print("Configuration loaded and merged successfully:")
         pprint.pprint(config)
 
-        log_config = config.get("logging", {})
-        results_dir = config.get("results", {}).get("dir", "results")
         exp_name = config.get(
             "experiment_name", os.path.splitext(os.path.basename(args.config))[0]
         )
-        default_log_file = os.path.join(results_dir, exp_name, f"{exp_name}_run.log")
-        log_file_path = log_config.get("log_file", default_log_file)
+        log_file_path = backend.resolve_log_file(config, exp_name)
 
         log_dir = os.path.dirname(log_file_path)
         create_directory_if_not_exists(log_dir)
 
-        setup_logging(log_level=log_config.get("level", "INFO"), log_file=log_file_path)
+        log_level = config.get("logging", {}).get("level", "INFO")
+        setup_logging(log_level=log_level, log_file=log_file_path)
 
     except (OSError, FileNotFoundError, yaml.YAMLError) as e:
         logger.error(f"Error loading or merging configuration: {e}", exc_info=True)
@@ -81,6 +83,13 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="Path to the YAML configuration file for the experiment.",
+    )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["slurm", "local"],
+        default=None,
+        help="Execution backend to use. Defaults to the config value or Slurm.",
     )
 
     cli_args = parser.parse_args()

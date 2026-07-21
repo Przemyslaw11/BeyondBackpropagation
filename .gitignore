@@ -200,3 +200,10 @@ Thumbs.db
 # SLURM output files
 slurm_logs/
 slurm-*.out # Older SLURM naming pattern, just in case
+
+# Tex files
+*.aux
+*.bbl
+*.blg  
+
+master_thesis/
