@@ -138,6 +138,7 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 |-- scripts/
 |   |-- run_experiment.py              # single train-and-test entry point
 |   |-- run_optuna_search.py           # Optuna HPO entry point
+|   |-- run_local_array.py             # local sequential batch runner (replaces Slurm array)
 |   |-- slurm_scripts/
 |   |   |-- run_single_experiment.slurm
 |   |   |-- run_array.slurm
@@ -184,7 +185,7 @@ Tested paper environment:
 | Weights & Biases | 0.19.8 |
 | pynvml | 12.0.0 |
 
-### Option A: virtualenv
+### Option A: virtualenv (Linux / cluster)
 
 ```bash
 git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
@@ -196,7 +197,23 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
-### Option B: conda
+### Option C: Apple Silicon / macOS (local execution)
+
+```bash
+git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
+cd BeyondBackpropagation
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+# Install PyTorch with MPS support (macOS / arm64)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+python -c "import torch; print(torch.__version__, torch.backends.mps.is_available())"
+```
+
+MPS acceleration is used automatically when `general.backend: local` and `general.device: auto`. Falls back to CPU when MPS is unavailable.
+
+### Option B: conda (Linux / cluster)
 
 ```bash
 git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
@@ -288,6 +305,12 @@ The simplest reproducible path is to run a single MF experiment. The command tra
 python scripts/run_experiment.py --config configs/mf/mnist_mlp_2x1000.yaml
 ```
 
+To run locally on Apple Silicon (uses MPS / CPU fallback):
+
+```bash
+python scripts/run_experiment.py --config configs/mf/mnist_mlp_2x1000.yaml --backend local
+```
+
 Main CIFAR-10 MF result from the paper:
 
 ```bash
@@ -311,6 +334,19 @@ Run hyperparameter search:
 
 ```bash
 python scripts/run_optuna_search.py --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --n-trials 50
+```
+
+Run hyperparameter search locally:
+
+```bash
+python scripts/run_optuna_search.py --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --backend local --n-trials 20
+```
+
+Run a local batch (equivalent to the Slurm array workflow):
+
+```bash
+python scripts/run_local_array.py --config-dir configs/mf/
+python scripts/run_local_array.py --glob "configs/**/*.yaml"
 ```
 
 Run on SLURM:
@@ -339,6 +375,7 @@ Key fields:
 | Field | Meaning |
 |---|---|
 | `experiment_name` | Run name used for logs, W&B, results, and checkpoints. |
+| `general.backend` | Execution backend: `"slurm"` (default) or `"local"`. Override via `--backend` CLI flag. |
 | `algorithm.name` | One of `BP`, `FF`, `CaFo`, or `MF`. |
 | `data.name` | One of `MNIST`, `FashionMNIST`, `CIFAR10`, `CIFAR100`. |
 | `data.root` | Dataset directory. Defaults to `./data`. |

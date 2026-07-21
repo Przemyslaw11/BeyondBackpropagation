@@ -18,6 +18,7 @@ from src.algorithms import (
 )
 from src.architectures import FF_MLP, MF_MLP, CaFo_CNN
 from src.data_utils.datasets import get_dataloaders
+from src.utils.backend_policy import get_execution_backend
 from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.helpers import format_time, set_seed
 from src.utils.logging_utils import log_metrics, logger, setup_wandb
@@ -168,6 +169,10 @@ def _setup_environment_and_wandb(
 ) -> Tuple[int, torch.device, Optional["wandb.sdk.wandb_run.Run"]]:
     """Initializes seed, device, and Weights & Biases."""
     general_config = config.get("general", {})
+    backend = get_execution_backend(config)
+    for key, value in backend.prepare_environment().items():
+        os.environ.setdefault(key, value)
+
     seed = general_config.get("seed", 42)
     env_seed_str = os.environ.get("EXPERIMENT_SEED")
     if env_seed_str:
@@ -182,19 +187,11 @@ def _setup_environment_and_wandb(
     set_seed(seed)
     logger.info(f"Using random seed: {seed}")
 
-    device_pref = general_config.get("device", "auto").lower()
-    device = torch.device(
-        "cuda"
-        if device_pref == "cuda" and torch.cuda.is_available()
-        else (
-            "cpu"
-            if device_pref == "cpu"
-            else "cuda"
-            if torch.cuda.is_available()
-            else "cpu"
-        )
+    device_pref = general_config.get("device", "auto")
+    device = backend.resolve_device(device_pref)
+    logger.info(
+        f"Using backend: {backend.name}, device: {device} (Preference: '{device_pref}')"
     )
-    logger.info(f"Using device: {device} (Preference: '{device_pref}')")
 
     if wandb_run is None:
         wandb_run = setup_wandb(config, job_type="training")
@@ -401,6 +398,7 @@ def run_training(
 
     try:
         seed, device, wandb_run = _setup_environment_and_wandb(config, wandb_run)
+        backend = get_execution_backend(config)
 
         (
             nvml_active,
@@ -419,10 +417,8 @@ def run_training(
             data_root=data_config.get("root", "./data"),
             val_split=data_config.get("val_split", 0.1),
             seed=seed,
-            num_workers=loader_config.get("num_workers", 4),
-            pin_memory=(
-                loader_config.get("pin_memory", True) and device.type == "cuda"
-            ),
+            config=config,
+            backend=backend.name,
         )
         logger.info("Dataloaders created.")
 

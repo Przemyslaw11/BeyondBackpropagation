@@ -1,6 +1,21 @@
 general:
   seed: 42
   device: "auto"
+  backend: "slurm"
+
+backend:
+  slurm:
+    results_dir: "results"
+    log_file: null
+    data_loader:
+      num_workers: 4
+      pin_memory: true
+  local:
+    results_dir: "results/local"
+    log_file: null
+    data_loader:
+      num_workers: 0
+      pin_memory: false
 
 training:
   epochs: 100
