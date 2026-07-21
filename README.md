@@ -197,7 +197,7 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
-### Option C: Apple Silicon / macOS (local execution)
+### Option B: Apple Silicon / macOS (local execution)
 
 ```bash
 git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
@@ -213,7 +213,7 @@ python -c "import torch; print(torch.__version__, torch.backends.mps.is_availabl
 
 MPS acceleration is used automatically when `general.backend: local` and `general.device: auto`. Falls back to CPU when MPS is unavailable.
 
-### Option B: conda (Linux / cluster)
+### Option C: conda (Linux / cluster)
 
 ```bash
 git clone https://github.com/Przemyslaw11/BeyondBackpropagation.git
