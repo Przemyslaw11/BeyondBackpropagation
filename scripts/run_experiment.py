@@ -8,6 +8,7 @@ import pprint
 import sys
 
 import yaml
+from dotenv import load_dotenv
 
 from src.utils.backend_policy import get_execution_backend
 from src.training.engine import run_training
@@ -75,6 +76,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
+    load_dotenv()
     parser = argparse.ArgumentParser(
         description="Run a deep learning experiment based on a configuration file."
     )

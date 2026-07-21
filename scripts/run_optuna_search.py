@@ -9,6 +9,7 @@ from datetime import datetime
 
 import optuna
 import yaml
+from dotenv import load_dotenv
 
 from src.utils.backend_policy import get_execution_backend
 from src.tuning.optuna_objective import objective as objective_bp
@@ -298,6 +299,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    load_dotenv()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
