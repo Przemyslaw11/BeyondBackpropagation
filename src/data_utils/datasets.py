@@ -1,11 +1,13 @@
 """Functions and classes for creating PyTorch DataLoaders."""
 
 import logging
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch
 import torchvision
 from torch.utils.data import DataLoader, Dataset, Subset, random_split
+
+from src.utils.backend_policy import get_execution_backend
 
 from .preprocessing import get_transforms
 
@@ -44,8 +46,10 @@ def get_dataloaders(
     data_root: str = "./data",
     val_split: float = 0.1,
     seed: Optional[int] = None,
-    num_workers: int = 4,
-    pin_memory: bool = True,
+    config: Optional[Dict[str, Any]] = None,
+    backend: str = "slurm",
+    num_workers: Optional[int] = None,
+    pin_memory: Optional[bool] = None,
     download: bool = True,
 ) -> Tuple[DataLoader, Optional[DataLoader], DataLoader]:
     """Creates training, validation, and test DataLoaders for a specified dataset.
@@ -60,6 +64,8 @@ def get_dataloaders(
         data_root: The root directory for the dataset.
         val_split: The fraction of the training data to use for validation.
         seed: Random seed for reproducibility of the split.
+        config: Full merged configuration, used for backend-aware defaults.
+        backend: Execution backend name, used when backend-aware defaults are needed.
         num_workers: Number of subprocesses to use for data loading.
         pin_memory: If True, copies Tensors into CUDA pinned memory before returning.
         download: If True, downloads the dataset if it is not found locally.
@@ -76,6 +82,15 @@ def get_dataloaders(
     except ValueError as e:
         logger.error(f"Failed to get transforms: {e}")
         raise
+
+    backend_policy = get_execution_backend({"general": {"backend": backend}})
+    loader_defaults = backend_policy.resolve_dataloader_defaults(config)
+    resolved_num_workers = (
+        num_workers if num_workers is not None else loader_defaults["num_workers"]
+    )
+    resolved_pin_memory = (
+        pin_memory if pin_memory is not None else loader_defaults["pin_memory"]
+    )
 
     dataset_class = None
     if dataset_name == "fashionmnist":
@@ -193,13 +208,13 @@ def get_dataloaders(
                 transform=train_transform,
             )
             val_dataset = None
-    persistent_workers = num_workers > 0
+    persistent_workers = resolved_num_workers > 0
     train_loader = DataLoader(
         dataset=train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
+        num_workers=resolved_num_workers,
+        pin_memory=resolved_pin_memory,
         drop_last=True,
         persistent_workers=persistent_workers,
     )
@@ -209,8 +224,8 @@ def get_dataloaders(
             dataset=val_dataset,
             batch_size=batch_size * 2,
             shuffle=False,
-            num_workers=num_workers,
-            pin_memory=pin_memory,
+            num_workers=resolved_num_workers,
+            pin_memory=resolved_pin_memory,
             drop_last=False,
             persistent_workers=persistent_workers,
         )
@@ -223,8 +238,8 @@ def get_dataloaders(
         dataset=test_dataset,
         batch_size=batch_size * 2,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
+        num_workers=resolved_num_workers,
+        pin_memory=resolved_pin_memory,
         drop_last=False,
         persistent_workers=persistent_workers,
     )
