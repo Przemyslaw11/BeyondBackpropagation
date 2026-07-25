@@ -1,0 +1,6 @@
+# Phase 4, task 1: both MF arms, re-run after the phase-2 GPU memory sampling fix.
+#
+# Accuracy, time, energy and epoch counts from the first pass stand; only
+# peak_gpu_mem_used_mib was wrong, and it was wrong for both arms.
+configs/reproduction/cifar10_mlp_3x2000_mf_published.yaml 42,123,7
+configs/reproduction/cifar10_mlp_3x2000_mf_published_no_m0.yaml 42,123,7
