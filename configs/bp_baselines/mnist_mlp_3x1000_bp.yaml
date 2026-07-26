@@ -24,8 +24,8 @@ model:
     bias: true
 optimizer:
   type: AdamW
-  lr: 0.0001329291894316216
-  weight_decay: 0.0007114476009343421
+  lr: 0.0003113559812913581
+  weight_decay: 8.406356002346018e-05
 training:
   criterion: CrossEntropyLoss
   log_interval: 100
@@ -38,8 +38,7 @@ legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
     early_stopping_min_delta: 0.0
   tuning:
     num_epochs: 15
-    pruner: Median 
-
+    pruner: Median
 tuning:
   enabled: true
   n_trials: 10

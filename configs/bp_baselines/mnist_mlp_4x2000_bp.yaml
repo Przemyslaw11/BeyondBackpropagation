@@ -25,8 +25,8 @@ model:
     bias: true
 optimizer:
   type: AdamW
-  lr: 0.0001329291894316216
-  weight_decay: 0.0007114476009343421
+  lr: 0.00010637922032727485
+  weight_decay: 6.01143489300488e-06
 training:
   criterion: CrossEntropyLoss
   log_interval: 100
