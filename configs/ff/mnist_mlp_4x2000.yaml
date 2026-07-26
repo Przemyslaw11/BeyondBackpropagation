@@ -28,10 +28,10 @@ model:
 
 algorithm_params:
   optimizer_type: "AdamW"
-  ff_learning_rate: 0.0005253511034001832
-  ff_weight_decay: 0.0004227844165066995
-  downstream_learning_rate: 0.0027075510107757122
-  downstream_weight_decay: 0.0035730744916099627
+  ff_learning_rate: 0.0007633732882375027
+  ff_weight_decay: 0.00031121371672048663
+  downstream_learning_rate: 0.003614873265717979
+  downstream_weight_decay: 0.0021682548984087256
   threshold: 2.0
   peer_normalization_factor: 0.03
   peer_momentum: 0.9

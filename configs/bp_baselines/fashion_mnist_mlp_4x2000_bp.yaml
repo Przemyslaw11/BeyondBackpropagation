@@ -38,8 +38,8 @@ legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
     pruner: Median
 optimizer:
   type: AdamW
-  lr: 0.0002040628171913876
-  weight_decay: 4.186646492145325e-06
+  lr: 0.0002366549231085089
+  weight_decay: 7.371993864953355e-06
 logging:
   level: INFO
   wandb:

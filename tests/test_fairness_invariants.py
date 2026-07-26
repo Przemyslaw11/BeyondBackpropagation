@@ -78,13 +78,6 @@ SHARED_HYPERPARAMETER_OPT_OUT = {
             ),
         )
     ),
-    ("optimizer", "lr", "mnist_mlp_3x1000_bp.yaml", "mnist_mlp_4x2000_bp.yaml"),
-    (
-        "optimizer",
-        "weight_decay",
-        "mnist_mlp_3x1000_bp.yaml",
-        "mnist_mlp_4x2000_bp.yaml",
-    ),
     (
         "algorithm_params",
         "predictor_lr",
