@@ -35,6 +35,13 @@ algorithm_params:
   peer_normalization_factor: 0.03
   peer_momentum: 0.9
 
+# FF's val_loss is cross-entropy over goodness scores, a surrogate that bottoms out
+# around epoch 2 while val accuracy keeps climbing, so selecting on it returns an
+# untrained net. Only the metric differs from the shared policy; strictness does not.
+early_stopping:
+  metric: "val_accuracy"
+  mode: "max"
+
 training:
   log_interval: 100
 
