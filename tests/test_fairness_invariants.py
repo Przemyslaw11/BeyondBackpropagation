@@ -30,6 +30,23 @@ DIAGNOSTIC_EXEMPT_KEYS = {
     "legacy_hyperparameters",  # the diagnostic applies them rather than recording them
 }
 
+# How hard a run is allowed to try. Shared by every algorithm, no exemptions: this is
+# what stops an energy comparison from becoming a budget comparison.
+STOPPING_BUDGET_KEYS = ("enabled", "min_delta", "patience", "max_epochs")
+# Which quantity names the best epoch. FF measures val_loss as cross-entropy over
+# goodness scores, a surrogate that reaches its minimum around epoch 2 and rises for
+# the rest of training while val accuracy climbs from 89% to 97%, so selecting on it
+# restores an untrained network. FF therefore selects on accuracy. The budget above
+# is unchanged, so FF gets no extra epochs, only a metric that means something.
+SELECTION_METRIC_OPT_OUT = frozenset(
+    {
+        "ff/mnist_mlp_3x1000_ADAMW.yaml",
+        "ff/mnist_mlp_3x1000_SGD.yaml",
+        "ff/mnist_mlp_4x2000.yaml",
+        "ff/fashion_mnist_mlp_4x2000.yaml",
+    }
+)
+
 TUNED_HYPERPARAMETERS = (
     ("optimizer", "lr"),
     ("optimizer", "weight_decay"),
@@ -172,18 +189,48 @@ class FairnessInvariantTests(unittest.TestCase):
 
     def test_early_stopping_identical_within_group(self) -> None:
         for key, paths in self.groups.items():
-            policies = {
-                path.name: resolve_early_stopping(self.experiment_configs[path])
+            budgets = {
+                path.name: tuple(
+                    (k, resolve_early_stopping(self.experiment_configs[path])[k])
+                    for k in STOPPING_BUDGET_KEYS
+                )
                 for path in paths
             }
-            distinct = {
-                tuple(sorted(policy.items())) for policy in policies.values()
-            }
             self.assertEqual(
-                len(distinct),
+                len(set(budgets.values())),
                 1,
-                f"Group {key} has diverging early-stopping policies: {policies}",
+                f"Group {key} has diverging stopping budgets: {budgets}",
             )
+            selectors = {
+                f"{path.parent.name}/{path.name}": (
+                    resolve_early_stopping(self.experiment_configs[path])["metric"],
+                    resolve_early_stopping(self.experiment_configs[path])["mode"],
+                )
+                for path in paths
+                if f"{path.parent.name}/{path.name}" not in SELECTION_METRIC_OPT_OUT
+            }
+            self.assertLessEqual(
+                len(set(selectors.values())),
+                1,
+                f"Group {key} has diverging selection metrics: {selectors}",
+            )
+
+    def test_opted_out_configs_select_on_accuracy(self) -> None:
+        """An opt-out is only justified if it buys an accuracy-based metric."""
+        seen = set()
+        for path, config in self.experiment_configs.items():
+            name = f"{path.parent.name}/{path.name}"
+            if name not in SELECTION_METRIC_OPT_OUT:
+                continue
+            seen.add(name)
+            policy = resolve_early_stopping(config)
+            self.assertIn("acc", policy["metric"], f"{name} opted out but kept a loss.")
+            self.assertEqual(policy["mode"], "max", f"{name} maximises accuracy.")
+        self.assertEqual(
+            seen,
+            set(SELECTION_METRIC_OPT_OUT),
+            "SELECTION_METRIC_OPT_OUT names a config that no longer exists.",
+        )
 
     def test_no_per_algorithm_early_stopping_keys_remain(self) -> None:
         forbidden = (

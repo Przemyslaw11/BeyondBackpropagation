@@ -32,6 +32,12 @@ algorithm_params:
   peer_normalization_factor: 0.03
   peer_momentum: 0.9
   threshold: 2.0
+# FF selects on accuracy, matching the experiment configs: its val_loss is a
+# surrogate over goodness scores and is not a valid model-selection signal.
+early_stopping:
+  metric: "val_accuracy"
+  mode: "max"
+
 training:
   log_interval: 9999
 logging:
