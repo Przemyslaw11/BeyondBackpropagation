@@ -31,13 +31,13 @@ algorithm_params:
   train_blocks: true
   block_training_epochs: 15
   block_optimizer_type: "Adam"
-  block_lr: 0.0001384690524742107
-  block_weight_decay: 1.3311216080736884e-05
+  block_lr: 0.00023945850011476228
+  block_weight_decay: 2.2628777067192522e-07
 
   # --- Predictor Training (CE) ---
   predictor_optimizer_type: "Adam"
-  predictor_lr: 0.0003304463634024569
-  predictor_weight_decay: 3.967605077052991e-05
+  predictor_lr: 0.0006955692220209682
+  predictor_weight_decay: 3.282626932318988e-05
   loss_type: "CrossEntropyLoss"
   log_interval: 999
   aggregation_method: "sum"
