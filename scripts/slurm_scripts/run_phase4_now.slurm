@@ -48,6 +48,10 @@ START_INDEX=${PHASE4_START:-1}
 END_INDEX=${PHASE4_END:-$NUM_JOBS}
 # Stop starting runs at 45 min so a long trailing run still fits the 1 h limit.
 BUDGET_SEC=${PHASE4_BUDGET:-2700}
+# The budget alone only protects runs shorter than the 15 min it leaves spare, so
+# the loop also refuses to start a run longer than the wall clock actually left.
+WALL_SEC=${PHASE4_WALL:-3600}
+TEARDOWN_SEC=120
 if [ "$END_INDEX" -gt "$NUM_JOBS" ]; then END_INDEX=$NUM_JOBS; fi
 
 module purge
@@ -65,6 +69,7 @@ START_TS=$(date +%s)
 COMPLETED=0
 SKIPPED=0
 FAILED=0
+LONGEST_RUN_SEC=0
 
 echo "#####################################################################"
 echo "Phase 4 finals on $(hostname): ${SPEC}, indices ${START_INDEX}-${END_INDEX} of ${NUM_JOBS}, budget ${BUDGET_SEC}s"
@@ -75,6 +80,12 @@ for FLAT in $(seq "$START_INDEX" "$END_INDEX"); do
     ELAPSED=$(( $(date +%s) - START_TS ))
     if [ "$ELAPSED" -ge "$BUDGET_SEC" ]; then
         echo "INFO: budget reached after ${ELAPSED}s, stopping before index ${FLAT}."
+        break
+    fi
+
+    WALL_LEFT=$(( WALL_SEC - ELAPSED - TEARDOWN_SEC ))
+    if [ "$LONGEST_RUN_SEC" -gt 0 ] && [ "$WALL_LEFT" -lt "$LONGEST_RUN_SEC" ]; then
+        echo "INFO: ${WALL_LEFT}s of wall clock left but the longest run here took ${LONGEST_RUN_SEC}s, stopping before index ${FLAT}."
         break
     fi
 
@@ -95,8 +106,12 @@ for FLAT in $(seq "$START_INDEX" "$END_INDEX"); do
     fi
 
     echo "--- [${FLAT}/${END_INDEX}] ${EXP_NAME} seed ${SEED} (elapsed ${ELAPSED}s)"
+    RUN_TS=$(date +%s)
     EXPERIMENT_SEED=$SEED python scripts/run_experiment.py --config "$CONFIG_FILE"
-    if [ $? -eq 0 ]; then
+    RUN_RC=$?
+    RUN_SEC=$(( $(date +%s) - RUN_TS ))
+    if [ "$RUN_SEC" -gt "$LONGEST_RUN_SEC" ]; then LONGEST_RUN_SEC=$RUN_SEC; fi
+    if [ "$RUN_RC" -eq 0 ]; then
         COMPLETED=$((COMPLETED + 1))
     else
         FAILED=$((FAILED + 1))
