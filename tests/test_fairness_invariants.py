@@ -95,42 +95,6 @@ SHARED_HYPERPARAMETER_OPT_OUT = {
             ),
         )
     ),
-    (
-        "algorithm_params",
-        "predictor_lr",
-        "cafodfa_cifar100_cnn_3block.yaml",
-        "cafodfa_cifar10_cnn_3block.yaml",
-    ),
-    (
-        "algorithm_params",
-        "predictor_weight_decay",
-        "cafodfa_cifar100_cnn_3block.yaml",
-        "cafodfa_cifar10_cnn_3block.yaml",
-    ),
-    (
-        "algorithm_params",
-        "block_lr",
-        "cafodfa_cifar100_cnn_3block.yaml",
-        "cafodfa_cifar10_cnn_3block.yaml",
-    ),
-    (
-        "algorithm_params",
-        "block_weight_decay",
-        "cafodfa_cifar100_cnn_3block.yaml",
-        "cafodfa_cifar10_cnn_3block.yaml",
-    ),
-    (
-        "algorithm_params",
-        "predictor_lr",
-        "cifar100_cnn_3block.yaml",
-        "cifar10_cnn_3block.yaml",
-    ),
-    (
-        "algorithm_params",
-        "predictor_weight_decay",
-        "cifar100_cnn_3block.yaml",
-        "cifar10_cnn_3block.yaml",
-    ),
 }
 
 
