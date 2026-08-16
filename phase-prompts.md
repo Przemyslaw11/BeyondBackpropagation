@@ -914,6 +914,115 @@ Any comparison your seed count cannot resolve, named as underpowered rather than
 
 <SHARED CONTEXT>
 
+### Preconditions — ALL MET. Phases 0, 1, 2, 3 and 4 are COMPLETE as of 2026-09-15.
+Every number the camera-ready needs now exists on disk. **This phase writes no training
+code and should need almost no GPU time** — it is a data-plumbing and rendering phase.
+Read the inherited-state block before your first command: two of the findings there will
+put invalid data into your figures if you do not know them.
+
+---
+### INHERITED STATE — read this before your first command
+
+**Repository.** Local `main` and the Athena clone are both at `0167165`, identical, clean.
+`git push` to GitHub still fails with 403 (`Permission to
+Przemyslaw11/BeyondBackpropagation.git denied to pspyra11` — the credential is a different
+account from the repo owner). **There are now ~30 commits, 109 Phase 4 run summaries, 1027
+monitoring CSVs and a 927 MB W&B archive that exist on exactly two machines**, one of which
+is a cluster home directory with a 10 GiB quota that has already overflowed once. Raise
+this with the user early; do not attempt credential surgery yourself. Laptop -> cluster:
+```bash
+REMOTE=$(ssh athena 'cd ~/BeyondBackpropagation && git rev-parse HEAD')
+git bundle create /tmp/bbp_sync.bundle main --not "$REMOTE"
+scp -q /tmp/bbp_sync.bundle athena:~/bbp_sync.bundle
+ssh athena 'cd ~/BeyondBackpropagation && git pull -q ~/bbp_sync.bundle main && rm -f ~/bbp_sync.bundle'
+```
+
+**Your inputs — all verified present locally, do not regenerate any of them.**
+| Path | Contents | Use |
+|---|---|---|
+| `results/runs/` | **712** ladder JSONs, n=20 | rungs for the waterfall and frontier. **NEVER write here.** |
+| `results/phase4/` | **109** run summaries (19 experiments) | FF, CaFo, BP CNN/MLP finals — **the only valid FF data** |
+| `results/monitoring/` | **1027** extended CSVs | NVML traces. **109/109 Phase 4 finals resolve their `monitoring_csv_path` locally** |
+| `results/wandb_archive/` | **2739** records, **2723 with per-epoch history** | convergence curves only (bp 1000, mf 808, ff 293, cafo 595) |
+| `results/reproduction/` | 9 runs, legacy protocol | the task-1 reproduction check |
+| `results/reproduction_m0mem_bug/` | 6 runs | kept deliberately as evidence of a retracted claim |
+| `results/equal_epochs/` `_noval/` | 80 + 80 | iso-compute and the confounded set |
+| `results/ladder_analysis.json` | pre-registered Phase 3 analysis | 112 verdicts |
+| `results/phase4_ff_summary.json` `phase4_cafo_summary.json` | bootstrap contrasts | ready-made CIs |
+| `results/optuna/` | 19 Phase 4 studies + ladder studies | hyperparameter disclosure tables |
+| `results/carbon/` | CodeCarbon CSVs | gCO2e, if the paper keeps that claim |
+
+Monitoring CSV schema (verified): `timestamp_sec, power_watts, gpu_util_percent,
+mem_util_percent, gpu_mem_used_mib, gpu_temp_celsius, sm_clock_mhz, compute_processes,
+process_rss_mib`.
+
+Run-summary schema (verified): `experiment_name, algorithm, dataset, architecture,
+activation_cache, seed, monitoring_csv_path, codecarbon_*, peak_gpu_mem_used_mib,
+peak_torch_alloc_mib, training_duration_sec, test_loss, test_accuracy,
+total_run_duration_sec, total_gpu_energy_joules, total_gpu_energy_wh, peak_process_rss_mib,
+peak_gpu_util_percent, epochs_completed, gpu_energy_wh_per_epoch, training_sec_per_epoch`.
+
+**Phase 4 findings that will bite you in Phase 5:**
+
+1. **Every FF number produced under the harmonised protocol before `9a14332` is INVALID.**
+   `src/algorithms/ff.py` selected checkpoints on `eval_loss` whenever the early-stopping
+   metric key lacked `"acc"`, so Phase 2's `metric: val_loss` restored an **epoch-2
+   network**. Same config and seed: 89.01 % / 83 s / 22 ep before the fix, 97.05 % / 243 s
+   / 65 ep after. **The W&B archive contains many pre-fix FF runs and they are
+   indistinguishable by name.** Draw FF figures from `results/phase4/` only; if you need FF
+   convergence curves from the archive, filter by `created_at` against the `9a14332`
+   commit date and state the filter in the caption. CaFo is structurally immune; MF and BP
+   are unaffected.
+2. **"Epochs" is not comparable across algorithms.** `early_stopping.max_epochs` is PER
+   STAGE. CaFo's `epochs_completed` is **summed over its 3 predictors**, MF's over
+   `hidden_layers + 1` stages, FF's over its layers. BP's is a plain count. Any x-axis
+   labelled "epoch" that mixes algorithms is wrong. **This is exactly why task 6 asks for
+   convergence against wall-clock time.** Note the sum IS the correct denominator for
+   Wh/epoch and s/epoch, which measure cost per data pass — do not "correct" those by
+   dividing by the stage count.
+3. **`peak_gpu_mem_used_mib` is a device-wide NVML reading that includes the CUDA context;
+   `peak_torch_alloc_mib` is the honest per-process field.** The paper's memory claims must
+   name which one they use. FF's apparent 1.0085–1.0206× memory ratio is within the noise
+   of the former. A related bug (M0's peak being recorded for every MF run) was fixed in
+   `6f0a660`; an earlier explanation blaming a CUDA-context change was **wrong and
+   retracted**.
+4. **The W&B accuracy key is `summary["final/Test_Accuracy"]`, not `test_accuracy`.**
+   Other useful keys: `final/Test_Loss`, `Predictor_N/Val_Acc_Epoch` (CaFo),
+   `Layer_WN_MN/*` (MF). 16 records carry metadata but no history — they were restored from
+   `results/wandb_archive_meta_backup.tar.gz` after 185 export failures against W&B's GCS
+   storage, and cannot yield curves.
+5. **Pooled sigma of test accuracy is 0.284 pp, reaching 0.43 on the 3x2000 MLPs.** At n=5
+   the 95 % CI half-width is ~+/-0.35 pp; at n=7 ~+/-0.26 pp. **Parity cannot be certified
+   at these counts.** The forest plot in task 5 must visually distinguish *resolved* from
+   *underpowered* — an interval crossing zero is not evidence of equality. Three known
+   underpowered contrasts: `ff_mnist_3x1000_SGD` (-0.014 pp),
+   `ff_mnist_4x2000` (-0.064 pp), `cafodfa_fashion` (+0.23 pp).
+6. **CaFo's numbers changed drastically and Table 3 must be rebuilt, not annotated.** CaFo
+   is now 3.6–10.5x slower and 2.9–10.9x more energy-hungry than BP on every dataset, and
+   loses up to 18.8 pp of accuracy. Its one real win is 6–7 % lower peak memory for the
+   Rand-CE variant. Any figure or table still showing the back-ported thesis values is
+   stale.
+7. **The MF accuracy edge does not reproduce** (-0.07 pp [-0.27, +0.24] against our own
+   BP at 62.08, versus the published +1.21 pp against a BP at 61.13). The efficiency claims
+   all reproduce. Do not plot the published BP baseline against our MF to recover the edge
+   — the two arms come from different seed sets and protocols, and `results/phase4`,
+   `results/reproduction` and the archive all contain BP at 62.08.
+
+**Environment.**
+- Local: `.venv-local/bin/python` (3.12, torch 2.4.0, **no CUDA**) for everything in this
+  phase. The repo's `.venv` is a stub — do not use it. `export PYTHONPATH=.` is required.
+  macOS has no `timeout`; in zsh a bare `==` triggers equals-expansion, so quote it.
+- The shell auto-prefixes `rtk`, which **swallows piped `git diff` output** — use file
+  reads and `grep` rather than `git diff | grep`.
+- Cluster only if you need to re-render at scale or re-pull data: `ssh athena`,
+  `module load Python/3.10.4`, `source venv/bin/activate`, `export PYTHONPATH=.`.
+  `plgrid-gpu-a100` has FairShare pinned at 0 and never starts; **`plgrid-now` is the only
+  partition that runs** (1 h limit, one queued job per user, starts in seconds).
+  Cluster Python is 3.10: f-string expressions cannot contain backslashes.
+- `results/` is gitignored. **Your tidy table and figures must be committed explicitly or
+  they are not backed up anywhere.** Decide early where generated artefacts live.
+
+---
 ### Why this phase exists
 Reviewer R1: "the plots in Fig. 3 and Fig. 4 are completely illegible and don't convey
 what the authors are trying to explain in the paper text."
@@ -931,12 +1040,17 @@ for the final figures, but the data layer and style module can be built in paral
 them using smoke-run data.
 
 ### Tasks
-1. BUILD THE DATA LAYER. The Phase 2 monitor emits a per-run time series (timestamp, power,
-   GPU memory, utilisation, temperature, SM clock, process RSS). Add a per-run summary
-   record: config, algorithm, cache strategy, dataset, architecture, seed, test accuracy,
-   wall time, energy, peak GPU memory, peak RSS, epochs run, stop reason. Write an
-   aggregator producing ONE tidy long-format table that every figure AND every table in
-   the paper draws from, so no number is ever transcribed by hand.
+1. BUILD THE DATA LAYER. **The per-run summary record already exists and is populated** —
+   Phase 2 built it and there are now 712 ladder JSONs, 109 Phase 4 JSONs and 1027 NVML
+   time-series CSVs on disk, with `monitoring_csv_path` resolving for 109/109 Phase 4
+   finals. Your job is the **aggregator**, not the emitter: produce ONE tidy long-format
+   table that every figure AND every table in the paper draws from, so no number is ever
+   transcribed by hand. Join the summaries to their NVML traces, carry the provenance of
+   each column (which file, which instrument, which unit), and record `algorithm`,
+   `cache_strategy`, `dataset`, `architecture`, `seed`, `protocol` (harmonised / legacy /
+   iso-compute) and `phase` so stale and superseded runs can be filtered rather than
+   silently mixed. If a field the paper needs is genuinely absent, report it — do not
+   re-run training to manufacture it.
 2. BUILD THE STYLE MODULE — a single rcParams configuration enforcing:
    - Generation at exact final size (LNCS textwidth ~122 mm) so \includegraphics never
      scales the output. Compute panel widths from the fraction used in main.tex.
@@ -948,13 +1062,28 @@ them using smoke-run data.
    - Zero-based axes, or an explicit axis break where zero-basing is meaningless.
    - Vector PDF output.
 3. THE LADDER WATERFALL (new, intended as the paper's centrepiece). Decompose the total
-   BP -> MF-cache energy saving across the five rung transitions, showing how much each of
-   auxiliary supervision, readout choice, gradient locality and activation caching
+   BP -> MF-cache energy *change* across the five rung transitions, showing how much each
+   of auxiliary supervision, readout choice, gradient locality and activation caching
    contributes. This is the direct visual answer to reviewer R3's "only way to prove".
+   **The original wording of this task asked for the BP -> MF-cache energy SAVING; Phase 3
+   proved that quantity does not exist under per-stage parity.** The measured total is a
+   **+220 % to +313 % energy increase**, of which ~220-250 pp comes from the **locality**
+   step alone and ~0 from caching. Plot the increase honestly. The saving is real but lives
+   per-epoch — MF draws ~62 W against BP's ~77 W at equal throughput on 3x2000 MLPs, which
+   is protocol-independent and is the actual mechanism claim. **Show both**: the waterfall
+   of totals and the per-epoch panel that explains why the totals invert. Choosing whichever
+   protocol flatters MF after seeing the results is the analytic flexibility the
+   pre-registration forbids.
 4. THE TIME-MEMORY FRONTIER (new). A scatter with BP as a single reference point and MF
    rungs 4, 5 and 6 tracing the frontier: GPU memory on one axis, wall time on the other,
    with host RSS carried by marker size or a companion panel. Three points make a frontier;
-   two make a line segment — plot all three.
+   two make a line segment — plot all three. **Caveat from Phase 3: rungs 5 and 6 are
+   structurally impossible on CIFAR** — random crop and flip make a cached activation stale
+   by construction, so ladder coverage is 400/480. The three-point frontier therefore
+   exists only on MNIST and Fashion-MNIST. Say so in the caption rather than quietly
+   plotting two points on CIFAR. Phase 3 also proved caching is **bit-exact** (max|Δloss|
+   = max|Δweight| = 0.000e+00 over 1200 and 3600 steps) and buys nothing: no speedup,
+   +40 % device memory, 2x slower on host. The frontier should make that visible.
 5. THE EQUIVALENCE FOREST PLOT (new). Per-configuration mean accuracy differences with
    bootstrap 95% CIs and the +/- 0.25 pp equivalence band shaded. This is how a parity
    claim should be shown, and it answers reviewer R5's "some of the reported accuracy
@@ -978,16 +1107,43 @@ caption must name the actual instrument and unit.
 - Do NOT reuse any W&B UI export in the camera-ready.
 - Keep the plotting code in scripts/ or a small src/plotting/ package; do not scatter
   matplotlib calls through the training code.
+- Do NOT re-run any training. Every number you need is already on disk; if you believe one
+  is missing, say so in the report rather than generating it silently under a protocol
+  that may differ from the run it sits beside.
+- Do NOT write into `results/runs/`; the ladder set stays at **712**.
+- `pytest tests/` must stay green — **74 passed, 6 subtests** at handover.
+
+### Working guidelines
+- **Build the tidy table first and treat it as the contract.** Every figure and every paper
+  table reads from it. If a number cannot be derived from it, that is a finding to report,
+  not a reason to hand-transcribe.
+- **Check your loader against a known row before plotting anything.** A silent unit or key
+  error (MiB vs MB, `test_accuracy` vs `final/Test_Accuracy`) will look like a plausible
+  figure. Assert a handful of values against `Phase4_report.md` and `results/ladder_analysis.json`.
+- Prefer the custom file tools over terminal `cat`/`grep`; poll progress by counting files,
+  not by reading scrollback.
+- Commit in small, well-described units and bundle-sync before anything long-running.
+- **A prediction that misses by more than ~5x in the direction that flatters your method is
+  a confound, not luck.** That heuristic has now caught three separate bugs in this project.
 
 ### Acceptance criteria
 - Every figure renders at >= 8 pt type when inspected at 100% zoom at its final size.
 - Every figure is legible in greyscale.
 - Every number in every paper table traces back to the aggregated tidy table.
 - Re-running the plotting script reproduces byte-identical PDFs from the same inputs.
+  **This does not happen by default** — the matplotlib PDF backend stamps `/CreationDate`
+  into every file, so two runs differ byte-for-byte. Pass
+  `metadata={"CreationDate": None}` to `savefig`, or set `SOURCE_DATE_EPOCH`, and verify
+  with a real `sha256sum` comparison across two runs rather than assuming it.
+- No figure draws on FF data predating `9a14332`, on the back-ported CaFo values, or on a
+  W&B UI export.
+- `results/runs` still at 712; `pytest tests/` still green.
 
 ### Report back
 A before/after legibility comparison for Figures 3 and 4. Any metric the paper reports
-that has no corresponding column in the tidy table.
+that has no corresponding column in the tidy table. The provenance of every hardware trace
+you plot — instrument and unit — and confirmation that none of them is a W&B system panel.
+Whether the byte-identical-PDF criterion actually holds, demonstrated with hashes.
 
 ---
 ## PHASE 6 — Manuscript revision and response-to-reviewers letter
