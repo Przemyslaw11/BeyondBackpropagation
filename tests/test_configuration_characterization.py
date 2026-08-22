@@ -48,6 +48,25 @@ def test_config_hash_and_typed_config_are_reproducible_and_mutable_at_boundary()
         first.model_params["hidden_dims"] = [3]  # type: ignore[index]
 
 
+def test_explicit_cli_overrides_have_highest_precedence() -> None:
+    config = load_experiment_config(
+        "configs/mf/mnist_mlp_2x1000.yaml",
+        overrides=[
+            "general.device=cpu",
+            "data.download=false",
+            "data_loader.batch_size=17",
+        ],
+    )
+    assert config.device == "cpu"
+    assert not config.download
+    assert config.batch_size == 17
+
+
+def test_invalid_cli_override_is_actionable() -> None:
+    with pytest.raises(ConfigValidationError, match="section.key=value"):
+        load_mapping("configs/mf/mnist_mlp_2x1000.yaml", overrides=["bad-override"])
+
+
 def test_unknown_keys_fail_before_runtime_resolution() -> None:
     with pytest.raises(ConfigValidationError, match="Unknown keys in 'model.params'"):
         from beyond_backprop.config.loader import validate_mapping

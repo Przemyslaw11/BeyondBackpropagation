@@ -6,7 +6,7 @@ import copy
 import hashlib
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -381,15 +381,53 @@ def resolved_config_hash(config: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def apply_overrides(
+    config: Mapping[str, Any], overrides: Sequence[str]
+) -> dict[str, Any]:
+    """Apply explicit ``section.key=value`` overrides to a config copy."""
+
+    result = copy.deepcopy(dict(config))
+    for override in overrides:
+        if "=" not in override:
+            raise ConfigValidationError(
+                f"Invalid override {override!r}; expected section.key=value"
+            )
+        path_text, value_text = override.split("=", 1)
+        path = [part.strip() for part in path_text.split(".") if part.strip()]
+        if not path:
+            raise ConfigValidationError(
+                f"Invalid override {override!r}; key path is empty"
+            )
+        try:
+            value = yaml.safe_load(value_text)
+        except yaml.YAMLError as exc:
+            raise ConfigValidationError(
+                f"Invalid YAML value in override {override!r}: {exc}"
+            ) from exc
+        target: dict[str, Any] = result
+        for key in path[:-1]:
+            nested = target.get(key)
+            if not isinstance(nested, dict):
+                raise ConfigValidationError(
+                    f"Cannot apply override {override!r}; '{key}' is not a mapping"
+                )
+            target = nested
+        target[path[-1]] = value
+    return result
+
+
 def load_mapping(
     config_path: str | os.PathLike[str],
     base_config_path: str | os.PathLike[str] = "configs/base.yaml",
+    overrides: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Load, merge, normalize, and strictly validate a YAML configuration."""
 
     base = _load_yaml(base_config_path) if Path(base_config_path).exists() else {}
     specific = _load_yaml(config_path)
-    merged = normalize_legacy_config(_deep_merge(base, specific))
+    merged = _deep_merge(base, specific)
+    merged = apply_overrides(merged, overrides)
+    merged = normalize_legacy_config(merged)
     validate_mapping(merged)
     return merged
 
@@ -397,8 +435,9 @@ def load_mapping(
 def load_experiment_config(
     config_path: str | os.PathLike[str],
     base_config_path: str | os.PathLike[str] = "configs/base.yaml",
+    overrides: Sequence[str] = (),
 ) -> ExperimentConfig:
-    resolved = load_mapping(config_path, base_config_path)
+    resolved = load_mapping(config_path, base_config_path, overrides)
     return _config_from_mapping(resolved, config_path=config_path)
 
 

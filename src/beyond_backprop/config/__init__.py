@@ -2,6 +2,7 @@
 
 from .loader import (
     ConfigValidationError,
+    apply_overrides,
     experiment_config_from_mapping,
     load_experiment_config,
     load_mapping,
@@ -22,6 +23,7 @@ __all__ = [
     "ArchitectureName",
     "BackendName",
     "ConfigValidationError",
+    "apply_overrides",
     "DatasetName",
     "ExperimentConfig",
     "experiment_config_from_mapping",
