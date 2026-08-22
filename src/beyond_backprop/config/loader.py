@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from collections.abc import Mapping, Sequence
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +109,7 @@ _ALLOWED_TOP_LEVEL = {
     "checkpointing",
     "tuning",
     "tracking",
+    "results",
 }
 _ALLOWED_SECTION_KEYS = {
     "general": {"seed", "device", "backend"},
@@ -121,6 +123,8 @@ _ALLOWED_SECTION_KEYS = {
         "early_stopping_patience",
         "early_stopping_mode",
         "early_stopping_min_delta",
+        "scheduler",
+        "scheduler_params",
     },
     "data_loader": {"batch_size", "num_workers", "pin_memory", "shuffle", "drop_last"},
     "data": {
@@ -132,7 +136,7 @@ _ALLOWED_SECTION_KEYS = {
         "input_channels",
         "image_size",
     },
-    "optimizer": {"type", "lr", "weight_decay", "momentum", "betas"},
+    "optimizer": {"type", "lr", "weight_decay", "momentum", "betas", "params"},
     "algorithm": {"name"},
     "model": {"name", "params"},
     "logging": {"level", "wandb", "log_file"},
@@ -163,6 +167,7 @@ _ALLOWED_SECTION_KEYS = {
         "cafo_epochs_per_block_range",
     },
     "tracking": {"enabled", "project", "entity", "mode", "run_name"},
+    "results": {"dir"},
 }
 _ALLOWED_BACKEND_KEYS = {"results_dir", "log_file", "data_loader", "env"}
 _ALLOWED_BACKEND_LOADER_KEYS = {"num_workers", "pin_memory"}
@@ -286,11 +291,215 @@ def _check_unknown_keys(config: Mapping[str, Any]) -> None:
         raise ConfigValidationError(f"Unknown keys in 'model.params': {unknown}")
 
 
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, Real) and not isinstance(value, bool)
+
+
+def _require(value: Any, expected: type | tuple[type, ...], path: str) -> None:
+    if not isinstance(value, expected):
+        names = (
+            ", ".join(item.__name__ for item in expected)
+            if isinstance(expected, tuple)
+            else expected.__name__
+        )
+        raise ConfigValidationError(
+            f"{path} must be of type {names}; got {type(value).__name__}"
+        )
+
+
+def _require_int(value: Any, path: str) -> None:
+    if not _is_int(value):
+        raise ConfigValidationError(
+            f"{path} must be an integer; got {type(value).__name__}"
+        )
+
+
+def _require_number(value: Any, path: str) -> None:
+    if not _is_number(value):
+        raise ConfigValidationError(
+            f"{path} must be numeric; got {type(value).__name__}"
+        )
+
+
+def _require_bool(value: Any, path: str) -> None:
+    if not isinstance(value, bool):
+        raise ConfigValidationError(
+            f"{path} must be a boolean; got {type(value).__name__}"
+        )
+
+
+def _validate_scalar_types(config: Mapping[str, Any]) -> None:
+    """Reject YAML strings such as ``"false"`` instead of silently coercing them."""
+
+    string_fields = {
+        "experiment_name": config.get("experiment_name"),
+    }
+    for name, value in string_fields.items():
+        if value is not None:
+            _require(value, str, name)
+
+    section_fields: dict[str, dict[str, tuple[type, ...] | type]] = {
+        "general": {"seed": int, "device": str, "backend": str},
+        "data_loader": {
+            "batch_size": int,
+            "num_workers": int,
+            "pin_memory": bool,
+            "shuffle": bool,
+            "drop_last": bool,
+        },
+        "data": {
+            "root": str,
+            "download": bool,
+            "val_split": (int, float),
+            "name": str,
+            "num_classes": int,
+            "input_channels": int,
+            "image_size": int,
+        },
+        "algorithm": {"name": str},
+        "model": {"name": str},
+        "training": {
+            "epochs": int,
+            "criterion": str,
+            "log_interval": int,
+            "early_stopping_enabled": bool,
+            "early_stopping_metric": str,
+            "early_stopping_patience": int,
+            "early_stopping_mode": str,
+            "early_stopping_min_delta": (int, float),
+            "scheduler": (str, type(None)),
+        },
+        "optimizer": {
+            "type": str,
+            "lr": (int, float),
+            "weight_decay": (int, float),
+            "momentum": (int, float),
+        },
+        "monitoring": {
+            "enabled": bool,
+            "energy_enabled": bool,
+            "energy_interval_sec": (int, float),
+        },
+        "carbon_tracker": {
+            "enabled": bool,
+            "mode": str,
+            "output_dir": str,
+            "country_iso_code": str,
+        },
+        "profiling": {"enabled": bool, "verbose": bool},
+        "checkpointing": {"checkpoint_dir": (str, type(None)), "save_best_metric": str},
+        "tracking": {
+            "enabled": bool,
+            "project": str,
+            "entity": str,
+            "mode": str,
+            "run_name": str,
+        },
+        "results": {"dir": str},
+    }
+    for section, fields in section_fields.items():
+        value = config.get(section, {})
+        if not isinstance(value, Mapping):
+            continue
+        for field_name, expected in fields.items():
+            if field_name not in value:
+                continue
+            item = value[field_name]
+            if expected is int:
+                _require_int(item, f"{section}.{field_name}")
+            elif expected is bool:
+                _require_bool(item, f"{section}.{field_name}")
+            elif expected == (int, float):
+                _require_number(item, f"{section}.{field_name}")
+            else:
+                _require(item, expected, f"{section}.{field_name}")
+
+    for section_name, value in (
+        ("backend", config.get("backend", {})),
+        ("logging", config.get("logging", {})),
+    ):
+        if not isinstance(value, Mapping):
+            continue
+        for key, item in value.items():
+            if section_name == "backend":
+                if not isinstance(item, Mapping):
+                    continue
+                for nested_key in ("results_dir", "log_file"):
+                    nested = item.get(nested_key)
+                    if nested is not None:
+                        _require(nested, str, f"backend.{key}.{nested_key}")
+            elif key in {"level", "log_file"} and item is not None:
+                _require(item, str, f"logging.{key}")
+        wandb = value.get("wandb", {})
+        if isinstance(wandb, Mapping):
+            for key in ("use_wandb",):
+                if key in wandb:
+                    _require_bool(wandb[key], f"logging.wandb.{key}")
+            for key in ("project", "entity", "mode", "name"):
+                if key in wandb and wandb[key] is not None:
+                    _require(wandb[key], str, f"logging.wandb.{key}")
+
+    model_params = config.get("model", {}).get("params", {})
+    if isinstance(model_params, Mapping):
+        for key in ("hidden_dims", "block_channels"):
+            if key in model_params:
+                values = model_params[key]
+                if not isinstance(values, (list, tuple)):
+                    raise ConfigValidationError(f"model.params.{key} must be a list")
+                for index, item in enumerate(values):
+                    _require_int(item, f"model.params.{key}[{index}]")
+        for key in ("bias", "use_batchnorm"):
+            if key in model_params:
+                _require_bool(model_params[key], f"model.params.{key}")
+        for key in ("input_dim", "kernel_size", "pool_kernel_size", "pool_stride"):
+            if key in model_params:
+                _require_int(model_params[key], f"model.params.{key}")
+        for key in ("activation", "bias_init", "norm_eps"):
+            if key in model_params and key == "activation":
+                _require(model_params[key], str, f"model.params.{key}")
+            elif key in model_params:
+                _require_number(model_params[key], f"model.params.{key}")
+
+    optimizer = config.get("optimizer", {})
+    if isinstance(optimizer, Mapping) and "betas" in optimizer:
+        betas = optimizer["betas"]
+        if not isinstance(betas, (list, tuple)) or len(betas) != 2:
+            raise ConfigValidationError("optimizer.betas must be a two-item list")
+        for index, item in enumerate(betas):
+            _require_number(item, f"optimizer.betas[{index}]")
+
+    tuning = config.get("tuning", {})
+    if isinstance(tuning, Mapping):
+        if "enabled" in tuning:
+            _require_bool(tuning["enabled"], "tuning.enabled")
+        if "n_trials" in tuning:
+            _require_int(tuning["n_trials"], "tuning.n_trials")
+        for key in ("direction", "metric", "sampler", "pruner"):
+            if key in tuning:
+                _require(tuning[key], str, f"tuning.{key}")
+        for key, value in tuning.items():
+            if key.endswith("_range"):
+                if not isinstance(value, (list, tuple)) or len(value) != 2:
+                    continue
+                for index, item in enumerate(value):
+                    _require_number(item, f"tuning.{key}[{index}]")
+
+
 def validate_mapping(config: Mapping[str, Any]) -> None:
     _check_unknown_keys(config)
-    algorithm = AlgorithmName.parse(config.get("algorithm", {}).get("name", "bp"))
-    architecture = ArchitectureName.parse(config.get("model", {}).get("name", "mf_mlp"))
-    dataset = DatasetName.parse(config.get("data", {}).get("name", "mnist"))
+    _validate_scalar_types(config)
+    try:
+        algorithm = AlgorithmName.parse(config.get("algorithm", {}).get("name", "bp"))
+        architecture = ArchitectureName.parse(
+            config.get("model", {}).get("name", "mf_mlp")
+        )
+        DatasetName.parse(config.get("data", {}).get("name", "mnist"))
+    except (TypeError, ValueError) as exc:
+        raise ConfigValidationError(str(exc)) from exc
     if algorithm is AlgorithmName.FF and architecture is not ArchitectureName.FF_MLP:
         raise ConfigValidationError("FF requires model.name=FF_MLP")
     if algorithm is AlgorithmName.MF and architecture is not ArchitectureName.MF_MLP:
@@ -301,16 +510,23 @@ def validate_mapping(config: Mapping[str, Any]) -> None:
     ):
         raise ConfigValidationError("CaFo requires model.name=CaFo_CNN")
     data = config.get("data", {})
-    val_split = float(data.get("val_split", 0.1))
+    val_split = data.get("val_split", 0.1)
+    _require_number(val_split, "data.val_split")
     if not 0.0 <= val_split < 1.0:
         raise ConfigValidationError("data.val_split must be in [0, 1)")
     loader = config.get("data_loader", {})
-    if int(loader.get("batch_size", 128)) <= 0:
+    batch_size = loader.get("batch_size", 128)
+    _require_int(batch_size, "data_loader.batch_size")
+    if batch_size <= 0:
         raise ConfigValidationError("data_loader.batch_size must be positive")
-    if int(loader.get("num_workers", 0)) < 0:
+    num_workers = loader.get("num_workers", 0)
+    _require_int(num_workers, "data_loader.num_workers")
+    if num_workers < 0:
         raise ConfigValidationError("data_loader.num_workers must be non-negative")
     for field_name in ("num_classes", "input_channels", "image_size"):
-        if field_name in data and int(data[field_name]) <= 0:
+        if field_name in data:
+            _require_int(data[field_name], f"data.{field_name}")
+        if field_name in data and data[field_name] <= 0:
             raise ConfigValidationError(f"data.{field_name} must be positive")
     training = config.get("training", {})
     mode = str(training.get("early_stopping_mode", "min")).lower()
@@ -318,13 +534,19 @@ def validate_mapping(config: Mapping[str, Any]) -> None:
         raise ConfigValidationError(
             "training.early_stopping_mode must be 'min' or 'max'"
         )
-    if int(training.get("epochs", 100)) <= 0:
+    epochs = training.get("epochs", 100)
+    _require_int(epochs, "training.epochs")
+    if epochs <= 0:
         raise ConfigValidationError("training.epochs must be positive")
-    if int(training.get("early_stopping_patience", 0)) < 0:
+    patience = training.get("early_stopping_patience", 0)
+    _require_int(patience, "training.early_stopping_patience")
+    if patience < 0:
         raise ConfigValidationError(
             "training.early_stopping_patience must be non-negative"
         )
-    if float(training.get("early_stopping_min_delta", 0.0)) < 0:
+    min_delta = training.get("early_stopping_min_delta", 0.0)
+    _require_number(min_delta, "training.early_stopping_min_delta")
+    if min_delta < 0:
         raise ConfigValidationError(
             "training.early_stopping_min_delta must be non-negative"
         )
@@ -337,13 +559,19 @@ def validate_mapping(config: Mapping[str, Any]) -> None:
         raise ConfigValidationError(
             "Loss early-stopping metrics require training.early_stopping_mode=min"
         )
-    if int(config.get("general", {}).get("seed", 42)) < 0:
+    seed = config.get("general", {}).get("seed", 42)
+    _require_int(seed, "general.seed")
+    if seed < 0:
         raise ConfigValidationError("general.seed must be non-negative")
 
     optimizer = config.get("optimizer", {})
-    if float(optimizer.get("lr", 0.001)) <= 0:
+    learning_rate = optimizer.get("lr", 0.001)
+    _require_number(learning_rate, "optimizer.lr")
+    if learning_rate <= 0:
         raise ConfigValidationError("optimizer.lr must be positive")
-    if float(optimizer.get("weight_decay", 0.0)) < 0:
+    weight_decay = optimizer.get("weight_decay", 0.0)
+    _require_number(weight_decay, "optimizer.weight_decay")
+    if weight_decay < 0:
         raise ConfigValidationError("optimizer.weight_decay must be non-negative")
 
     model_params = config.get("model", {}).get("params", {})
@@ -354,13 +582,15 @@ def validate_mapping(config: Mapping[str, Any]) -> None:
                 raise ConfigValidationError(
                     f"model.params.{field_name} must be non-empty"
                 )
-            if any(int(value) <= 0 for value in values):
+            if any(value <= 0 for value in values):
                 raise ConfigValidationError(
                     f"model.params.{field_name} values must be positive"
                 )
 
     tuning = config.get("tuning", {})
-    if int(tuning.get("n_trials", 1)) <= 0:
+    n_trials = tuning.get("n_trials", 1)
+    _require_int(n_trials, "tuning.n_trials")
+    if n_trials <= 0:
         raise ConfigValidationError("tuning.n_trials must be positive")
     for key, value in tuning.items():
         if key.endswith("_range"):
@@ -368,12 +598,13 @@ def validate_mapping(config: Mapping[str, Any]) -> None:
                 raise ConfigValidationError(
                     f"tuning.{key} must contain exactly two values"
                 )
-            if float(value[0]) >= float(value[1]):
+            if value[0] >= value[1]:
                 raise ConfigValidationError(
                     f"tuning.{key} lower bound must be less than upper bound"
                 )
-    if not isinstance(dataset.value, str):  # pragma: no cover - enum invariant
-        raise ConfigValidationError("Invalid dataset enum")
+    tuning_direction = str(tuning.get("direction", "maximize")).lower()
+    if tuning_direction not in {"maximize", "minimize"}:
+        raise ConfigValidationError("tuning.direction must be 'maximize' or 'minimize'")
 
 
 def resolved_config_hash(config: Mapping[str, Any]) -> str:

@@ -9,9 +9,11 @@ semantics.
 from __future__ import annotations
 
 import logging
+import random
 from collections.abc import Callable, Mapping
 from typing import Any
 
+import numpy as np
 import torch
 import torchvision
 from torch.utils.data import DataLoader, Dataset, Subset, random_split
@@ -22,6 +24,20 @@ from .preprocessing import get_transforms
 from .registry import get_dataset_spec
 
 logger = logging.getLogger(__name__)
+
+
+def seed_worker(worker_id: int) -> None:
+    """Seed Python and NumPy from the per-worker PyTorch seed.
+
+    PyTorch assigns each worker a deterministic seed when the DataLoader's
+    generator is seeded.  Propagating that seed to the other common RNGs keeps
+    augmentations and user datasets reproducible as well.
+    """
+
+    del worker_id  # The worker-specific value is already included in the torch seed.
+    worker_seed = torch.initial_seed() % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
 
 
 class TransformedSubset(Dataset[Any]):
@@ -177,16 +193,26 @@ def get_dataloaders(
             )
 
     persistent_workers = resolved_num_workers > 0
+    loader_config = (
+        dict(config.get("data_loader", {})) if isinstance(config, Mapping) else {}
+    )
+    train_shuffle = loader_config.get("shuffle", True)
+    train_drop_last = loader_config.get("drop_last", True)
+    generator = torch.Generator()
+    if seed is not None:
+        generator.manual_seed(seed)
     common_loader_kwargs = {
         "num_workers": resolved_num_workers,
         "pin_memory": resolved_pin_memory,
         "persistent_workers": persistent_workers,
+        "worker_init_fn": seed_worker if resolved_num_workers > 0 else None,
     }
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True,
-        drop_last=True,
+        shuffle=bool(train_shuffle),
+        drop_last=bool(train_drop_last),
+        generator=generator,
         **common_loader_kwargs,
     )
     val_loader = None
@@ -251,4 +277,4 @@ def build_dataloaders(
     )
 
 
-__all__ = ["TransformedSubset", "build_dataloaders", "get_dataloaders"]
+__all__ = ["TransformedSubset", "build_dataloaders", "get_dataloaders", "seed_worker"]

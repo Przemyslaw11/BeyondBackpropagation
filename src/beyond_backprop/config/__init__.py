@@ -9,6 +9,7 @@ from .loader import (
     normalize_legacy_config,
     resolved_config_hash,
     save_resolved_config,
+    validate_mapping,
 )
 from .models import (
     AlgorithmName,
@@ -32,4 +33,5 @@ __all__ = [
     "normalize_legacy_config",
     "resolved_config_hash",
     "save_resolved_config",
+    "validate_mapping",
 ]

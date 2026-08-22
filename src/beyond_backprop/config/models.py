@@ -16,7 +16,11 @@ class _ValueEnum(str, Enum):
     def parse(cls: type[_EnumType], value: str | Enum) -> _EnumType:
         if isinstance(value, cls):
             return value
-        normalized = str(value).strip().lower().replace("-", "_")
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Unsupported {cls.__name__} value {value!r}; expected a string"
+            )
+        normalized = value.strip().lower().replace("-", "_")
         for member in cls:
             if member.value == normalized:
                 return member
@@ -49,7 +53,11 @@ class DatasetName(_ValueEnum):
     def parse(cls, value: str | Enum) -> DatasetName:
         if isinstance(value, cls):
             return value
-        normalized = str(value).strip().lower().replace("_", "")
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Unsupported DatasetName value {value!r}; expected a string"
+            )
+        normalized = value.strip().lower().replace("_", "")
         return cls(normalized)
 
 

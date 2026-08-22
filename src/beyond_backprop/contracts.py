@@ -154,8 +154,16 @@ class RunMetadata:
     git_dirty: bool | None = None
     python_version: str = ""
     torch_version: str | None = None
+    torchvision_version: str | None = None
+    cuda_available: bool = False
+    cuda_version: str | None = None
+    cuda_device: str | None = None
+    cuda_driver_version: str | None = None
+    mps_available: bool = False
+    mps_device: str | None = None
     device: str = "cpu"
     seed: int | None = None
+    config_hash: str | None = None
     hostname: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -168,8 +176,16 @@ class RunMetadata:
             "git_dirty": self.git_dirty,
             "python_version": self.python_version,
             "torch_version": self.torch_version,
+            "torchvision_version": self.torchvision_version,
+            "cuda_available": self.cuda_available,
+            "cuda_version": self.cuda_version,
+            "cuda_device": self.cuda_device,
+            "cuda_driver_version": self.cuda_driver_version,
+            "mps_available": self.mps_available,
+            "mps_device": self.mps_device,
             "device": self.device,
             "seed": self.seed,
+            "config_hash": self.config_hash,
             "hostname": self.hostname,
         }
 
