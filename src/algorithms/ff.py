@@ -5,7 +5,6 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-import pynvml
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -68,7 +67,7 @@ def train_ff_model(
     wandb_run: "Optional[wandb.sdk.wandb_run.Run]" = None,
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> float:
     """Orchestrates end-to-end training of a model using the Forward-Forward algorithm.

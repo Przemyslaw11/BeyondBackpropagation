@@ -4,7 +4,6 @@
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-import pynvml
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -96,7 +95,7 @@ def train_mf_matrix_only(
     wandb_run: "Optional[wandb.sdk.wandb_run.Run]" = None,
     log_interval: int = 100,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> Tuple[float, float, int]:
     """Trains a single projection matrix (M_i) using local loss for an MF_MLP."""
@@ -270,7 +269,7 @@ def train_mf_model(
     val_loader: Optional[DataLoader] = None,
     wandb_run: "Optional[wandb.sdk.wandb_run.Run]" = None,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> float:
     """Orchestrates layer-wise training of MF_MLP: M0, then (W1,M1), (W2,M2), etc."""

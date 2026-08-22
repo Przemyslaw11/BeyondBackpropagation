@@ -5,15 +5,18 @@ import logging
 import threading
 import time
 from types import TracebackType
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
-import pynvml
+try:
+    import pynvml
+except ImportError:  # pragma: no cover - minimal CPU installations.
+    pynvml = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 _nvml_initialized = False
 _nvml_lock = threading.Lock()
-_gpu_handles: Dict[int, pynvml.c_nvmlDevice_t] = {}
+_gpu_handles: Dict[int, Any] = {}
 
 
 def _log_nvml_version_info() -> None:
@@ -42,6 +45,9 @@ def _log_nvml_version_info() -> None:
 def init_nvml() -> bool:
     """Initializes NVML library (thread-safe). Returns True if successful."""
     global _nvml_initialized
+    if pynvml is None:
+        logger.warning("pynvml is not installed; NVML monitoring is disabled.")
+        return False
     if _nvml_initialized:
         return True
     with _nvml_lock:
@@ -70,6 +76,8 @@ def init_nvml() -> bool:
 def shutdown_nvml() -> None:
     """Shuts down the NVML library (thread-safe)."""
     global _nvml_initialized, _gpu_handles
+    if pynvml is None:
+        return
     with _nvml_lock:
         if not _nvml_initialized:
             logger.debug("NVML not initialized, skipping shutdown.")
@@ -89,7 +97,7 @@ def shutdown_nvml() -> None:
             logger.error(f"Unexpected error during NVML shutdown: {e}", exc_info=True)
 
 
-def get_gpu_handle(device_index: int = 0) -> Optional[pynvml.c_nvmlDevice_t]:
+def get_gpu_handle(device_index: int = 0) -> Optional[Any]:
     """Gets the NVML handle for a specific GPU device (initializes NVML if needed).
 
     Args:
@@ -98,7 +106,7 @@ def get_gpu_handle(device_index: int = 0) -> Optional[pynvml.c_nvmlDevice_t]:
     Returns:
         The NVML device handle, or None if NVML init fails or device not found.
     """
-    if not _nvml_initialized and not init_nvml():
+    if pynvml is None or (not _nvml_initialized and not init_nvml()):
         logger.error("NVML initialization failed. Cannot get GPU handle.")
         return None
 
@@ -122,9 +130,9 @@ def get_gpu_handle(device_index: int = 0) -> Optional[pynvml.c_nvmlDevice_t]:
         return None
 
 
-def get_gpu_power_usage(handle: pynvml.c_nvmlDevice_t) -> Optional[float]:
+def get_gpu_power_usage(handle: Any) -> Optional[float]:
     """Gets the current power usage of the GPU in Watts."""
-    if not handle:
+    if pynvml is None or not handle:
         logger.debug("Invalid GPU handle provided for power usage query.")
         return None
     if not _nvml_initialized:
@@ -147,14 +155,14 @@ def get_gpu_power_usage(handle: pynvml.c_nvmlDevice_t) -> Optional[float]:
 
 
 def get_gpu_memory_usage(
-    handle: pynvml.c_nvmlDevice_t,
+    handle: Any,
 ) -> Optional[Tuple[float, float, float]]:
     """Gets the memory usage of the GPU in MiB (Used, Total, Free).
 
     Returns:
         Tuple[Used MiB, Total MiB, Free MiB] or None if failed.
     """
-    if not handle:
+    if pynvml is None or not handle:
         logger.debug("Invalid GPU handle provided for memory usage query.")
         return None
     if not _nvml_initialized:
@@ -190,7 +198,7 @@ class GPUEnergyMonitor:
 
         self._device_index = device_index
         self._interval_sec = interval_sec
-        self._handle: Optional[pynvml.c_nvmlDevice_t] = None
+        self._handle: Optional[Any] = None
         self._monitoring_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._samples: List[Tuple[float, Optional[float]]] = []

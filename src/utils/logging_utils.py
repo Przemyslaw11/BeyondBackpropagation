@@ -6,7 +6,6 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-import wandb
 
 
 def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> None:
@@ -67,6 +66,12 @@ def setup_wandb(
     job_type: str = "training",
 ) -> Optional["wandb.sdk.wandb_run.Run"]:
     """Initializes a Weights & Biases run."""
+    try:
+        import wandb
+    except ImportError:
+        logger.error("wandb library not found. Install with `pip install wandb`")
+        return None
+
     wandb_config = config.get("logging", {}).get("wandb", {})
     if not wandb_config.get("use_wandb", True):
         logger.info("Weights & Biases logging is disabled in the configuration.")
@@ -106,9 +111,6 @@ def setup_wandb(
         )
         logger.info(f"Weights & Biases run initialized: {run.url if run else 'Failed'}")
         return run
-    except ImportError:
-        logger.error("wandb library not found. Install with `pip install wandb`")
-        return None
     except Exception as e:
         logger.error(f"Failed to initialize Weights & Biases: {e}", exc_info=True)
         return None
@@ -170,7 +172,12 @@ def log_metrics(
         logger.info("--- End Metrics Log ---")
     logger.info("")
 
-    active_run = wandb_run or wandb.run
+    try:
+        import wandb
+
+        active_run = wandb_run or wandb.run
+    except ImportError:
+        active_run = wandb_run
     if active_run:
         try:
             active_run.log(metrics, commit=commit)

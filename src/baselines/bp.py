@@ -6,7 +6,6 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-import pynvml
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -40,7 +39,7 @@ def train_bp_epoch(
     log_interval: int = 100,
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> Tuple[float, float, float]:
     """Performs one epoch of standard Backpropagation training.
@@ -160,7 +159,7 @@ def train_bp_model(
     wandb_run: "Optional[wandb.sdk.wandb_run.Run]" = None,
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> float:
     """Orchestrates the end-to-end training of a model using Backpropagation.

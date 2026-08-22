@@ -5,7 +5,6 @@ import math
 import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-import pynvml
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,7 +39,7 @@ def train_cafo_dfa_blocks(
     device: torch.device,
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> float:
     """Trains the blocks of the CaFo_CNN model using Direct Feedback Alignment (DFA).
@@ -320,7 +319,7 @@ def train_cafo_predictor_only(
     log_interval: int = 100,
     block_index: int = 0,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> Tuple[float, float, float, int]:
     """Trains a single CaFoPredictor, keeping its corresponding CaFoBlock frozen.
@@ -550,7 +549,7 @@ def train_cafo_model(
     wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None,
     input_adapter: Optional[Callable] = None,
     step_ref: Optional[List[int]] = None,
-    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    gpu_handle: Optional[Any] = None,
     nvml_active: bool = False,
 ) -> float:
     """Orchestrates the training of CaFo_CNN.

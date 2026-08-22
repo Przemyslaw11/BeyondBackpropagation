@@ -58,6 +58,25 @@ def test_checkpoint_manager_reports_missing_and_corrupt_checkpoints(
         manager.load("broken.pth")
 
 
+def test_checkpoint_manager_reads_raw_and_legacy_wrapped_payloads(
+    tmp_path: Path,
+) -> None:
+    manager = CheckpointManager(tmp_path)
+    raw_state = {"weight": torch.tensor([2.0])}
+    torch.save(raw_state, tmp_path / "bp_checkpoint_epoch_3.pth")
+    raw = manager.load("bp_checkpoint_epoch_3.pth")
+    assert raw["metadata"]["format_version"] == 0
+    assert torch.equal(raw["state_dict"]["weight"], raw_state["weight"])
+
+    torch.save(
+        {"model_state_dict": raw_state, "optimizer": {"step": 4}, "epoch": 5},
+        tmp_path / "ff_model_best.pth",
+    )
+    wrapped = manager.load("ff_model_best.pth")
+    assert wrapped["metadata"]["algorithm"] == "ff"
+    assert wrapped["optimizer_state_dict"] == {"step": 4}
+
+
 def test_metric_and_resource_snapshots_preserve_units_and_provenance() -> None:
     metric = MetricValue(3.17, "Wh", MetricProvenance(source="nvml", measured=True))
     assert metric.to_dict() == {
