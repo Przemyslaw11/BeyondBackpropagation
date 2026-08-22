@@ -71,6 +71,7 @@ class TrainingResult:
     metrics: Mapping[str, MetricValue] = field(default_factory=dict)
     checkpoint_path: str | None = None
     error: str | None = None
+    evaluation: EvaluationResult | None = None
 
 
 @dataclass(frozen=True)
@@ -135,7 +136,7 @@ class CheckpointMetadata:
 class TrainingContext:
     """Inputs and shared services supplied to an algorithm trainer."""
 
-    config: ExperimentConfig
+    config: ExperimentConfig | Mapping[str, Any]
     model: Any
     train_loader: Any
     val_loader: Any | None = None
@@ -144,6 +145,7 @@ class TrainingContext:
     tracker: ExperimentTracker | None = None
     resource_monitor: ResourceMonitor | None = None
     metadata: RunMetadata | None = None
+    checkpoint_manager: Any | None = None
 
 
 class TrainingAlgorithm(Protocol):
