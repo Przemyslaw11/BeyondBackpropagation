@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 
@@ -107,22 +106,32 @@ def _run_one(config: ExperimentConfig, artifact_dir: Path | None = None) -> int:
     return 0 if result.status.value == "succeeded" else 1
 
 
-def _run_tuning(args: argparse.Namespace) -> int:
-    """Translate the canonical command to the established optional workflow."""
-    script = Path(__file__).resolve().parents[3] / "scripts" / "run_optuna_search.py"
-    if not script.exists():
-        print(f"Legacy tuning script not found: {script}", file=sys.stderr)
-        return 2
-    command = [sys.executable, str(script), "--config", str(args.config)]
-    if args.output_dir is not None:
-        command.extend(("--output-dir", str(args.output_dir)))
-    if args.study_name is not None:
-        command.extend(("--study-name", args.study_name))
-    if args.n_trials is not None:
-        command.extend(("--n-trials", str(args.n_trials)))
+def _run_tuning(args: argparse.Namespace, config: ExperimentConfig) -> int:
+    """Run the canonical tuning subsystem; the legacy script is only a shim."""
+    from ..tuning import run_study
+
     if args.backend is not None:
-        command.extend(("--backend", args.backend))
-    return subprocess.run(command, check=False).returncode
+        config = load_experiment_config(
+            args.config,
+            args.base_config,
+            tuple(args.overrides) + (f"general.backend={args.backend}",),
+        )
+    mapping = config.to_mapping()
+    output_dir = args.output_dir
+    if output_dir is None:
+        backend = get_execution_backend(mapping)
+        output_dir = Path(backend.resolve_results_dir(mapping)) / "optuna"
+    study_name = args.study_name or f"{config.experiment_name}_canonical"
+    result = run_study(
+        config,
+        output_dir=output_dir,
+        study_name=study_name,
+        n_trials=args.n_trials,
+    )
+    print(f"study_name: {result.study_name}")
+    print(f"trials: {len(result.trials)}")
+    print(f"best_value: {result.best_value}")
+    return 0 if result.best_value is not None else 1
 
 
 def _batch_configs(directory: Path, pattern: str) -> list[Path]:
@@ -174,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
                 _print_dry_run(config)
                 print("tuning: validated; no study started")
                 return 0
-            return _run_tuning(args)
+            return _run_tuning(args, config)
 
         if args.dry_run:
             _print_dry_run(config)

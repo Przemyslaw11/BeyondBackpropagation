@@ -153,6 +153,7 @@ _ALLOWED_SECTION_KEYS = {
         "pruner",
         "lr_range",
         "wd_range",
+        "momentum_range",
         "ff_lr_range",
         "ff_wd_range",
         "ds_lr_range",
