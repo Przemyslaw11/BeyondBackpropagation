@@ -113,6 +113,12 @@ def profile_model(
             "source": "estimated-forward-hooks",
             "measured": False,
         },
+        "estimated_fwd_gflops": {
+            "value": forward_gflops,
+            "unit": "GFLOPs",
+            "source": "estimated-forward-hooks",
+            "measured": False,
+        },
         "estimated_bp_update_gflops": {
             "value": forward_gflops * 2.0,
             "unit": "GFLOPs",

@@ -10,7 +10,9 @@ from ..config import ConfigValidationError, ExperimentConfig, load_experiment_co
 from ..runtime import get_execution_backend, resolve_device
 
 
-def _config_arguments(command: argparse.ArgumentParser) -> None:
+def _config_arguments(
+    command: argparse.ArgumentParser, *, dry_run: bool = False
+) -> None:
     command.add_argument("--config", required=True, type=Path)
     command.add_argument("--base-config", default=Path("configs/base.yaml"), type=Path)
     command.add_argument(
@@ -21,6 +23,8 @@ def _config_arguments(command: argparse.ArgumentParser) -> None:
         metavar="SECTION.KEY=VALUE",
         help="Override a resolved configuration value; may be repeated",
     )
+    if dry_run:
+        command.add_argument("--dry-run", action="store_true")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -31,20 +35,18 @@ def _parser() -> argparse.ArgumentParser:
         ("inspect-config", "Show the resolved configuration summary"),
     ):
         command = subparsers.add_parser(name, help=help_text)
-        _config_arguments(command)
+        _config_arguments(command, dry_run=True)
 
     experiment = subparsers.add_parser("experiment", help="Run experiments")
     experiment_subparsers = experiment.add_subparsers(
         dest="experiment_command", required=True
     )
     run = experiment_subparsers.add_parser("run", help="Run one experiment")
-    _config_arguments(run)
-    run.add_argument("--dry-run", action="store_true")
+    _config_arguments(run, dry_run=True)
     run.add_argument("--artifact-dir", type=Path, default=None)
 
     tune = subparsers.add_parser("tune", help="Run or validate an Optuna study")
-    _config_arguments(tune)
-    tune.add_argument("--dry-run", action="store_true")
+    _config_arguments(tune, dry_run=True)
     tune.add_argument("--output-dir", type=Path, default=None)
     tune.add_argument("--study-name", default=None)
     tune.add_argument("--n-trials", type=int, default=None)

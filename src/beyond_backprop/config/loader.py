@@ -66,12 +66,18 @@ def normalize_legacy_config(config: Mapping[str, Any]) -> dict[str, Any]:
 
     normalized = copy.deepcopy(dict(config))
     data = normalized.setdefault("data", {})
+    if not isinstance(data, dict):
+        raise ConfigValidationError("Configuration section 'data' must be a mapping")
     if "input_channels'" in data:
         if "input_channels" not in data:
             data["input_channels"] = data["input_channels'"]
         del data["input_channels'"]
 
     algorithm_params = normalized.setdefault("algorithm_params", {})
+    if not isinstance(algorithm_params, dict):
+        raise ConfigValidationError(
+            "Configuration section 'algorithm_params' must be a mapping"
+        )
     for key in (
         "predictor_early_stopping_enabled",
         "predictor_early_stopping_metric",
@@ -126,7 +132,14 @@ _ALLOWED_SECTION_KEYS = {
         "scheduler",
         "scheduler_params",
     },
-    "data_loader": {"batch_size", "num_workers", "pin_memory", "shuffle", "drop_last"},
+    "data_loader": {
+        "batch_size",
+        "num_workers",
+        "pin_memory",
+        "shuffle",
+        "drop_last",
+        "persistent_workers",
+    },
     "data": {
         "root",
         "download",
@@ -351,6 +364,7 @@ def _validate_scalar_types(config: Mapping[str, Any]) -> None:
             "pin_memory": bool,
             "shuffle": bool,
             "drop_last": bool,
+            "persistent_workers": bool,
         },
         "data": {
             "root": str,

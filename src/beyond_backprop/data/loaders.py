@@ -192,12 +192,15 @@ def get_dataloaders(
                 Subset(full_train_dataset_raw, range(total_samples)), train_transform
             )
 
-    persistent_workers = resolved_num_workers > 0
     loader_config = (
         dict(config.get("data_loader", {})) if isinstance(config, Mapping) else {}
     )
     train_shuffle = loader_config.get("shuffle", True)
     train_drop_last = loader_config.get("drop_last", True)
+    persistent_workers = (
+        bool(loader_config.get("persistent_workers", resolved_num_workers > 0))
+        and resolved_num_workers > 0
+    )
     generator = torch.Generator()
     if seed is not None:
         generator.manual_seed(seed)
