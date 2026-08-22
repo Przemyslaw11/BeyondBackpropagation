@@ -47,6 +47,8 @@ class DatasetName(_ValueEnum):
 
     @classmethod
     def parse(cls, value: str | Enum) -> DatasetName:
+        if isinstance(value, cls):
+            return value
         normalized = str(value).strip().lower().replace("_", "")
         return cls(normalized)
 

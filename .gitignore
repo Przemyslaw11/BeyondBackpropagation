@@ -184,6 +184,10 @@ cython_debug/
 
 # Project-specific ignores
 data/
+!src/beyond_backprop/data/
+!src/beyond_backprop/data/**
+src/beyond_backprop/data/**/__pycache__/
+src/beyond_backprop/data/**/*.pyc
 results/
 *.log
 logs/
