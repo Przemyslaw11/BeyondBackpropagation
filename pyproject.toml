@@ -22,10 +22,11 @@ dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
   "ruff>=0.6",
+  "tqdm>=4.0",
   "types-PyYAML>=6.0",
 ]
 gpu = ["pynvml==12.0.0"]
-research = ["python-dotenv", "scikit-learn", "tqdm"]
+research = ["python-dotenv", "scikit-learn"]
 tracking = ["wandb==0.19.8"]
 tuning = ["optuna==4.2.1"]
 carbon = ["codecarbon==3.0.1"]
