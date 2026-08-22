@@ -60,6 +60,14 @@ class EvaluationResult:
     accuracy_percent: float
     metrics: Mapping[str, MetricValue] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-compatible representation for run artifacts."""
+        return {
+            "loss": self.loss,
+            "accuracy_percent": self.accuracy_percent,
+            "metrics": {name: value.to_dict() for name, value in self.metrics.items()},
+        }
+
 
 @dataclass(frozen=True)
 class TrainingResult:
@@ -73,6 +81,25 @@ class TrainingResult:
     error: str | None = None
     evaluation: EvaluationResult | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-compatible representation for run artifacts."""
+        return {
+            "status": self.status.value,
+            "best_epoch": self.best_epoch,
+            "best_metric": (
+                self.best_metric.to_dict() if self.best_metric is not None else None
+            ),
+            "metrics": {
+                name: value.to_dict() if isinstance(value, MetricValue) else value
+                for name, value in self.metrics.items()
+            },
+            "checkpoint_path": self.checkpoint_path,
+            "error": self.error,
+            "evaluation": (
+                self.evaluation.to_dict() if self.evaluation is not None else None
+            ),
+        }
+
 
 @dataclass(frozen=True)
 class ResourceSnapshot:
@@ -84,6 +111,18 @@ class ResourceSnapshot:
     co2e_g: float | None = None
     measured: bool = False
     source: str = "none"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return scalar values and provenance for structured artifacts."""
+        result: dict[str, Any] = {
+            "measured": self.measured,
+            "source": self.source,
+        }
+        for name in ("duration_sec", "energy_wh", "peak_memory_mib", "co2e_g"):
+            value = getattr(self, name)
+            if value is not None:
+                result[name] = value
+        return result
 
     def to_metrics(self) -> dict[str, MetricValue]:
         values: dict[str, MetricValue] = {}
@@ -118,6 +157,21 @@ class RunMetadata:
     device: str = "cpu"
     seed: int | None = None
     hostname: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return reproducibility metadata in a JSON-compatible form."""
+        return {
+            "run_id": self.run_id,
+            "timestamp_utc": self.timestamp_utc,
+            "command_line": self.command_line,
+            "git_commit": self.git_commit,
+            "git_dirty": self.git_dirty,
+            "python_version": self.python_version,
+            "torch_version": self.torch_version,
+            "device": self.device,
+            "seed": self.seed,
+            "hostname": self.hostname,
+        }
 
 
 @dataclass(frozen=True)

@@ -239,7 +239,13 @@ def test_runner_restores_best_state_and_finalizes_disabled_services(tmp_path):
     assert tracker.finished is RunStatus.SUCCEEDED
     assert tracker.configs == 1
     assert monitor.started and monitor.stopped
+    assert (tmp_path / "config.resolved.yaml").exists()
     assert (tmp_path / "resolved_config.yaml").exists()
+    assert (tmp_path / "metadata.json").exists()
+    assert (tmp_path / "metrics.json").exists()
+    assert (tmp_path / "history.csv").exists()
+    assert (tmp_path / "summary.json").exists()
+    assert (tmp_path / "run_summary.json").exists()
 
 
 def test_runner_failure_cleanup_does_not_require_tracking_or_gpu():

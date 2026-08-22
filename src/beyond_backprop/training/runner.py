@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 from collections.abc import Callable
@@ -19,8 +20,11 @@ from ..config.models import ExperimentConfig
 from ..contracts import (
     EvaluationResult,
     ExperimentTracker,
+    MetricProvenance,
+    MetricValue,
     ResourceMonitor,
     ResourceSnapshot,
+    RunMetadata,
     RunStatus,
     TrainingContext,
     TrainingResult,
@@ -94,6 +98,7 @@ class ExperimentRunner:
         evaluation: EvaluationResult | None = None
         artifacts: tuple[str, ...] = ()
         error: str | None = None
+        metadata: RunMetadata | None = None
 
         try:
             status = RunStatus.RUNNING
@@ -150,9 +155,6 @@ class ExperimentRunner:
                 error=training_result.error,
                 evaluation=evaluation,
             )
-            artifacts = self._persist_artifacts(
-                typed_config, training_result, evaluation
-            )
             tracker.log_metrics(
                 {
                     "evaluation_loss": evaluation.loss,
@@ -174,6 +176,29 @@ class ExperimentRunner:
                     resource_snapshot = monitor.stop()
                     if tracker is not None:
                         tracker.log_metrics(resource_snapshot.to_metrics())
+                except Exception as exc:
+                    if status is RunStatus.SUCCEEDED:
+                        status = RunStatus.FAILED
+                        error = f"{type(exc).__name__}: {exc}"
+                        training_result = TrainingResult(
+                            status=RunStatus.FAILED,
+                            metrics=training_result.metrics,
+                            evaluation=evaluation,
+                            error=error,
+                        )
+            if metadata is not None:
+                try:
+                    artifacts = self._persist_artifacts(
+                        typed_config,
+                        training_result,
+                        evaluation,
+                        resource_snapshot,
+                        metadata,
+                        status,
+                    )
+                    if tracker is not None:
+                        for artifact in artifacts:
+                            tracker.log_artifact(artifact)
                 except Exception as exc:
                     if status is RunStatus.SUCCEEDED:
                         status = RunStatus.FAILED
@@ -232,7 +257,10 @@ class ExperimentRunner:
         self,
         config: ExperimentConfig,
         training: TrainingResult,
-        evaluation: EvaluationResult,
+        evaluation: EvaluationResult | None,
+        resources: ResourceSnapshot,
+        metadata: RunMetadata,
+        status: RunStatus,
     ) -> tuple[str, ...]:
         target = self.artifact_dir
         if target is None:
@@ -243,25 +271,103 @@ class ExperimentRunner:
         if target is None:
             return ()
         target.mkdir(parents=True, exist_ok=True)
-        resolved_path = target / "resolved_config.yaml"
+        for directory_name in ("checkpoints", "logs", "profiling"):
+            (target / directory_name).mkdir(exist_ok=True)
+
         from ..config.loader import save_resolved_config
 
-        save_resolved_config(config, resolved_path)
-        summary_path = target / "run_summary.json"
-        summary_path.write_text(
+        canonical_config_path = target / "config.resolved.yaml"
+        legacy_config_path = target / "resolved_config.yaml"
+        save_resolved_config(config, canonical_config_path)
+        save_resolved_config(config, legacy_config_path)
+
+        metadata_payload = metadata.to_dict()
+        metadata_payload["config_hash"] = config.config_hash
+        metadata_path = target / "metadata.json"
+        metadata_path.write_text(
+            json.dumps(metadata_payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
+        metrics = self._artifact_metrics(training, evaluation, resources)
+        metrics_path = target / "metrics.json"
+        metrics_path.write_text(
             json.dumps(
-                {
-                    "status": training.status.value,
-                    "evaluation": {
-                        "loss": evaluation.loss,
-                        "accuracy_percent": evaluation.accuracy_percent,
-                    },
-                },
+                {name: value.to_dict() for name, value in metrics.items()},
                 indent=2,
+                sort_keys=True,
             ),
             encoding="utf-8",
         )
-        return (str(resolved_path), str(summary_path))
+        history_path = target / "history.csv"
+        with history_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=("phase", "metric", "value", "unit", "source", "measured"),
+            )
+            writer.writeheader()
+            for name, value in metrics.items():
+                writer.writerow(
+                    {
+                        "phase": "evaluation" if name.startswith("eval_") else "run",
+                        "metric": name,
+                        **value.to_dict(),
+                    }
+                )
+
+        summary = {
+            "status": status.value,
+            "config_hash": config.config_hash,
+            "training": training.to_dict(),
+            "evaluation": evaluation.to_dict() if evaluation is not None else None,
+            "resources": resources.to_dict(),
+            "metadata": metadata_payload,
+        }
+        canonical_summary_path = target / "summary.json"
+        legacy_summary_path = target / "run_summary.json"
+        summary_text = json.dumps(summary, indent=2, sort_keys=True, default=str)
+        canonical_summary_path.write_text(summary_text, encoding="utf-8")
+        legacy_summary_path.write_text(summary_text, encoding="utf-8")
+        return tuple(
+            str(path)
+            for path in (
+                canonical_config_path,
+                legacy_config_path,
+                metadata_path,
+                metrics_path,
+                history_path,
+                canonical_summary_path,
+                legacy_summary_path,
+            )
+        )
+
+    @staticmethod
+    def _artifact_metrics(
+        training: TrainingResult,
+        evaluation: EvaluationResult | None,
+        resources: ResourceSnapshot,
+    ) -> dict[str, MetricValue]:
+        metrics: dict[str, MetricValue] = {}
+        for name, value in training.metrics.items():
+            if isinstance(value, MetricValue):
+                metrics[f"train_{name}"] = value
+            else:
+                metrics[f"train_{name}"] = MetricValue(
+                    float(value), "", MetricProvenance("training", True)
+                )
+        if evaluation is not None:
+            metrics["eval_loss"] = MetricValue(
+                evaluation.loss, "", MetricProvenance("evaluator", True)
+            )
+            metrics["eval_accuracy_percent"] = MetricValue(
+                evaluation.accuracy_percent,
+                "percentage_points",
+                MetricProvenance("evaluator", True),
+            )
+            metrics.update(
+                {f"eval_{name}": value for name, value in evaluation.metrics.items()}
+            )
+        metrics.update(resources.to_metrics())
+        return metrics
 
 
 def run_experiment(
