@@ -2,6 +2,7 @@
 
 from .loader import (
     ConfigValidationError,
+    experiment_config_from_mapping,
     load_experiment_config,
     load_mapping,
     normalize_legacy_config,
@@ -23,6 +24,7 @@ __all__ = [
     "ConfigValidationError",
     "DatasetName",
     "ExperimentConfig",
+    "experiment_config_from_mapping",
     "load_experiment_config",
     "load_mapping",
     "normalize_legacy_config",

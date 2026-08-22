@@ -451,6 +451,14 @@ def _config_from_mapping(
     )
 
 
+def experiment_config_from_mapping(
+    resolved: Mapping[str, Any],
+) -> ExperimentConfig:
+    """Build a typed config from a validated in-memory mapping."""
+    validate_mapping(resolved)
+    return _config_from_mapping(resolved)
+
+
 def save_resolved_config(
     config: ExperimentConfig, path: str | os.PathLike[str]
 ) -> None:
