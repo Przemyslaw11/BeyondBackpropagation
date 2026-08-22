@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.architectures.mf_mlp import MF_MLP
+from beyond_backprop.algorithms.mf_math import local_cross_entropy, projection_logits
 from src.utils.helpers import (
     create_directory_if_not_exists,
     save_checkpoint,
@@ -32,17 +33,8 @@ def mf_local_loss_fn(
     targets: torch.Tensor,
     criterion: Optional[nn.Module] = None,
 ) -> torch.Tensor:
-    """Calculates the MF local cross-entropy loss for activation a_i using M_i."""
-    if criterion is None:
-        criterion = nn.CrossEntropyLoss()
-
-    if activation_i.dim() != 2:
-        raise ValueError(
-            f"Activation must be flattened (2D) for local loss. Got shape: {activation_i.shape}"
-        )
-    goodness_scores_i = torch.matmul(activation_i, projection_matrix_i.t())
-    loss = criterion(goodness_scores_i, targets)
-    return loss
+    """Compatibility wrapper around the canonical MF local-loss function."""
+    return local_cross_entropy(activation_i, projection_matrix_i, targets, criterion)
 
 
 @torch.no_grad()
@@ -535,7 +527,7 @@ def evaluate_mf_model(
 
         last_activation = all_activations[last_activation_index].to(device)
         last_projection_matrix = last_projection_matrix.to(device)
-        goodness_scores = torch.matmul(last_activation, last_projection_matrix.t())
+        goodness_scores = projection_logits(last_activation, last_projection_matrix)
         predicted_labels = torch.argmax(goodness_scores, dim=1)
         total_correct += (predicted_labels == labels).sum().item()
         total_samples += labels.size(0)

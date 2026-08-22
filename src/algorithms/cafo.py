@@ -14,6 +14,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
+from beyond_backprop.algorithms.cafo_math import (
+    aggregate_predictor_outputs,
+    predictor_cross_entropy,
+)
 from src.utils.helpers import (
     create_directory_if_not_exists,
     format_time,
@@ -839,23 +843,15 @@ def evaluate_cafo_model(
                 return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
 
             try:
-                if aggregation_method == "sum":
-                    final_prediction_logits = torch.stack(predictor_outputs, dim=0).sum(
-                        dim=0
-                    )
-                elif aggregation_method == "last":
-                    final_prediction_logits = predictor_outputs[0]
-                elif aggregation_method == "average":
-                    final_prediction_logits = torch.stack(
-                        predictor_outputs, dim=0
-                    ).mean(dim=0)
-                else:
-                    raise ValueError(
-                        f"Unsupported aggregation method: {aggregation_method}"
-                    )
+                final_prediction_logits = aggregate_predictor_outputs(
+                    predictor_outputs, aggregation_method
+                )
 
                 if criterion:
-                    loss = criterion(final_prediction_logits, labels)
+                    if isinstance(criterion, nn.CrossEntropyLoss):
+                        loss = predictor_cross_entropy(final_prediction_logits, labels)
+                    else:
+                        loss = criterion(final_prediction_logits, labels)
                     total_loss += loss.item() * adapted_images.size(0)
 
                 predicted_labels = torch.argmax(final_prediction_logits, dim=1)

@@ -13,6 +13,11 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.architectures.ff_mlp import FF_MLP
+from beyond_backprop.algorithms.ff_math import (
+    aggregate_goodness,
+    generate_hinton_inputs,
+    linear_cooldown_lr,
+)
 from src.utils.helpers import (
     create_directory_if_not_exists,
     format_time,
@@ -37,70 +42,21 @@ def generate_ff_hinton_inputs(
     replace_value_off: float = 0.0,
     neutral_value: float = 0.1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Generates positive, negative, and neutral tensors for FF training.
-
-    This uses Hinton's pixel replacement method. Ensures negative label is different.
-    Matches the logic in the reference `ff_mnist.py`.
-
-    Returns:
-        A tuple of (pos_flattened, neg_flattened, neutral_flattened) tensors.
-    """
-    batch_size = base_images.shape[0]
-    base_flat_view = base_images.view(batch_size, -1)
-    image_pixels = base_flat_view.shape[1]
-    if num_classes > image_pixels:
-        raise ValueError(
-            f"num_classes ({num_classes}) > total pixels ({image_pixels}). Cannot embed label."
-        )
-    one_hot_pos = F.one_hot(base_labels, num_classes=num_classes).to(
-        device=device, dtype=torch.float
+    """Compatibility wrapper around the canonical Hinton input generator."""
+    return generate_hinton_inputs(
+        base_images,
+        base_labels,
+        num_classes,
+        device,
+        replace_value_on,
+        replace_value_off,
+        neutral_value,
     )
-    label_patch_pos = torch.where(one_hot_pos == 1, replace_value_on, replace_value_off)
-    pos_flattened = base_flat_view.clone()
-    pos_flattened[:, :num_classes] = label_patch_pos
-    rand_offset = torch.randint(
-        1, num_classes, (batch_size,), device=device, dtype=torch.long
-    )
-    neg_labels = (base_labels + rand_offset) % num_classes
-    collision = neg_labels == base_labels
-    retries = 0
-    max_retries = 5
-    while torch.any(collision) and retries < max_retries:
-        num_collisions = collision.sum().item()
-        new_rand_offset = torch.randint(
-            1, num_classes, (num_collisions,), device=device, dtype=torch.long
-        )
-        neg_labels[collision] = (base_labels[collision] + new_rand_offset) % num_classes
-        collision = neg_labels == base_labels
-        retries += 1
-    if retries == max_retries and torch.any(collision):
-        logger.warning(
-            f"Could not guarantee distinct negative labels after {max_retries} retries. Forcing."
-        )
-        neg_labels[collision] = (neg_labels[collision] + 1) % num_classes
-    one_hot_neg = F.one_hot(neg_labels, num_classes=num_classes).to(
-        device=device, dtype=torch.float
-    )
-    label_patch_neg = torch.where(one_hot_neg == 1, replace_value_on, replace_value_off)
-    neg_flattened = base_flat_view.clone()
-    neg_flattened[:, :num_classes] = label_patch_neg
-    neutral_patch = torch.full(
-        (batch_size, num_classes), neutral_value, device=device, dtype=torch.float
-    )
-    neutral_flattened = base_flat_view.clone()
-    neutral_flattened[:, :num_classes] = neutral_patch
-    return pos_flattened.detach(), neg_flattened.detach(), neutral_flattened.detach()
 
 
 def get_linear_cooldown_lr(initial_lr: float, epoch: int, total_epochs: int) -> float:
-    """Linearly cools down the learning rate in the second half of training."""
-    current_epoch_num = epoch + 1
-    if current_epoch_num > (total_epochs // 2):
-        lr_factor = 2.0 * (1 + total_epochs - current_epoch_num) / float(total_epochs)
-        new_lr = initial_lr * lr_factor
-        return max(new_lr, 1e-9)
-    else:
-        return initial_lr
+    """Compatibility wrapper around the canonical FF learning-rate schedule."""
+    return linear_cooldown_lr(initial_lr, epoch, total_epochs)
 
 
 def train_ff_model(
@@ -636,13 +592,14 @@ def evaluate_ff_model(
                         )
                         logger.warning(f"Eval no goodness {label_candidate}.")
                     # Reference sums goodness from layer 1 onwards (index >= 1)
-                    elif len(layer_goodness_list) > 1:
-                        total_goodness_candidate = torch.stack(
-                            layer_goodness_list[1:], dim=0
-                        ).sum(dim=0)
                     else:
-                        logger.warning("Eval only 1 hidden layer, using its goodness.")
-                        total_goodness_candidate = layer_goodness_list[0]
+                        if len(layer_goodness_list) == 1:
+                            logger.warning(
+                                "Eval only 1 hidden layer, using its goodness."
+                            )
+                        total_goodness_candidate = aggregate_goodness(
+                            layer_goodness_list
+                        )
                     if total_goodness_candidate.shape != (batch_size,):
                         raise ValueError(
                             f"Bad goodness shape: {total_goodness_candidate.shape}"
