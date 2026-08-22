@@ -30,9 +30,8 @@ from ..contracts import (
     TrainingResult,
 )
 from ..data import build_dataloaders
-from ..monitoring import NoOpResourceMonitor
+from ..monitoring import profile_model
 from ..runtime import collect_run_metadata, resolve_device, set_seed
-from ..tracking import NoOpTracker
 
 
 @dataclass(frozen=True)
@@ -99,6 +98,7 @@ class ExperimentRunner:
         artifacts: tuple[str, ...] = ()
         error: str | None = None
         metadata: RunMetadata | None = None
+        profiling: dict[str, Any] = {}
 
         try:
             status = RunStatus.RUNNING
@@ -110,21 +110,29 @@ class ExperimentRunner:
             algorithm: AlgorithmAdapter = self.algorithm_registry.build(
                 typed_config.algorithm
             )
-            tracker = self.tracker or (
-                self.tracker_factory(typed_config)
-                if self.tracker_factory is not None
-                else NoOpTracker()
-            )
-            monitor = self.resource_monitor or (
-                self.monitor_factory(typed_config)
-                if self.monitor_factory is not None
-                else NoOpResourceMonitor()
-            )
-            checkpoint_manager = self._checkpoint_manager(mapping)
+            artifact_target = self.artifact_dir or self._artifact_target(typed_config)
+            if self.tracker is not None:
+                tracker = self.tracker
+            elif self.tracker_factory is not None:
+                tracker = self.tracker_factory(typed_config)
+            else:
+                from ..tracking import build_tracker
+
+                tracker = build_tracker(typed_config, directory=artifact_target)
+            if self.resource_monitor is not None:
+                monitor = self.resource_monitor
+            elif self.monitor_factory is not None:
+                monitor = self.monitor_factory(typed_config)
+            else:
+                from ..monitoring import build_resource_monitor
+
+                monitor = build_resource_monitor(typed_config)
+            checkpoint_manager = self._checkpoint_manager(mapping, artifact_target)
             metadata = collect_run_metadata(
                 typed_config.experiment_name,
                 device=str(device),
                 seed=typed_config.seed,
+                config_hash=typed_config.config_hash,
             )
             context = TrainingContext(
                 config=typed_config,
@@ -138,10 +146,18 @@ class ExperimentRunner:
                 checkpoint_manager=checkpoint_manager,
             )
 
+            if typed_config.to_mapping().get("profiling", {}).get("enabled", False):
+                profiling = profile_model(model, mapping, device)
+
             tracker.log_config(mapping)
             monitor.start()
             monitor_started = True
             training_result = algorithm.fit(context)
+            # Evaluation is deliberately outside the canonical training
+            # measurement region.
+            monitor_started = False
+            resource_snapshot = monitor.stop()
+            tracker.log_metrics(resource_snapshot.to_metrics())
             if training_result.status is RunStatus.FAILED:
                 raise RuntimeError(training_result.error or "Algorithm training failed")
             algorithm.restore_best_state(context, training_result)
@@ -173,6 +189,7 @@ class ExperimentRunner:
         finally:
             if monitor_started and monitor is not None:
                 try:
+                    monitor_started = False
                     resource_snapshot = monitor.stop()
                     if tracker is not None:
                         tracker.log_metrics(resource_snapshot.to_metrics())
@@ -195,10 +212,19 @@ class ExperimentRunner:
                         resource_snapshot,
                         metadata,
                         status,
+                        profiling,
                     )
                     if tracker is not None:
                         for artifact in artifacts:
-                            tracker.log_artifact(artifact)
+                            try:
+                                tracker.log_artifact(artifact)
+                            except Exception:
+                                self._rewrite_summary_status(
+                                    typed_config,
+                                    RunStatus.FAILED,
+                                    "tracker artifact logging failed",
+                                )
+                                raise
                 except Exception as exc:
                     if status is RunStatus.SUCCEEDED:
                         status = RunStatus.FAILED
@@ -209,6 +235,7 @@ class ExperimentRunner:
                             evaluation=evaluation,
                             error=error,
                         )
+                        self._rewrite_summary_status(typed_config, status, error)
             if tracker is not None:
                 try:
                     tracker.finish(status)
@@ -222,6 +249,7 @@ class ExperimentRunner:
                             evaluation=evaluation,
                             error=error,
                         )
+                        self._rewrite_summary_status(typed_config, status, error)
 
         return ExperimentResult(
             status=status,
@@ -249,9 +277,20 @@ class ExperimentRunner:
             os.environ.setdefault(key, value)
 
     @staticmethod
-    def _checkpoint_manager(mapping: dict[str, Any]) -> CheckpointManager | None:
+    def _checkpoint_manager(
+        mapping: dict[str, Any], default_directory: Path | None = None
+    ) -> CheckpointManager | None:
         checkpoint_dir = mapping.get("checkpointing", {}).get("checkpoint_dir")
-        return CheckpointManager(checkpoint_dir) if checkpoint_dir else None
+        directory = checkpoint_dir or default_directory
+        return CheckpointManager(directory) if directory is not None else None
+
+    @staticmethod
+    def _artifact_target(config: ExperimentConfig) -> Path:
+        from ..runtime import get_execution_backend
+
+        mapping = config.to_mapping()
+        backend = get_execution_backend(mapping)
+        return Path(backend.resolve_results_dir(mapping)) / config.experiment_name
 
     def _persist_artifacts(
         self,
@@ -261,15 +300,9 @@ class ExperimentRunner:
         resources: ResourceSnapshot,
         metadata: RunMetadata,
         status: RunStatus,
+        profiling: dict[str, Any] | None = None,
     ) -> tuple[str, ...]:
-        target = self.artifact_dir
-        if target is None:
-            checkpoint_dir = (
-                config.to_mapping().get("checkpointing", {}).get("checkpoint_dir")
-            )
-            target = Path(checkpoint_dir) if checkpoint_dir else None
-        if target is None:
-            return ()
+        target = self.artifact_dir or self._artifact_target(config)
         target.mkdir(parents=True, exist_ok=True)
         for directory_name in ("checkpoints", "logs", "profiling"):
             (target / directory_name).mkdir(exist_ok=True)
@@ -314,6 +347,16 @@ class ExperimentRunner:
                     }
                 )
 
+        profile_path = target / "profiling" / "profile.json"
+        profile_path.write_text(
+            json.dumps(profiling or {}, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        log_path = target / "logs" / "run.log"
+        log_path.write_text(
+            f"status={status.value}\nexperiment_name={config.experiment_name}\n",
+            encoding="utf-8",
+        )
+
         summary = {
             "status": status.value,
             "config_hash": config.config_hash,
@@ -337,8 +380,32 @@ class ExperimentRunner:
                 history_path,
                 canonical_summary_path,
                 legacy_summary_path,
+                profile_path,
+                log_path,
             )
         )
+
+    def _rewrite_summary_status(
+        self, config: ExperimentConfig, status: RunStatus, error: str | None
+    ) -> None:
+        """Keep already-written summaries consistent with late service failures."""
+
+        target = self.artifact_dir or self._artifact_target(config)
+        for filename in ("summary.json", "run_summary.json"):
+            path = target / filename
+            if not path.exists():
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                payload["status"] = status.value
+                if error:
+                    payload["error"] = error
+                path.write_text(
+                    json.dumps(payload, indent=2, sort_keys=True, default=str),
+                    encoding="utf-8",
+                )
+            except (OSError, json.JSONDecodeError):
+                continue
 
     @staticmethod
     def _artifact_metrics(
