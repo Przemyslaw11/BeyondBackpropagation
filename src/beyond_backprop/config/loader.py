@@ -399,6 +399,15 @@ def load_experiment_config(
     base_config_path: str | os.PathLike[str] = "configs/base.yaml",
 ) -> ExperimentConfig:
     resolved = load_mapping(config_path, base_config_path)
+    return _config_from_mapping(resolved, config_path=config_path)
+
+
+def _config_from_mapping(
+    resolved: Mapping[str, Any],
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> ExperimentConfig:
+    """Build the typed contract from an already validated mapping."""
     general = resolved.get("general", {})
     data = resolved.get("data", {})
     loader = resolved.get("data_loader", {})
@@ -408,14 +417,21 @@ def load_experiment_config(
     architecture = ArchitectureName.parse(model.get("name", "mf_mlp"))
     dataset = DatasetName.parse(data.get("name", "mnist"))
     return ExperimentConfig(
-        experiment_name=str(resolved.get("experiment_name", Path(config_path).stem)),
+        experiment_name=str(
+            resolved.get(
+                "experiment_name",
+                Path(config_path).stem if config_path is not None else "experiment",
+            )
+        ),
         algorithm=algorithm,
         architecture=architecture,
         dataset=dataset,
         backend=backend,
         device=str(general.get("device", "auto")),
         seed=int(general.get("seed", 42)),
-        batch_size=int(loader.get("batch_size", 128)),
+        batch_size=int(
+            loader.get("batch_size", 100 if algorithm is AlgorithmName.FF else 128)
+        ),
         num_workers=int(loader.get("num_workers", 0)),
         pin_memory=bool(loader.get("pin_memory", False)),
         data_root=str(data.get("root", "./data")),
@@ -430,7 +446,7 @@ def load_experiment_config(
         training=resolved.get("training", {}),
         monitoring=resolved.get("monitoring", {}),
         tracking=resolved.get("tracking", resolved.get("logging", {}).get("wandb", {})),
-        resolved=resolved,
+        resolved=dict(resolved),
         config_hash=resolved_config_hash(resolved),
     )
 

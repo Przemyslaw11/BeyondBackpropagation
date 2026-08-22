@@ -7,9 +7,8 @@ from typing import Any
 
 import torch
 
-from src.utils.backend_policy import get_execution_backend
-
 from ..config.models import BackendName
+from .backend_policy import get_execution_backend
 
 
 def resolve_device(config: Mapping[str, Any]) -> torch.device:
