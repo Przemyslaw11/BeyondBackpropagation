@@ -1034,11 +1034,6 @@ and Figure 4b's temperature axis spans 23-30 C so a 3 C difference looks dramati
 There is NO plotting code anywhere in the repository. Every current figure is a Weights &
 Biases UI export, which is why none can be regenerated at higher resolution.
 
-### Preconditions
-Phase 2's extended monitor must be emitting per-run CSVs. Phase 3 and 4 results are needed
-for the final figures, but the data layer and style module can be built in parallel with
-them using smoke-run data.
-
 ### Tasks
 1. BUILD THE DATA LAYER. **The per-run summary record already exists and is populated** —
    Phase 2 built it and there are now 712 ladder JSONs, 109 Phase 4 JSONs and 1027 NVML
