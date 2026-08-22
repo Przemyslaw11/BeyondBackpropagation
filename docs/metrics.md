@@ -21,3 +21,9 @@ The historical `resolved_config.yaml` and `run_summary.json` names are also
 written as compatibility aliases. W&B, NVML, and CodeCarbon are optional and
 imported lazily. Disabled or unavailable services are represented explicitly;
 CPU smoke tests do not require those packages or hardware.
+
+Forward GFLOPs and estimated BP-update GFLOPs are reported separately. Each
+profiled value records whether it is estimated or measured; an unavailable
+NVML device produces an explicit unavailable snapshot rather than a fabricated
+energy or memory value. Evaluation metrics are not included in the training
+measurement interval.
