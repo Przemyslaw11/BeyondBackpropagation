@@ -207,3 +207,4 @@ slurm-*.out # Older SLURM naming pattern, just in case
 *.blg  
 
 master_thesis/
+source_tex/

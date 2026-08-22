@@ -395,6 +395,12 @@ def run_training(
     results: Dict[str, Any] = {}
     run_start_time = time.time()
     step_ref = [-1]
+    # Finalization must also be safe when setup fails before monitors exist.
+    tracker = None
+    carbon_csv_path = None
+    monitor = None
+    nvml_active = False
+    gpu_handle = None
 
     try:
         seed, device, wandb_run = _setup_environment_and_wandb(config, wandb_run)
@@ -419,6 +425,7 @@ def run_training(
             seed=seed,
             config=config,
             backend=backend.name,
+            download=bool(data_config.get("download", True)),
         )
         logger.info("Dataloaders created.")
 

@@ -53,8 +53,8 @@ def main(args: argparse.Namespace) -> None:
     logger.info("\n--- Starting Experiment ---")
     try:
         results = run_training(config, wandb_run=None)
-        results.pop("codecarbon_emissions_kgCO2e", None)
-        logger.debug("Removed kgCO2e emissions from results dict before printing.")
+        results.pop("codecarbon_emissions_gCO2e", None)
+        logger.debug("Removed gCO2e emissions from results dict before printing.")
         logger.info("\n--- Experiment Finished ---")
         logger.info("Results:")
         results_str = pprint.pformat(results)

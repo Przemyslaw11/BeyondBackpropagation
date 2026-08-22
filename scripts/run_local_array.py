@@ -71,7 +71,7 @@ def run_experiment(config_path: str, backend_name: str) -> dict:
     log.info("=" * 60)
 
     results = run_training(config, wandb_run=None)
-    results.pop("codecarbon_emissions_kgCO2e", None)
+    results.pop("codecarbon_emissions_gCO2e", None)
     log.info("Results for %s:", config_path)
     for line in pprint.pformat(results).split("\n"):
         log.info(line)

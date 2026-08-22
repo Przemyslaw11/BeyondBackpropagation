@@ -6,7 +6,9 @@ from src.utils import backend_policy
 
 
 class FakeTorch:
-    def __init__(self, cuda_available: bool, mps_available: bool, mps_built: bool) -> None:
+    def __init__(
+        self, cuda_available: bool, mps_available: bool, mps_built: bool
+    ) -> None:
         self.cuda = SimpleNamespace(is_available=lambda: cuda_available)
         self.backends = SimpleNamespace(
             mps=SimpleNamespace(
@@ -115,9 +117,7 @@ class BackendPolicyTests(unittest.TestCase):
         config = {
             "general": {"backend": "local"},
             "backend": {
-                "local": {
-                    "data_loader": {"num_workers": 1, "pin_memory": False}
-                }
+                "local": {"data_loader": {"num_workers": 1, "pin_memory": False}}
             },
         }
         backend = backend_policy.get_execution_backend(config)
@@ -137,9 +137,7 @@ class BackendPolicyTests(unittest.TestCase):
             "general": {"backend": "local"},
             "data_loader": {"num_workers": 4, "pin_memory": True},
             "backend": {
-                "local": {
-                    "data_loader": {"num_workers": 0, "pin_memory": False}
-                }
+                "local": {"data_loader": {"num_workers": 0, "pin_memory": False}}
             },
         }
         backend = backend_policy.get_execution_backend(config)

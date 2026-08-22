@@ -27,7 +27,7 @@ logging: { level: "INFO", wandb: { use_wandb: false } }
 checkpointing: { checkpoint_dir: null }
 monitoring: { enabled: false, energy_enabled: false }
 profiling: { enabled: false }
--
+
 tuning:
   enabled: true
   n_trials: 50

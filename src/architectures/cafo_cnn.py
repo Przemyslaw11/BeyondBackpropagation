@@ -87,11 +87,19 @@ class CaFoBlock(nn.Module):
                 else torch.device("cpu")
             )
 
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, *input_shape, device=device)
-            self.to(device)
-            dummy_output = self.forward(dummy_input)
-            return dummy_output.shape[1:]  # Return C, H, W
+        was_training = self.training
+        try:
+            # Shape probing must not update BatchNorm running statistics. This
+            # method is called from CaFo_CNN.__init__, before the model is used
+            # for training, so the temporary eval mode is observational only.
+            self.eval()
+            with torch.no_grad():
+                dummy_input = torch.zeros(1, *input_shape, device=device)
+                self.to(device)
+                dummy_output = self.forward(dummy_input)
+                return dummy_output.shape[1:]  # Return C, H, W
+        finally:
+            self.train(was_training)
 
 
 class CaFoPredictor(nn.Module):
