@@ -41,10 +41,6 @@ class MFAdapter(AlgorithmAdapter):
             device=torch.device(context.device),
             input_adapter=flatten_if_needed(context),
             val_loader=context.val_loader,
-            wandb_run=None,
-            step_ref=[-1],
-            gpu_handle=None,
-            nvml_active=False,
         )
         return result_from_peak_memory(self.name, peak_memory)
 

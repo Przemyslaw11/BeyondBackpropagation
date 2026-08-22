@@ -40,11 +40,7 @@ class CaFoAdapter(AlgorithmAdapter):
             val_loader=context.val_loader,
             config=config,
             device=torch.device(context.device),
-            wandb_run=None,
             input_adapter=None,
-            step_ref=[-1],
-            gpu_handle=None,
-            nvml_active=False,
         )
         return result_from_peak_memory(self.name, peak_memory)
 

@@ -43,11 +43,7 @@ class BPAdapter(AlgorithmAdapter):
             val_loader=context.val_loader,
             config=config,
             device=torch.device(context.device),
-            wandb_run=None,
             input_adapter=flatten_if_needed(context),
-            step_ref=[-1],
-            gpu_handle=None,
-            nvml_active=False,
         )
         self.lifecycle.append("global_cross_entropy")
         self.lifecycle.append(

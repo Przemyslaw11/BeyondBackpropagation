@@ -35,11 +35,7 @@ class FFAdapter(AlgorithmAdapter):
             val_loader=context.val_loader,
             config=context_mapping(context),
             device=torch.device(context.device),
-            wandb_run=None,
             input_adapter=flatten_if_needed(context),
-            step_ref=[-1],
-            gpu_handle=None,
-            nvml_active=False,
         )
         return result_from_peak_memory(self.name, peak_memory)
 
