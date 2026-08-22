@@ -71,3 +71,14 @@ def test_legacy_runner_removes_the_actual_codecarbon_result_key() -> None:
 
     assert "codecarbon_emissions_gCO2e" not in results
     assert results["test_accuracy"] == 50.0
+
+
+def test_legacy_codecarbon_csv_reader_uses_standard_library(tmp_path) -> None:
+    carbon_csv = tmp_path / "carbon.csv"
+    carbon_csv.write_text("emissions\n0.0015\n", encoding="utf-8")
+
+    with patch.object(engine.time, "sleep"):
+        emissions_kg, emissions_g = engine._read_codecarbon_emissions(str(carbon_csv))
+
+    assert emissions_kg == 0.0015
+    assert emissions_g == 1.5

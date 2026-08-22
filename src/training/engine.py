@@ -2,14 +2,14 @@
 """Core training and evaluation engine for experiments."""
 
 import contextlib
+import csv
+import math
 import os
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import pandas as pd
 import torch
 import torch.nn as nn
-import wandb
 from torch.utils.data import DataLoader
 
 from src.algorithms import (
@@ -165,8 +165,8 @@ def get_model_and_adapter(
 
 
 def _setup_environment_and_wandb(
-    config: Dict[str, Any], wandb_run: Optional["wandb.sdk.wandb_run.Run"]
-) -> Tuple[int, torch.device, Optional["wandb.sdk.wandb_run.Run"]]:
+    config: Dict[str, Any], wandb_run: Optional[Any]
+) -> Tuple[int, torch.device, Optional[Any]]:
     """Initializes seed, device, and Weights & Biases."""
     general_config = config.get("general", {})
     backend = get_execution_backend(config)
@@ -303,19 +303,16 @@ def _read_codecarbon_emissions(carbon_csv_path: str) -> Tuple[float, float]:
     for attempt in range(5):
         try:
             time.sleep(0.5)
-            df = pd.read_csv(carbon_csv_path)
-            if (
-                not df.empty
-                and "emissions" in df.columns
-                and pd.notna(df["emissions"].iloc[-1])
-            ):
-                emissions_kg = float(df["emissions"].iloc[-1])
+            with open(carbon_csv_path, newline="", encoding="utf-8") as carbon_file:
+                rows = list(csv.DictReader(carbon_file))
+            if rows and rows[-1].get("emissions") not in (None, ""):
+                emissions_kg = float(rows[-1]["emissions"])
                 emissions_g = emissions_kg * 1000.0
                 logger.info(
                     f"Read emissions: {emissions_kg:.6f} kgCO2e ({emissions_g:.3f} gCO2e)"
                 )
                 return emissions_kg, emissions_g
-        except (pd.errors.EmptyDataError, FileNotFoundError, Exception) as e_read:
+        except Exception as e_read:
             logger.warning(f"Read CSV attempt {attempt + 1} failed: {e_read}")
     logger.error(
         f"Failed to read valid emissions from {carbon_csv_path} after retries."
@@ -332,7 +329,7 @@ def _finalize_run(
     monitor: Optional[GPUEnergyMonitor],
     nvml_active: bool,
     gpu_handle: Optional[Any],
-    wandb_run: Optional["wandb.sdk.wandb_run.Run"],
+    wandb_run: Optional[Any],
 ) -> None:
     """Stops monitors, cleans up resources, and logs final summary metrics."""
     total_run_time = time.time() - run_start_time
@@ -377,7 +374,8 @@ def _finalize_run(
     }
     log_metrics(final_summary_metrics, wandb_run=wandb_run, commit=True)
     logger.info(f"Total run duration: {format_time(total_run_time)}")
-    if pd.notna(results.get("codecarbon_emissions_gCO2e")):
+    emissions = results.get("codecarbon_emissions_gCO2e")
+    if emissions is not None and not math.isnan(float(emissions)):
         logger.info(
             f"--> Final Emissions: {results['codecarbon_emissions_gCO2e']:.3f} gCO2e"
         )
@@ -389,7 +387,7 @@ def _finalize_run(
 
 
 def run_training(
-    config: Dict[str, Any], wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None
+    config: Dict[str, Any], wandb_run: Optional[Any] = None
 ) -> Dict[str, Any]:
     """Orchestrates the entire training and evaluation pipeline for an experiment."""
     results: Dict[str, Any] = {}
