@@ -78,6 +78,131 @@ def _cafo_bp_baseline(params: Mapping[str, Any], device: torch.device) -> nn.Mod
     return baseline.train()
 
 
+ArchitectureFactory = Callable[[Mapping[str, Any], torch.device], nn.Module]
+
+
+class ArchitectureRegistry:
+    """Registry for native models and their fair BP counterparts."""
+
+    def __init__(self) -> None:
+        self._native: dict[str, ArchitectureFactory] = {}
+        self._baselines: dict[str, ArchitectureFactory] = {}
+
+    def register(
+        self,
+        name: str,
+        native_factory: ArchitectureFactory,
+        baseline_factory: ArchitectureFactory | None = None,
+    ) -> None:
+        key = name.strip().lower().replace("-", "_")
+        if key in self._native:
+            raise ValueError(f"Architecture already registered: {name}")
+        self._native[key] = native_factory
+        if baseline_factory is not None:
+            self._baselines[key] = baseline_factory
+
+    def build(self, name: str, *args: Any, **kwargs: Any) -> nn.Module:
+        """Build a native model for compatibility with the initial registry API."""
+
+        return self.build_native(name, *args, **kwargs)
+
+    def build_native(
+        self, name: str, config: Mapping[str, Any], device: torch.device
+    ) -> nn.Module:
+        return self._lookup(self._native, name)(config, device)
+
+    def build_baseline(
+        self, name: str, config: Mapping[str, Any], device: torch.device
+    ) -> nn.Module:
+        return self._lookup(self._baselines, name)(config, device)
+
+    @staticmethod
+    def _lookup(
+        factories: Mapping[str, ArchitectureFactory], name: str
+    ) -> ArchitectureFactory:
+        key = name.strip().lower().replace("-", "_")
+        try:
+            return factories[key]
+        except KeyError as exc:
+            raise KeyError(f"Unknown architecture: {name}") from exc
+
+
+def _model_params(mapping: Mapping[str, Any]) -> dict[str, Any]:
+    model_cfg = mapping.get("model", {})
+    return dict(model_cfg.get("params", {}))
+
+
+def _build_ff_native(mapping: Mapping[str, Any], device: torch.device) -> nn.Module:
+    params = _model_params(mapping)
+    params["num_classes"] = int(mapping.get("data", {}).get("num_classes", 10))
+    return FF_MLP(config=dict(mapping), device=device, **params).to(device)
+
+
+def _build_mf_native(mapping: Mapping[str, Any], device: torch.device) -> nn.Module:
+    params = _model_params(mapping)
+    data_cfg = mapping.get("data", {})
+    params["num_classes"] = int(data_cfg.get("num_classes", 10))
+    params.setdefault(
+        "input_dim",
+        int(data_cfg.get("input_channels", 1))
+        * int(data_cfg.get("image_size", 28)) ** 2,
+    )
+    return MF_MLP(**params).to(device)
+
+
+def _build_cafo_native(mapping: Mapping[str, Any], device: torch.device) -> nn.Module:
+    params = _model_params(mapping)
+    data_cfg = mapping.get("data", {})
+    params.update(
+        {
+            "input_channels": int(data_cfg.get("input_channels", 1)),
+            "image_size": int(data_cfg.get("image_size", 28)),
+            "num_classes": int(data_cfg.get("num_classes", 10)),
+        }
+    )
+    return CaFo_CNN(**params).to(device)
+
+
+def _build_mlp_baseline(mapping: Mapping[str, Any], device: torch.device) -> nn.Module:
+    params = _model_params(mapping)
+    data_cfg = mapping.get("data", {})
+    input_dim = int(
+        params.get(
+            "input_dim",
+            int(data_cfg.get("input_channels", 1))
+            * int(data_cfg.get("image_size", 28)) ** 2,
+        )
+    )
+    return _standard_mlp(params, input_dim, int(data_cfg.get("num_classes", 10))).to(
+        device
+    )
+
+
+def _build_cafo_baseline(mapping: Mapping[str, Any], device: torch.device) -> nn.Module:
+    params = _model_params(mapping)
+    data_cfg = mapping.get("data", {})
+    params.update(
+        {
+            "input_channels": int(data_cfg.get("input_channels", 1)),
+            "image_size": int(data_cfg.get("image_size", 28)),
+            "num_classes": int(data_cfg.get("num_classes", 10)),
+        }
+    )
+    return _cafo_bp_baseline(params, device)
+
+
+ARCHITECTURE_REGISTRY = ArchitectureRegistry()
+ARCHITECTURE_REGISTRY.register(
+    ArchitectureName.FF_MLP.value, _build_ff_native, _build_mlp_baseline
+)
+ARCHITECTURE_REGISTRY.register(
+    ArchitectureName.MF_MLP.value, _build_mf_native, _build_mlp_baseline
+)
+ARCHITECTURE_REGISTRY.register(
+    ArchitectureName.CAFO_CNN.value, _build_cafo_native, _build_cafo_baseline
+)
+
+
 def build_fair_bp_baseline(
     config: ExperimentConfig | Mapping[str, Any],
     device: torch.device | None = None,
@@ -86,26 +211,11 @@ def build_fair_bp_baseline(
 
     mapping = _as_mapping(config)
     model_cfg = mapping.get("model", {})
-    params = dict(model_cfg.get("params", {}))
-    data_cfg = mapping.get("data", {})
     architecture = ArchitectureName.parse(model_cfg.get("name", "mf_mlp"))
     resolved_device = device or torch.device("cpu")
-    input_dim = int(
-        params.get(
-            "input_dim",
-            int(data_cfg.get("input_channels", 1))
-            * int(data_cfg.get("image_size", 28)) ** 2,
-        )
+    return ARCHITECTURE_REGISTRY.build_baseline(
+        architecture.value, mapping, resolved_device
     )
-    num_classes = int(data_cfg.get("num_classes", 10))
-    if architecture in {ArchitectureName.FF_MLP, ArchitectureName.MF_MLP}:
-        return _standard_mlp(params, input_dim, num_classes).to(resolved_device)
-    if architecture is ArchitectureName.CAFO_CNN:
-        params.setdefault("input_channels", int(data_cfg.get("input_channels", 1)))
-        params.setdefault("image_size", int(data_cfg.get("image_size", 28)))
-        params.setdefault("num_classes", num_classes)
-        return _cafo_bp_baseline(params, resolved_device)
-    raise ValueError(f"No BP baseline builder registered for {architecture.value}")
 
 
 def build_model(
@@ -123,43 +233,8 @@ def build_model(
     if for_bp_baseline:
         return build_fair_bp_baseline(mapping, device)
     model_cfg = mapping.get("model", {})
-    params = dict(model_cfg.get("params", {}))
-    data_cfg = mapping.get("data", {})
     architecture = ArchitectureName.parse(model_cfg.get("name", "mf_mlp"))
     resolved_device = device or torch.device("cpu")
-    params.setdefault("num_classes", int(data_cfg.get("num_classes", 10)))
-    params.setdefault("input_channels", int(data_cfg.get("input_channels", 1)))
-    params.setdefault("image_size", int(data_cfg.get("image_size", 28)))
-    if architecture is ArchitectureName.FF_MLP:
-        return FF_MLP(config=mapping, device=resolved_device, **params).to(
-            resolved_device
-        )
-    if architecture is ArchitectureName.MF_MLP:
-        params.setdefault(
-            "input_dim",
-            int(data_cfg.get("input_channels", 1))
-            * int(data_cfg.get("image_size", 28)) ** 2,
-        )
-        return MF_MLP(**params).to(resolved_device)
-    if architecture is ArchitectureName.CAFO_CNN:
-        return CaFo_CNN(**params).to(resolved_device)
-    raise ValueError(f"No native model builder registered for {architecture.value}")
-
-
-class ArchitectureRegistry:
-    """Small explicit registry used by callers that need custom factories."""
-
-    def __init__(self) -> None:
-        self._factories: dict[str, Callable[..., nn.Module]] = {}
-
-    def register(self, name: str, factory: Callable[..., nn.Module]) -> None:
-        key = name.strip().lower()
-        if key in self._factories:
-            raise ValueError(f"Architecture already registered: {name}")
-        self._factories[key] = factory
-
-    def build(self, name: str, *args: Any, **kwargs: Any) -> nn.Module:
-        try:
-            return self._factories[name.strip().lower()](*args, **kwargs)
-        except KeyError as exc:
-            raise KeyError(f"Unknown architecture: {name}") from exc
+    return ARCHITECTURE_REGISTRY.build_native(
+        architecture.value, mapping, resolved_device
+    )

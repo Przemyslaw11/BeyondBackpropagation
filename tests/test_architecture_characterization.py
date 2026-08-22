@@ -3,7 +3,12 @@ from src.architectures.cafo_cnn import CaFo_CNN
 from src.architectures.mf_mlp import MF_MLP
 from torch import nn
 
-from beyond_backprop.architectures import build_fair_bp_baseline
+from beyond_backprop.architectures import (
+    ARCHITECTURE_REGISTRY,
+    ArchitectureRegistry,
+    build_fair_bp_baseline,
+    build_model,
+)
 
 
 def test_mf_bp_baseline_has_native_dimensions_without_projection_matrices() -> None:
@@ -61,3 +66,31 @@ def test_cafo_bp_baseline_is_trainable_and_has_classifier_output() -> None:
 
     assert baseline.training
     assert baseline(torch.randn(2, 1, 8, 8)).shape == (2, 3)
+
+
+def test_native_architecture_factories_are_registry_backed() -> None:
+    ff_config = {
+        "algorithm": {"name": "FF"},
+        "model": {"name": "FF_MLP", "params": {"hidden_dims": [5]}},
+        "data": {"input_channels": 1, "image_size": 4, "num_classes": 3},
+        "algorithm_params": {},
+    }
+    mf_config = {
+        "algorithm": {"name": "MF"},
+        "model": {"name": "MF_MLP", "params": {"hidden_dims": [5]}},
+        "data": {"input_channels": 1, "image_size": 4, "num_classes": 3},
+    }
+    cafo_config = {
+        "algorithm": {"name": "CaFo"},
+        "model": {"name": "CaFo_CNN", "params": {"block_channels": [4]}},
+        "data": {"input_channels": 1, "image_size": 8, "num_classes": 3},
+    }
+
+    assert build_model(ff_config).__class__.__name__ == "FF_MLP"
+    assert build_model(mf_config).__class__.__name__ == "MF_MLP"
+    assert build_model(cafo_config).__class__.__name__ == "CaFo_CNN"
+    assert set(ARCHITECTURE_REGISTRY._native) == {"ff_mlp", "mf_mlp", "cafo_cnn"}
+
+    custom = ArchitectureRegistry()
+    custom.register("toy", lambda _config, _device: nn.Identity())
+    assert isinstance(custom.build("toy", {}, torch.device("cpu")), nn.Identity)
