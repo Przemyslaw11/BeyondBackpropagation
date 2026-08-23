@@ -4,7 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).parents[1]
+ROOT = Path(__file__).parents[2]
 
 
 def _run(

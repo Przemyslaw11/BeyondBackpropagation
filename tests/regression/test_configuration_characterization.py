@@ -8,7 +8,7 @@ from beyond_backprop.config import (
     load_mapping,
 )
 
-CONFIG_ROOT = Path(__file__).parents[1] / "configs"
+CONFIG_ROOT = Path(__file__).parents[2] / "configs"
 
 
 def test_all_repository_yaml_configs_load_after_normalization() -> None:
