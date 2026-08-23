@@ -1,9 +1,17 @@
 # Refactoring report
 
-Captured on 2026-08-22 after the canonical refactoring sequence. The frozen
+Captured on 2026-08-22 after the canonical refactoring sequence and extended on
+2026-08-23 with the self-containment migration (Phases A–D). The frozen
 baseline was commit `9b86bdc` on the refactoring branch, with 44 YAML
 configurations and 66 CPU tests passing. The completed implementation preserves
 the published values, `source_tex/`, `slurm_logs/`, and dataset protocols.
+
+## Paper identification
+
+`arXiv:2509.19063v1` is the authoritative identifier for this work. Existing
+repository citations to `arXiv:2511.01061v1` (README badge and BibTeX entry)
+are retained as cross-references and were deliberately not rewritten; see
+decision SCI-002 in the refactoring decision register.
 
 ## Before and after architecture
 
@@ -60,12 +68,14 @@ the experiment exit status.
 
 ## Tests and verification
 
-The regression suite covers all four lifecycles, configuration compatibility,
-all 44 repository YAML files, deterministic seeding, checkpoint compatibility,
-best-state restoration, frozen-layer gradients, detached activations, service
-failure cleanup, dry runs, legacy imports/scripts, tuning, artifacts, profiling,
-and SLURM shell behavior. The final CPU/non-slow/non-GPU run reports 87 passing
-tests.
+The test suite is organized by scope under `tests/{unit,integration,regression,
+smoke,fixtures}`; pytest markers (`slow`, `gpu`, `smoke`) remain the selection
+authority for the standard commands. It covers all four lifecycles,
+configuration compatibility, all 44 repository YAML files, deterministic
+seeding, checkpoint compatibility, best-state restoration, frozen-layer
+gradients, detached activations, service failure cleanup, dry runs, legacy shim
+imports/scripts, tuning, artifacts, profiling, and SLURM shell behavior. The
+final CPU/non-slow/non-GPU run reports 84 passing tests.
 
 The acceptance checks also cover formatting/linting, canonical-package type
 checking, compilation of `src` and `scripts`, import-tree checks, and Git
@@ -94,12 +104,14 @@ not be compared using that field.
 
 ## Known remaining limitations
 
-FF, CaFo, and MF adapters still delegate some legacy numerical entry points
-while the compatibility migration remains incremental. The canonical boundary
-removes infrastructure coupling from new adapters, but a future extraction can
-remove the remaining legacy delegation completely. Synthetic CPU tests do not
-substitute for full-scale GPU performance runs, and optional integrations still
-require their own extras and credentials when enabled.
+The self-containment migration (Phases A–D) is complete: architectures and
+trainer bodies live only under `beyond_backprop`, the legacy experiment engine,
+BP baseline trainers, and Optuna objective modules have been deleted, and the
+remaining `src/*` modules are thin re-export shims kept solely so historical
+imports continue to work. Removing those shims (and `scripts/_migrate_b2.py`)
+is a future cleanup that requires no behavioral change. Synthetic CPU tests do
+not substitute for full-scale GPU performance runs, and optional integrations
+still require their own extras and credentials when enabled.
 
 ## Migration instructions
 

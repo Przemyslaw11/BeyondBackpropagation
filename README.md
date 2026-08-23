@@ -150,14 +150,26 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 |   |-- cafo/                          # recorded CaFo experiment stdout/stderr
 |   `-- mf/                            # recorded MF experiment stdout/stderr
 `-- src/
-    |-- beyond_backprop/              # canonical package boundaries and CLI
-    |-- algorithms/                    # FF, CaFo, and MF training/evaluation loops
-    |-- architectures/                 # FF_MLP, MF_MLP, and CaFo_CNN modules
-    |-- baselines/                     # standard BP training baseline
-    |-- data_utils/                    # torchvision datasets, splits, transforms
-    |-- training/                      # experiment orchestration engine
-    |-- tuning/                        # Optuna objective functions
-    `-- utils/                         # historical compatibility utilities
+    |-- beyond_backprop/              # canonical package: config, runtime, data,
+    |                                 #   architectures, algorithms, training,
+    |                                 #   tuning, monitoring, tracking, artifacts, CLI
+    |-- algorithms/                    # compatibility shims re-exporting canonical
+    |                                 #   FF/MF/CaFo trainers and adapters
+    |-- architectures/                 # compatibility shims re-exporting canonical models
+    |-- data_utils/                    # compatibility shims for datasets/preprocessing
+    |-- training/                      # compatibility namespace (engine retired)
+    |-- tuning/                        # compatibility namespace (objectives retired;
+    |                                 #   canonical tuning lives in beyond_backprop.tuning)
+    `-- utils/                         # thin re-export shims to beyond_backprop.utils
+                                       #   and beyond_backprop.runtime
+
+tests/
+|-- unit/                             # pure in-memory unit tests
+|-- integration/                      # runner/adapters/lifecycle/tuning wiring
+|-- regression/                       # architecture/config characterization,
+|                                     #   scientific regressions
+|-- smoke/                            # tiny offline end-to-end checks (`smoke`)
+`-- fixtures/                         # static fixture data
 ```
 
 Generated directories are intentionally absent from a clean checkout:
