@@ -1,0 +1,33 @@
+metric,unit,instrument,note,origin
+test_accuracy,percent,held-out test split,engine,run summary JSON
+test_loss,nats,held-out test split,nan for pre-4373312 MF,run summary JSON
+training_duration_sec,s,host monotonic clock,training only,run summary JSON
+total_run_duration_sec,s,host monotonic clock,incl. setup,run summary JSON
+total_gpu_energy_wh,Wh,NVML nvmlDeviceGetPowerUsage,trapezoidal integral of the 5 Hz power trace,run summary JSON
+total_gpu_energy_joules,J,NVML nvmlDeviceGetPowerUsage,as above,run summary JSON
+peak_gpu_mem_used_mib,MiB,NVML nvmlDeviceGetMemoryInfo,"DEVICE-WIDE: includes the ~800 MiB CUDA context, not an algorithm's footprint",run summary JSON
+peak_torch_alloc_mib,MiB,torch.cuda.max_memory_allocated,process-local allocator high-water mark; the honest memory figure,run summary JSON
+peak_process_rss_mib,MiB,psutil Process.memory_info().rss,"HOST memory, not GPU memory",run summary JSON
+peak_gpu_util_percent,percent,NVML nvmlDeviceGetUtilizationRates,,run summary JSON
+codecarbon_emissions_gCO2e,gCO2e,CodeCarbon offline tracker,POL grid,run summary JSON
+epochs_completed,epoch,engine counter,SUMMED OVER STAGES for MF/CaFo/FF; not comparable across algorithms,run summary JSON
+gpu_energy_wh_per_epoch,Wh/epoch,derived: total_gpu_energy_wh / epochs_completed,cost per data pass; protocol-independent,run summary JSON
+training_sec_per_epoch,s/epoch,derived: training_duration_sec / epochs_completed,cost per data pass; protocol-independent,run summary JSON
+trace_mean_power_w,W,NVML nvmlDeviceGetPowerUsage,trapezoidal energy / trace duration,NVML per-run CSV
+trace_duration_sec,s,host monotonic clock,sampling window,NVML per-run CSV
+trace_samples,count,monitor thread,,NVML per-run CSV
+trace_peak_gpu_mem_used_mib,MiB,NVML nvmlDeviceGetMemoryInfo,"DEVICE-WIDE, includes the CUDA context",NVML per-run CSV
+trace_mean_gpu_util_percent,percent,NVML nvmlDeviceGetUtilizationRates,,NVML per-run CSV
+trace_mean_sm_clock_mhz,MHz,NVML nvmlDeviceGetClockInfo,SM,NVML per-run CSV
+trace_sd_sm_clock_mhz,MHz,NVML nvmlDeviceGetClockInfo,clock volatility,NVML per-run CSV
+trace_mean_gpu_temp_celsius,degC,NVML nvmlDeviceGetTemperature,,NVML per-run CSV
+trace_peak_process_rss_mib,MiB,psutil Process.memory_info().rss,HOST memory,NVML per-run CSV
+csv:timestamp_sec,s,host monotonic clock,,NVML per-run CSV column
+csv:power_watts,W,NVML nvmlDeviceGetPowerUsage,,NVML per-run CSV column
+csv:gpu_util_percent,percent,NVML nvmlDeviceGetUtilizationRates,,NVML per-run CSV column
+csv:mem_util_percent,percent,NVML nvmlDeviceGetUtilizationRates,,NVML per-run CSV column
+csv:gpu_mem_used_mib,MiB,NVML nvmlDeviceGetMemoryInfo (device-wide),,NVML per-run CSV column
+csv:gpu_temp_celsius,degC,NVML nvmlDeviceGetTemperature,,NVML per-run CSV column
+csv:sm_clock_mhz,MHz,NVML nvmlDeviceGetClockInfo,,NVML per-run CSV column
+csv:compute_processes,count,NVML nvmlDeviceGetComputeRunningProcesses,,NVML per-run CSV column
+csv:process_rss_mib,MiB,psutil Process.memory_info().rss (HOST),,NVML per-run CSV column
