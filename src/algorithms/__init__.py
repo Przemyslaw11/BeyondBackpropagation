@@ -3,9 +3,6 @@
 
 from typing import Callable
 
-from src.baselines import evaluate_bp_model as evaluate_bp_baseline
-from src.baselines import train_bp_model
-
 from .cafo import evaluate_cafo_model, train_cafo_model
 from .ff import (
     evaluate_ff_model,
@@ -27,10 +24,11 @@ def get_training_function(name: str) -> Callable:
         return train_cafo_model
     elif name == "mf":
         return train_mf_model
-    elif name == "bp":
-        return train_bp_model
     else:
-        raise ValueError(f"Unknown algorithm name for training: {name}")
+        raise ValueError(
+            f"Unknown algorithm name for training: {name}. The legacy BP baseline "
+            "trainers were retired; use beyond_backprop.algorithms.BPAdapter."
+        )
 
 
 def get_evaluation_function(name: str) -> Callable:
@@ -42,10 +40,11 @@ def get_evaluation_function(name: str) -> Callable:
         return evaluate_cafo_model
     elif name == "mf":
         return evaluate_mf_model
-    elif name == "bp":
-        return evaluate_bp_baseline
     else:
-        raise ValueError(f"Unknown algorithm name for evaluation: {name}")
+        raise ValueError(
+            f"Unknown algorithm name for evaluation: {name}. The legacy BP baseline "
+            "evaluator was retired; use beyond_backprop.algorithms.BPAdapter."
+        )
 
 
 __all__ = [

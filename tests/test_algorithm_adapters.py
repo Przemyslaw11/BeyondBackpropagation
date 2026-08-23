@@ -85,16 +85,13 @@ def test_bp_adapter_trains_global_cross_entropy_on_cpu():
 
 
 def test_ff_lifecycle_invocation_uses_local_and_downstream_stages(monkeypatch):
-    class Legacy:
-        @staticmethod
-        def train_ff_model(**kwargs):
-            return 0.0
-
-        @staticmethod
-        def evaluate_ff_model(*args):
-            return {"eval_loss": 0.5, "eval_accuracy": 50.0}
-
-    monkeypatch.setattr("beyond_backprop.algorithms.ff._legacy_module", lambda: Legacy)
+    monkeypatch.setattr(
+        "beyond_backprop.algorithms.ff.train_ff_model", lambda **kwargs: 0.0
+    )
+    monkeypatch.setattr(
+        "beyond_backprop.algorithms.ff.evaluate_ff_model",
+        lambda *args: {"eval_loss": 0.5, "eval_accuracy": 50.0},
+    )
     adapter = FFAdapter()
     context = _context(_config("FF"), nn.Linear(4, 2))
     result = adapter.fit(context)
@@ -111,17 +108,12 @@ def test_ff_lifecycle_invocation_uses_local_and_downstream_stages(monkeypatch):
 
 
 def test_cafo_component_lifecycle_records_frozen_or_trainable_blocks(monkeypatch):
-    class Legacy:
-        @staticmethod
-        def train_cafo_model(**kwargs):
-            return 0.0
-
-        @staticmethod
-        def evaluate_cafo_model(*args, **kwargs):
-            return {"eval_loss": 0.5, "eval_accuracy": 50.0}
-
     monkeypatch.setattr(
-        "beyond_backprop.algorithms.cafo._legacy_module", lambda: Legacy
+        "beyond_backprop.algorithms.cafo.train_cafo_model", lambda **kwargs: 0.0
+    )
+    monkeypatch.setattr(
+        "beyond_backprop.algorithms.cafo.evaluate_cafo_model",
+        lambda *args, **kwargs: {"eval_loss": 0.5, "eval_accuracy": 50.0},
     )
     adapter = CaFoAdapter()
     context = _context(_config("CaFo"), nn.Linear(4, 2))
@@ -131,17 +123,17 @@ def test_cafo_component_lifecycle_records_frozen_or_trainable_blocks(monkeypatch
 
 
 def test_mf_adapter_preserves_layer_isolation_boundary(monkeypatch):
-    class Legacy:
-        @staticmethod
-        def train_mf_model(**kwargs):
-            assert kwargs["input_adapter"] is not None
-            return 0.0
+    def fake_train_mf_model(**kwargs):
+        assert kwargs["input_adapter"] is not None
+        return 0.0
 
-        @staticmethod
-        def evaluate_mf_model(*args):
-            return {"eval_loss": 0.5, "eval_accuracy": 50.0}
-
-    monkeypatch.setattr("beyond_backprop.algorithms.mf._legacy_module", lambda: Legacy)
+    monkeypatch.setattr(
+        "beyond_backprop.algorithms.mf.train_mf_model", fake_train_mf_model
+    )
+    monkeypatch.setattr(
+        "beyond_backprop.algorithms.mf.evaluate_mf_model",
+        lambda *args: {"eval_loss": 0.5, "eval_accuracy": 50.0},
+    )
     model = nn.Module()
     model.num_hidden_layers = 2
     adapter = MFAdapter()

@@ -13,11 +13,10 @@ from typing import Any
 import torch
 from torch import nn
 
-from src.architectures.cafo_cnn import CaFo_CNN
-from src.architectures.ff_mlp import FF_MLP
-from src.architectures.mf_mlp import MF_MLP
-
 from ..config.models import ArchitectureName, ExperimentConfig
+from .cafo_cnn import CaFo_CNN
+from .ff_mlp import FF_MLP
+from .mf_mlp import MF_MLP
 
 
 def _as_mapping(config: ExperimentConfig | Mapping[str, Any]) -> dict[str, Any]:

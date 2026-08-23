@@ -30,7 +30,7 @@ test-cov:
 check: format-check lint typecheck test-fast
 
 validate-config:
-	PYTHONPATH=src:. $(PYTHON) -m beyond_backprop.cli.main validate-config --config $(CONFIG)
+	$(PYTHON) -m beyond_backprop.cli.main validate-config --config $(CONFIG)
 
 smoke:
 	$(PYTHON) -m pytest -m smoke
