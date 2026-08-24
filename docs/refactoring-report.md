@@ -83,6 +83,17 @@ whitespace validation. No test requires a dataset download, GPU, CUDA, W&B,
 NVML, CodeCarbon, or Optuna. GPU-specific measurements remain optional and were
 not claimed by the CPU acceptance run.
 
+Coverage baseline (2026-08-25, `make test-cov`, 97 tests): **56%** of
+`beyond_backprop` statements overall. Well-covered regions include the
+algorithm math modules (89–92%), contracts/config/runtime (73–99%), and the
+monitoring adapter interfaces (76–100%, with hardware-specific NVML paths
+lower). The dominant gap is the full-scale training-loop bodies in
+`algorithms/{cafo,ff,mf}.py` plus `experiment/factories.py` (~1,100
+statements below 15%), which only execute under slow/full-dataset runs;
+raising non-monitoring coverage toward 80% requires additional synthetic
+full-lifecycle tests and is recorded as future work rather than silently
+claimed. Future PRs must not decrease the overall percentage.
+
 ## Reproducibility
 
 Each run records Python, PyTorch, TorchVision, CUDA/MPS availability and
