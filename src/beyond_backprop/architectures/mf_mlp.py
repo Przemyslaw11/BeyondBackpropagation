@@ -9,7 +9,7 @@ import torch.nn as nn
 logger = logging.getLogger(__name__)
 
 
-class MF_MLP(nn.Module):
+class MF_MLP(nn.Module):  # noqa: N801 - published class name
     """A Multi-Layer Perceptron designed for the Mono-Forward (MF) algorithm.
 
     This class includes standard feedforward layers (W_i) and learnable projection
@@ -88,8 +88,8 @@ class MF_MLP(nn.Module):
         self.projection_matrices = nn.ParameterList()
         # Activation dims: input_dim (a_0), hidden_dims[0] (a_1), ...,
         # hidden_dims[L-1] (a_L)
-        dims_for_M = [input_dim] + hidden_dims  # Dimensions of a_0, a_1, ..., a_L
-        for _, layer_dim in enumerate(dims_for_M):
+        dims_for_m = [input_dim] + hidden_dims  # Dimensions of a_0, a_1, ..., a_L
+        for _, layer_dim in enumerate(dims_for_m):
             # Matrix shape is [num_classes, layer_dim] so that a_i @ M_i^T works
             m_matrix = nn.Parameter(torch.empty(num_classes, layer_dim))
             nn.init.kaiming_uniform_(m_matrix, a=math.sqrt(5))

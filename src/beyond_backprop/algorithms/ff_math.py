@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812 - PyTorch convention
 
 
 def generate_hinton_inputs(

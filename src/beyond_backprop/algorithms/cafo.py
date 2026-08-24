@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812 - PyTorch convention
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm

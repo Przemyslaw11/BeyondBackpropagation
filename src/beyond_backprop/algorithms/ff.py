@@ -468,7 +468,7 @@ def train_ff_model(
                 logger.info(f"Stopping training at epoch {epoch + 1}.")
                 break
         else:
-            if not torch.isnan(torch.tensor(current_metric_value)):
+            if not torch.isnan(torch.tensor(current_metric_value)):  # noqa: SIM102 - early-stopping structure kept verbatim
                 if (
                     es_mode == "max"
                     and (current_metric_value > best_checkpoint_metric_value)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from typing import Any
@@ -82,10 +83,8 @@ class NvmlResourceMonitor:
         if self._thread is not None:
             self._thread.join(timeout=max(1.0, self.interval_sec * 2.0))
         samples = sorted(self._samples)
-        try:
+        with contextlib.suppress(AttributeError, OSError, RuntimeError):
             self._nvml.nvmlShutdown()
-        except (AttributeError, OSError, RuntimeError):
-            pass
         energy_joules = 0.0
         for first, second in zip(samples, samples[1:], strict=False):
             energy_joules += (second[0] - first[0]) * (first[1] + second[1]) / 2.0

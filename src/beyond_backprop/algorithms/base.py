@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -68,10 +69,8 @@ def result_from_peak_memory(algorithm: str, peak_memory: Any) -> TrainingResult:
     """Create a successful result from the legacy trainers' return value."""
     metrics: dict[str, MetricValue] = {}
     if peak_memory is not None:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             metrics["peak_memory_mib"] = metric(float(peak_memory), unit="MiB")
-        except (TypeError, ValueError):
-            pass
     return TrainingResult(status=RunStatus.SUCCEEDED, metrics=metrics)
 
 

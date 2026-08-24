@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812 - PyTorch convention
 
 
 def predictor_cross_entropy(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:

@@ -125,7 +125,7 @@ class CaFoPredictor(nn.Module):
         return self.fc(x)
 
 
-class CaFo_CNN(nn.Module):
+class CaFo_CNN(nn.Module):  # noqa: N801 - published class name
     """Cascaded Forward (CaFo) Convolutional Neural Network base.
 
     This module contains only the cascaded blocks. Predictors are handled

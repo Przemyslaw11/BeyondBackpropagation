@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from pathlib import Path
@@ -60,10 +61,8 @@ class CheckpointManager:
                 os.fsync(handle.fileno())
             os.replace(temporary_name, target)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(temporary_name)
-            except OSError:
-                pass
             raise
         return target
 

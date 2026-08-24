@@ -1,10 +1,14 @@
 PYTHON ?= python3
 CONFIG ?= configs/mf/mnist_mlp_2x1000.yaml
 
-.PHONY: install format format-check lint typecheck test test-fast test-cov check validate-config smoke clean help
+.PHONY: install install-dev format format-check lint typecheck test test-fast test-cov check validate-config smoke clean help
 
 install:
 	$(PYTHON) -m pip install -e .
+
+install-dev:     ## Install package with dev tools and activate pre-commit hooks
+	$(PYTHON) -m pip install -e ".[dev]"
+	$(PYTHON) -m pre_commit install
 
 format:
 	ruff format src/beyond_backprop tests
@@ -41,6 +45,7 @@ clean:
 help:
 	@printf '%s\n' \
 		'install         Install the package in editable mode' \
+		'install-dev     Install package with dev tools and activate pre-commit hooks' \
 		'format          Format canonical package and tests' \
 		'format-check    Check formatting' \
 		'lint            Run Ruff lint checks' \

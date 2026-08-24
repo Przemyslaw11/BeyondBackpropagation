@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterable
 
 from ..contracts import ResourceMonitor, ResourceSnapshot
@@ -21,10 +22,8 @@ class CompositeResourceMonitor:
                 started.append(monitor)
         except Exception:
             for monitor in reversed(started):
-                try:
+                with contextlib.suppress(Exception):
                     monitor.stop()
-                except Exception:
-                    pass
             raise
 
     def stop(self) -> ResourceSnapshot:

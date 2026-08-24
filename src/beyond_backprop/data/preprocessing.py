@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-import torchvision.transforms as T
+import torchvision.transforms as T  # noqa: N812 - PyTorch convention
 
 logger = logging.getLogger(__name__)
 

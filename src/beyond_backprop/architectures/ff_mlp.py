@@ -13,7 +13,7 @@ from ..utils.training_support import calculate_accuracy
 logger = logging.getLogger(__name__)
 
 
-class ReLU_full_grad(torch.autograd.Function):
+class ReLU_full_grad(torch.autograd.Function):  # noqa: N801 - published class name
     """A ReLU function that passes the gradient through, ignoring the input value."""
 
     @staticmethod
@@ -27,7 +27,7 @@ class ReLU_full_grad(torch.autograd.Function):
         return grad_output.clone()
 
 
-class FF_MLP(torch.nn.Module):
+class FF_MLP(torch.nn.Module):  # noqa: N801 - published class name
     """An MLP for Hinton's Forward-Forward (FF) algorithm.
 
     This class implements the reference logic, using simultaneous local gradient
