@@ -212,3 +212,6 @@ slurm-*.out # Older SLURM naming pattern, just in case
 
 master_thesis/
 source_tex/
+
+# Agent convention files (personal)
+.clinerules/
