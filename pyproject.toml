@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beyond-backpropagation"
+version = "0.1.0"
+description = "Reproducible experiments for forward-only deep-learning algorithms"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.21",
+  "PyYAML>=6.0",
+  "torch>=2.0",
+  "torchvision>=0.15",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+  "tqdm>=4.0",
+  "types-PyYAML>=6.0",
+]
+gpu = ["pynvml==12.0.0"]
+research = ["python-dotenv", "scikit-learn"]
+tracking = ["wandb==0.19.8"]
+tuning = ["optuna==4.2.1"]
+carbon = ["codecarbon==3.0.1"]
+
+[project.scripts]
+beyond-backprop = "beyond_backprop.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["beyond_backprop*"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+testpaths = ["tests"]
+markers = [
+  "slow: long-running research or integration tests",
+  "gpu: tests requiring CUDA or another accelerator",
+  "smoke: tiny offline end-to-end checks",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "N"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+mypy_path = "src"
+files = ["src/beyond_backprop"]
+ignore_missing_imports = true
+follow_imports = "skip"
+check_untyped_defs = true
+warn_unused_ignores = false
+exclude = "(^|/)tests/"

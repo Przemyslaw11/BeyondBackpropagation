@@ -184,6 +184,10 @@ cython_debug/
 
 # Project-specific ignores
 data/
+!src/beyond_backprop/data/
+!src/beyond_backprop/data/**
+src/beyond_backprop/data/**/__pycache__/
+src/beyond_backprop/data/**/*.pyc
 results/
 *.log
 logs/
@@ -207,3 +211,7 @@ slurm-*.out # Older SLURM naming pattern, just in case
 *.blg  
 
 master_thesis/
+source_tex/
+
+# Agent convention files (personal)
+.clinerules/

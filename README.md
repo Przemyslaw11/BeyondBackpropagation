@@ -125,9 +125,14 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 ```text
 .
 |-- .gitignore                         # ignores generated data, checkpoints, results, wandb, caches
+|-- .github/workflows/ci.yml          # CI: make check on Python 3.10
+|-- CHANGELOG.md                       # notable changes (Keep a Changelog)
+|-- CONTRIBUTING.md                    # setup, conventions, behavior-preservation rules
 |-- LICENSE                            # MIT license
+|-- Makefile                           # install/check/test entry points
 |-- README.md                          # this file
-|-- requirements.txt                   # Python runtime dependencies
+|-- pyproject.toml                     # package metadata and tool configuration
+|-- requirements.txt                   # pinned Python runtime dependencies
 |-- configs/
 |   |-- base.yaml                      # shared defaults: device, data root, logging, monitoring, tuning
 |   |-- bp_baselines/                  # tuned BP baselines matching FF/MF/CaFo architectures
@@ -135,10 +140,12 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 |   |-- cafo/                          # final Cascaded Forward and CaFo-DFA configs
 |   |-- mf/                            # final Mono-Forward experiment configs
 |   `-- tuning/                        # Optuna search configs for BP, FF, CaFo, and MF
+|-- docs/                              # architecture, algorithms, metrics, development,
+|                                      #   reproducibility, and refactoring documentation
 |-- scripts/
-|   |-- run_experiment.py              # single train-and-test entry point
-|   |-- run_optuna_search.py           # Optuna HPO entry point
-|   |-- run_local_array.py             # local sequential batch runner (replaces Slurm array)
+|   |-- run_experiment.py              # legacy shim to canonical experiment run
+|   |-- run_optuna_search.py           # legacy shim to canonical tune
+|   |-- run_local_array.py             # legacy shim to canonical batch
 |   |-- slurm_scripts/
 |   |   |-- run_single_experiment.slurm
 |   |   |-- run_array.slurm
@@ -150,20 +157,30 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 |   |-- cafo/                          # recorded CaFo experiment stdout/stderr
 |   `-- mf/                            # recorded MF experiment stdout/stderr
 `-- src/
-    |-- algorithms/                    # FF, CaFo, and MF training/evaluation loops
-    |-- architectures/                 # FF_MLP, MF_MLP, and CaFo_CNN modules
-    |-- baselines/                     # standard BP training baseline
-    |-- data_utils/                    # torchvision datasets, splits, transforms
-    |-- training/                      # experiment orchestration engine
-    |-- tuning/                        # Optuna objective functions
-    `-- utils/                         # config parsing, logging, monitoring, profiling, metrics
+    `-- beyond_backprop/              # canonical package: config, runtime, data,
+                                      #   architectures, algorithms, training,
+                                      #   tuning, monitoring, tracking,
+                                      #   artifacts, CLI
+
+Legacy `src.utils` / `src.data_utils` / `src.algorithms` / `src.architectures` /
+`src.training` / `src.tuning` compatibility shims were removed: historical
+`src.*` imports no longer work. Use the canonical `beyond_backprop.*` package
+and its CLI (`python -m beyond_backprop experiment run|tune|batch`).
+
+tests/
+|-- unit/                             # pure in-memory unit tests
+|-- integration/                      # runner/adapters/lifecycle/tuning wiring
+|-- regression/                       # architecture/config characterization,
+|                                     #   scientific regressions
+|-- smoke/                            # tiny offline end-to-end checks (`smoke`)
+`-- fixtures/                         # static fixture data
 ```
 
 Generated directories are intentionally absent from a clean checkout:
 
 - `data/`: created by torchvision when `data.download: true`;
 - `results/`: created by experiments and Optuna runs;
-- `checkpoints/`: created when a config enables checkpointing;
+- `checkpoints/`: retained for explicit legacy checkpoint directories;
 - `wandb/`: created for local/offline Weights & Biases logs.
 
 ## Installation & Requirements
@@ -236,10 +253,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Before submitting jobs, edit the account line in `scripts/slurm_scripts/*.slurm`:
+SLURM wrappers contain no personal account or partition. Supply those settings
+at submission time:
 
 ```bash
-#SBATCH -A <your_grant_name>-gpu-a100
+sbatch -A "$SLURM_ACCOUNT" -p "$SLURM_PARTITION" \
+  scripts/slurm_scripts/run_single_experiment.slurm CONFIG
 ```
 
 Common install pitfalls:
@@ -302,57 +321,90 @@ data:
 The simplest reproducible path is to run a single MF experiment. The command trains, evaluates on the test split, and logs final metrics.
 
 ```bash
-python scripts/run_experiment.py --config configs/mf/mnist_mlp_2x1000.yaml
+python -m beyond_backprop experiment run --config configs/mf/mnist_mlp_2x1000.yaml
 ```
 
 To run locally on Apple Silicon (uses MPS / CPU fallback):
 
 ```bash
-python scripts/run_experiment.py --config configs/mf/mnist_mlp_2x1000.yaml --backend local
+python -m beyond_backprop experiment run \
+  --config configs/mf/mnist_mlp_2x1000.yaml \
+  --set general.backend=local
+```
+
+Canonical commands support `--dry-run`; this validates and displays the
+resolved execution details without data loading or training:
+
+```bash
+python -m beyond_backprop experiment run --config CONFIG --dry-run
+python -m beyond_backprop tune --config CONFIG --dry-run
+python -m beyond_backprop batch --config-dir configs --dry-run
+python -m beyond_backprop validate-config --config CONFIG --dry-run
+python -m beyond_backprop inspect-config --config CONFIG --dry-run
+```
+
+The canonical command surface is:
+
+```bash
+python -m beyond_backprop experiment run --config CONFIG
+python -m beyond_backprop tune --config CONFIG --n-trials 3
+python -m beyond_backprop batch --config-dir configs/mf
+python -m beyond_backprop validate-config --config CONFIG
+python -m beyond_backprop inspect-config --config CONFIG
 ```
 
 Main CIFAR-10 MF result from the paper:
 
 ```bash
-python scripts/run_experiment.py --config configs/mf/cifar10_mlp_3x2000.yaml
+python -m beyond_backprop experiment run --config configs/mf/cifar10_mlp_3x2000.yaml
 ```
 
 BP baseline for the same CIFAR-10 MLP architecture:
 
 ```bash
-python scripts/run_experiment.py --config configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml
+python -m beyond_backprop experiment run --config configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml
 ```
 
 Representative FF and CaFo runs:
 
 ```bash
-python scripts/run_experiment.py --config configs/ff/fashion_mnist_mlp_4x2000.yaml
-python scripts/run_experiment.py --config configs/cafo/cafodfa_cifar10_cnn_3block.yaml
+python -m beyond_backprop experiment run --config configs/ff/fashion_mnist_mlp_4x2000.yaml
+python -m beyond_backprop experiment run --config configs/cafo/cafodfa_cifar10_cnn_3block.yaml
 ```
 
 Run hyperparameter search:
 
 ```bash
-python scripts/run_optuna_search.py --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --n-trials 50
+python -m beyond_backprop tune --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --n-trials 50
 ```
 
 Run hyperparameter search locally:
 
 ```bash
-python scripts/run_optuna_search.py --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --backend local --n-trials 20
+python -m beyond_backprop tune --config configs/tuning/mf_cifar10_mlp_3x2000_mf_tune.yaml --backend local --n-trials 20
 ```
 
 Run a local batch (equivalent to the Slurm array workflow):
 
 ```bash
-python scripts/run_local_array.py --config-dir configs/mf/
-python scripts/run_local_array.py --glob "configs/**/*.yaml"
+python -m beyond_backprop batch --config-dir configs/mf/
+python -m beyond_backprop batch --config-dir configs --glob "**/*.yaml" --dry-run
 ```
 
 Run on SLURM:
 
 ```bash
-sbatch --job-name="MF_CIFAR10" scripts/slurm_scripts/run_single_experiment.slurm configs/mf/cifar10_mlp_3x2000.yaml
+sbatch -A "$SLURM_ACCOUNT" -p "$SLURM_PARTITION" \
+  --job-name="MF_CIFAR10" scripts/slurm_scripts/run_single_experiment.slurm \
+  configs/mf/cifar10_mlp_3x2000.yaml
+```
+
+Legacy compatibility shims remain available:
+
+```bash
+python scripts/run_experiment.py --config CONFIG [--backend local]
+python scripts/run_optuna_search.py --config CONFIG --n-trials 3
+python scripts/run_local_array.py --config-dir configs/mf --dry-run
 ```
 
 Expected final log fields:
@@ -368,14 +420,18 @@ Values are from the paper (3-run mean); your run may vary slightly.
 
 ## Configuration
 
-Configs are plain YAML and are merged with `configs/base.yaml` by `src/utils/config_parser.py`.
+Configs are plain YAML and are resolved by the canonical loader in
+`src/beyond_backprop/config/`. Resolution order is typed defaults, base YAML,
+experiment YAML, then repeated `--set section.key=value` overrides. Lists
+replace earlier lists; mappings merge recursively; strict validation runs before
+data loading.
 
 Key fields:
 
 | Field | Meaning |
 |---|---|
 | `experiment_name` | Run name used for logs, W&B, results, and checkpoints. |
-| `general.backend` | Execution backend: `"slurm"` (default) or `"local"`. Override via `--backend` CLI flag. |
+| `general.backend` | Execution backend: `"slurm"` (default) or `"local"`. Override via `--set general.backend=local`. |
 | `algorithm.name` | One of `BP`, `FF`, `CaFo`, or `MF`. |
 | `data.name` | One of `MNIST`, `FashionMNIST`, `CIFAR10`, `CIFAR100`. |
 | `data.root` | Dataset directory. Defaults to `./data`. |
@@ -404,19 +460,21 @@ data:
   download: false
 ```
 
-Add a new dataset by extending:
+Add a new dataset by extending the canonical boundary:
 
-- `src/data_utils/datasets.py`
-- `src/data_utils/preprocessing.py`
+- `src/beyond_backprop/data/`
 
-Add a new model by extending:
+Add a new model by extending the canonical architecture boundary:
 
-- `src/architectures/`
-- `src/training/engine.py`
+- `src/beyond_backprop/architectures/`
 
 ## Pretrained Models / Checkpoints
 
-Pretrained checkpoints are not shipped in the repository. Configs write checkpoints under `checkpoints/<experiment_name>/`, and `checkpoints/` is gitignored.
+Pretrained checkpoints are not shipped in the repository. Canonical runs write
+artifacts under `results/<backend>/<experiment_name>/` by default, including a
+`checkpoints/` subdirectory. An explicit `checkpointing.checkpoint_dir` remains
+supported for legacy workflows, and generated result directories are ignored
+by Git.
 
 | Model | Status | Parameters | Training data | Published score |
 |---|---|---:|---|---|
@@ -435,10 +493,10 @@ checkpointing:
   checkpoint_dir: "checkpoints/mf_cifar10_mlp_3x2000"
 ```
 
-The CIFAR-10 MF config already enables this path. Run:
+The CIFAR-10 MF config already enables this path. Run the canonical command:
 
 ```bash
-python scripts/run_experiment.py --config configs/mf/cifar10_mlp_3x2000.yaml
+python -m beyond_backprop experiment run --config configs/mf/cifar10_mlp_3x2000.yaml
 ```
 
 Checkpoint files will appear under:
@@ -464,6 +522,21 @@ checkpoints/
 |-- mf_cifar10_mlp_3x2000/
 `-- mf_cifar100_mlp_3x2000/
 ```
+
+## Development
+
+Set up a contributor environment and run the standard gates:
+
+```bash
+make install-dev   # editable install + [dev] extra + pre-commit hooks
+make check         # format-check + lint + typecheck + fast tests
+make test-cov      # full suite with coverage
+make smoke         # tiny offline end-to-end check
+```
+
+See `CONTRIBUTING.md` for the commit conventions, the Make-target reference,
+and the repository's behavior-preservation rules. On macOS, also read the
+hidden-`.pth` note there if `import beyond_backprop` fails outside pytest.
 
 ## Scope and Limitations
 
