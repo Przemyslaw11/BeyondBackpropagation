@@ -37,7 +37,6 @@ def test_wall_clock_monitor_is_dependency_free():
 
 
 def test_optional_monitors_report_unavailable_dependencies(monkeypatch):
-    monkeypatch.setitem(sys.modules, "src.utils.monitoring", None)
     nvml = NvmlResourceMonitor()
     nvml.start()
     nvml_snapshot = nvml.stop()

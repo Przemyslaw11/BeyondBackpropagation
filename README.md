@@ -150,18 +150,15 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 |   |-- cafo/                          # recorded CaFo experiment stdout/stderr
 |   `-- mf/                            # recorded MF experiment stdout/stderr
 `-- src/
-    |-- beyond_backprop/              # canonical package: config, runtime, data,
-    |                                 #   architectures, algorithms, training,
-    |                                 #   tuning, monitoring, tracking, artifacts, CLI
-    |-- algorithms/                    # compatibility shims re-exporting canonical
-    |                                 #   FF/MF/CaFo trainers and adapters
-    |-- architectures/                 # compatibility shims re-exporting canonical models
-    |-- data_utils/                    # compatibility shims for datasets/preprocessing
-    |-- training/                      # compatibility namespace (engine retired)
-    |-- tuning/                        # compatibility namespace (objectives retired;
-    |                                 #   canonical tuning lives in beyond_backprop.tuning)
-    `-- utils/                         # thin re-export shims to beyond_backprop.utils
-                                       #   and beyond_backprop.runtime
+    `-- beyond_backprop/              # canonical package: config, runtime, data,
+                                      #   architectures, algorithms, training,
+                                      #   tuning, monitoring, tracking,
+                                      #   artifacts, CLI
+
+Legacy `src.utils` / `src.data_utils` / `src.algorithms` / `src.architectures` /
+`src.training` / `src.tuning` compatibility shims were removed: historical
+`src.*` imports no longer work. Use the canonical `beyond_backprop.*` package
+and its CLI (`python -m beyond_backprop experiment run|tune|batch`).
 
 tests/
 |-- unit/                             # pure in-memory unit tests

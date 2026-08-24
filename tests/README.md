@@ -23,6 +23,5 @@ tests/
   CPU-only, fast subset. New slow/gpu tests must carry the corresponding marker.
 - Test module basenames must stay unique across directories (pytest default
   import mode).
-- Tests import the canonical package (`beyond_backprop.*`); imports of the
-  legacy `src.*` namespace are only permitted in characterization tests that
-  pin legacy-shim behavior.
+- Tests import the canonical package (`beyond_backprop.*`); the legacy `src.*`
+  namespace was removed (decision MIG-004), so no test may import from `src.*`.

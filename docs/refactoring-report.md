@@ -104,14 +104,14 @@ not be compared using that field.
 
 ## Known remaining limitations
 
-The self-containment migration (Phases A–D) is complete: architectures and
-trainer bodies live only under `beyond_backprop`, the legacy experiment engine,
-BP baseline trainers, and Optuna objective modules have been deleted, and the
-remaining `src/*` modules are thin re-export shims kept solely so historical
-imports continue to work. Removing those shims (and `scripts/_migrate_b2.py`)
-is a future cleanup that requires no behavioral change. Synthetic CPU tests do
-not substitute for full-scale GPU performance runs, and optional integrations
-still require their own extras and credentials when enabled.
+The self-containment migration is complete: architectures and trainer bodies
+live only under `beyond_backprop`, the legacy experiment engine, BP baseline
+trainers, Optuna objective modules, and all remaining `src/*` re-export shims
+(including `scripts/_migrate_b2.py`) have been deleted. Historical `src.*`
+import paths stop working by design (decision MIG-004); use
+`beyond_backprop.*` and the canonical CLI commands instead. Synthetic CPU tests
+do not substitute for full-scale GPU performance runs, and optional
+integrations still require their own extras and credentials when enabled.
 
 ## Migration instructions
 

@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.utils import backend_policy
+from beyond_backprop.runtime import backend_policy
 
 
 class FakeTorch:

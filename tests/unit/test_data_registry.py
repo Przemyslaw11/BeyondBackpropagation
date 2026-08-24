@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+import pytest
+
 from beyond_backprop.config import load_experiment_config
 from beyond_backprop.data import (
     DATASET_REGISTRY,
@@ -27,10 +29,9 @@ def test_canonical_preprocessing_preserves_train_only_cifar_augmentation() -> No
     assert len(get_transforms("mnist", train=True).transforms) == 2
 
 
-def test_legacy_preprocessing_import_is_a_compatibility_shim() -> None:
-    from src.data_utils.preprocessing import get_transforms as legacy_get_transforms
-
-    assert legacy_get_transforms is get_transforms
+def test_legacy_preprocessing_import_path_is_retired() -> None:
+    with pytest.raises(ModuleNotFoundError):
+        import src.data_utils.preprocessing  # noqa: F401
 
 
 def test_loader_adapter_preserves_ff_default_batch_size_and_download_policy() -> None:
@@ -40,7 +41,7 @@ def test_loader_adapter_preserves_ff_default_batch_size_and_download_policy() ->
         "data": {"name": "MNIST", "root": "./offline-data", "download": False},
     }
     with patch(
-        "src.data_utils.datasets.get_dataloaders", return_value=(1, None, 3)
+        "beyond_backprop.data.loaders.get_dataloaders", return_value=(1, None, 3)
     ) as loader:
         assert build_dataloaders(config) == (1, None, 3)
 
@@ -53,7 +54,7 @@ def test_loader_adapter_preserves_ff_default_batch_size_and_download_policy() ->
 def test_typed_loader_adapter_uses_resolved_experiment_values() -> None:
     config = load_experiment_config("configs/mf/mnist_mlp_2x1000.yaml")
     with patch(
-        "src.data_utils.datasets.get_dataloaders", return_value=(1, 2, 3)
+        "beyond_backprop.data.loaders.get_dataloaders", return_value=(1, 2, 3)
     ) as loader:
         assert build_dataloaders(config) == (1, 2, 3)
 

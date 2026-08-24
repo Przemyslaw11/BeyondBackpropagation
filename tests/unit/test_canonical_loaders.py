@@ -125,13 +125,13 @@ def test_loader_precedence_and_algorithm_batch_defaults():
     assert loader.call_args.kwargs["download"] is False
 
 
-def test_backend_policy_and_legacy_module_aliases_are_canonical():
-    import src.data_utils.datasets as legacy_loaders
-    import src.utils.backend_policy as legacy_policy
+def test_legacy_import_paths_are_retired_and_canonical_policy_works():
+    from pathlib import Path
 
-    assert legacy_loaders is canonical_loaders
-    assert legacy_policy is backend_policy
-    assert legacy_policy.get_execution_backend is backend_policy.get_execution_backend
+    root = Path(__file__).resolve().parents[2]
+    assert not (root / "src" / "utils").exists()
+    assert not (root / "src" / "data_utils").exists()
+
     assert (
         backend_policy.get_execution_backend({"general": {"backend": "local"}}).name
         == "local"

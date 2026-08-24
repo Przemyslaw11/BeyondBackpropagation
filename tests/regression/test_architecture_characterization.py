@@ -1,6 +1,4 @@
 import torch
-from src.architectures.cafo_cnn import CaFo_CNN
-from src.architectures.mf_mlp import MF_MLP
 from torch import nn
 
 from beyond_backprop.architectures import (
@@ -9,6 +7,8 @@ from beyond_backprop.architectures import (
     build_fair_bp_baseline,
     build_model,
 )
+from beyond_backprop.architectures.cafo_cnn import CaFo_CNN
+from beyond_backprop.architectures.mf_mlp import MF_MLP
 
 
 def test_mf_bp_baseline_has_native_dimensions_without_projection_matrices() -> None:
