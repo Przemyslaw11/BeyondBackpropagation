@@ -125,9 +125,14 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 ```text
 .
 |-- .gitignore                         # ignores generated data, checkpoints, results, wandb, caches
+|-- .github/workflows/ci.yml          # CI: make check on Python 3.10
+|-- CHANGELOG.md                       # notable changes (Keep a Changelog)
+|-- CONTRIBUTING.md                    # setup, conventions, behavior-preservation rules
 |-- LICENSE                            # MIT license
+|-- Makefile                           # install/check/test entry points
 |-- README.md                          # this file
-|-- requirements.txt                   # Python runtime dependencies
+|-- pyproject.toml                     # package metadata and tool configuration
+|-- requirements.txt                   # pinned Python runtime dependencies
 |-- configs/
 |   |-- base.yaml                      # shared defaults: device, data root, logging, monitoring, tuning
 |   |-- bp_baselines/                  # tuned BP baselines matching FF/MF/CaFo architectures
@@ -135,6 +140,8 @@ All values are reported on the held-out test split and averaged over 3 runs in t
 |   |-- cafo/                          # final Cascaded Forward and CaFo-DFA configs
 |   |-- mf/                            # final Mono-Forward experiment configs
 |   `-- tuning/                        # Optuna search configs for BP, FF, CaFo, and MF
+|-- docs/                              # architecture, algorithms, metrics, development,
+|                                      #   reproducibility, and refactoring documentation
 |-- scripts/
 |   |-- run_experiment.py              # legacy shim to canonical experiment run
 |   |-- run_optuna_search.py           # legacy shim to canonical tune
@@ -515,6 +522,21 @@ checkpoints/
 |-- mf_cifar10_mlp_3x2000/
 `-- mf_cifar100_mlp_3x2000/
 ```
+
+## Development
+
+Set up a contributor environment and run the standard gates:
+
+```bash
+make install-dev   # editable install + [dev] extra + pre-commit hooks
+make check         # format-check + lint + typecheck + fast tests
+make test-cov      # full suite with coverage
+make smoke         # tiny offline end-to-end check
+```
+
+See `CONTRIBUTING.md` for the commit conventions, the Make-target reference,
+and the repository's behavior-preservation rules. On macOS, also read the
+hidden-`.pth` note there if `import beyond_backprop` fails outside pytest.
 
 ## Scope and Limitations
 
