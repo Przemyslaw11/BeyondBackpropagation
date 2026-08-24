@@ -24,9 +24,15 @@ ls -lO .venv/**/site-packages/*.pth     # look for "hidden" in the flags column
 chflags nohidden .venv/**/site-packages/*.pth
 ```
 
-This project lives under `~/Desktop`, where iCloud Desktop sync has been
-observed to re-apply the flag periodically — re-run the two commands above if
-the symptom returns.
+This project lives under `~/Desktop`, where iCloud Desktop sync was observed
+to re-apply the flag periodically. The `.venv` directory is therefore excluded
+from iCloud via the File Provider ignore attribute:
+
+```bash
+xattr -wx com.apple.fileprovider.ignore#P <hex-plist> .venv
+```
+
+If the symptom still returns, re-run both `chflags` and `xattr` commands above.
 
 ## Make targets
 
