@@ -50,9 +50,13 @@ algorithm_params:
 logging:
   level: "INFO"
   wandb:
-    use_wandb: true
+    # Offline-friendly default (WP10); opt in per experiment via
+    # `--set logging.wandb.use_wandb=true`.
+    use_wandb: false
     project: "BeyondBackpropagation"
-    entity: "przspyra11"
+    # Entity is intentionally not hardcoded here. Provide it through a
+    # CLI override (--set logging.wandb.entity=<entity>) or the
+    # WANDB_ENTITY environment variable when W&B is enabled.
 
 monitoring:
   enabled: true
