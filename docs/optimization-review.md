@@ -261,5 +261,13 @@ Protocol deviations accepted and pinned by tests: ±inf early-stopping
 semantics (D1), global-RNG consumption shift from batched FF inference (P4).
 Everything else is behavior-preserving as originally classified.
 
+Post-series end-to-end validation (2026-08-25): see
+`docs/e2e-validation-report.md`. R-A/R-C/R-D/R-E/R-F **PASS** against the
+`e061711` golden baseline (bit-level where meaningful); R-A-on-cuBLAS and
+R-B real-NVML remain to be executed on a CUDA host per the report's handoff.
+No defects found; no production changes required. New regression test:
+`tests/unit/test_setup_logging_force.py` (R-F).
+
+
 
 
