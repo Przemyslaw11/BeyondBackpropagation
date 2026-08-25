@@ -22,7 +22,11 @@ from ..training.early_stopping import (
     DEFAULT_PATIENCE,
     EarlyStopping,
 )
-from ..training.loop_support import build_optimizer
+from ..training.loop_support import (
+    EpochContext,
+    build_optimizer,
+    run_epochs,
+)
 from ..utils.training_support import (
     calculate_accuracy,
     create_directory_if_not_exists,
@@ -359,7 +363,6 @@ def train_cafo_predictor_only(
     peak_mem_predictor_train = 0.0
     final_avg_epoch_loss = float("nan")
     final_avg_epoch_accuracy = float("nan")
-    epochs_trained = 0
 
     es_enabled = early_stopping_config.get("enabled", False)
     es_metric_name = early_stopping_config.get("metric", "val_loss").lower()
@@ -392,6 +395,7 @@ def train_cafo_predictor_only(
     else:
         logger.info(f"{log_prefix}: Early Stopping Disabled.")
 
+    predictor_stopping: EarlyStopping | None = None
     if es_enabled:
         # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
         # boundary on EarlyStopping's strict "bad epochs > patience".
@@ -401,137 +405,149 @@ def train_cafo_predictor_only(
             min_delta=float(es_min_delta),
         )
 
-    for epoch in range(epochs):
-        epochs_trained = epoch + 1
-        predictor.train()
-        epoch_loss, epoch_correct, epoch_samples = 0.0, 0, 0
-        # P3: defer .item() to end of epoch (order-preserving => bit-identical
-        # sums) so the step loop performs no device synchronizations.
-        pending_batch_stats: list[tuple[torch.Tensor, torch.Tensor, int]] = []
-        peak_mem_predictor_epoch = 0.0
-        pbar = tqdm(
-            train_loader, desc=f"{log_prefix} Epoch {epoch + 1}/{epochs}", leave=False
-        )
-        for batch_idx, (images, labels) in enumerate(pbar):
-            step_ref[0] += 1
-            current_global_step = step_ref[0]
-            images, labels = images.to(device), labels.to(device)
+    ctx = EpochContext(
+        step_ref=step_ref, log_interval=log_interval, wandb_run=wandb_run
+    )
 
-            with torch.no_grad():
-                block_input = get_block_input_fn(images)
-                block_output = block(block_input)
-            predictions = predictor(block_output.detach())
-            loss = criterion(predictions, labels)
+    # P3: defer .item() to end of epoch (order-preserving => bit-identical
+    # sums); the step loop performs no device synchronizations.
+    pending_batch_stats: list[tuple[torch.Tensor, torch.Tensor, int]] = []
+    epoch_correct, epoch_samples = 0, 0
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+    def _batch_loss(
+        batch_idx: int, images: torch.Tensor, labels: torch.Tensor
+    ) -> torch.Tensor:
+        nonlocal epoch_samples
+        images, labels = images.to(device), labels.to(device)
 
-            with torch.no_grad():
-                pred_labels = torch.argmax(predictions, dim=1)
-                pending_batch_stats.append(
-                    (
-                        loss.detach(),
-                        (pred_labels == labels).sum().detach(),
-                        labels.size(0),
-                    )
+        with torch.no_grad():
+            block_input = get_block_input_fn(images)
+            block_output = block(block_input)
+        predictions = predictor(block_output.detach())
+        loss = criterion(predictions, labels)
+
+        with torch.no_grad():
+            pred_labels = torch.argmax(predictions, dim=1)
+            pending_batch_stats.append(
+                (
+                    loss.detach(),
+                    (pred_labels == labels).sum().detach(),
+                    labels.size(0),
                 )
-                epoch_samples += labels.size(0)
+            )
+            epoch_samples += labels.size(0)
+        return loss
 
-            # P2: sample NVML only at logging boundaries instead of every
-            # batch (cadence parity with MF).
-            is_log_time = (batch_idx + 1) % log_interval == 0
-            is_last_batch = batch_idx == len(train_loader) - 1
-            if is_log_time or is_last_batch:
-                last_loss, last_correct, last_count = pending_batch_stats[-1]
-                avg_loss_batch = float(last_loss)
-                batch_accuracy = (
-                    (int(last_correct) / last_count) * 100.0 if last_count else 0.0
-                )
-                pbar.set_postfix(
-                    loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%"
-                )
-                metrics_to_log = {
-                    "global_step": current_global_step,
-                    f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
-                    f"{log_prefix}/Train_Acc_Batch": batch_accuracy,
-                }
-                log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
+    def _on_log_boundary(
+        batch_idx: int, loss: torch.Tensor, pbar: tqdm
+    ) -> dict[str, int | float]:
+        last_loss, last_correct, last_count = pending_batch_stats[-1]
+        avg_loss_batch = float(last_loss)
+        batch_accuracy = (int(last_correct) / last_count) * 100.0 if last_count else 0.0
+        pbar.set_postfix(loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%")
+        return {
+            "global_step": step_ref[0],
+            f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
+            f"{log_prefix}/Train_Acc_Batch": batch_accuracy,
+        }
 
-        # P3: reduce deferred batch stats; identical addition order to the
-        # previous per-batch accumulation, so epoch metrics are bit-identical.
+    def _finalize_epoch() -> float:
+        nonlocal epoch_correct
+        # P3 reduction: identical addition order => bit-identical epoch sums.
+        epoch_loss_sum = 0.0
         for loss_value, correct_value, count in pending_batch_stats:
-            epoch_loss += loss_value.item() * count
+            epoch_loss_sum += loss_value.item() * count
             epoch_correct += int(correct_value)
+        pending_batch_stats.clear()
+        return epoch_loss_sum / epoch_samples if epoch_samples > 0 else float("nan")
 
-        final_avg_epoch_loss = (
-            epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
-        )
+    def _epoch_summary(_epoch: int, avg_loss: float) -> None:
+        nonlocal final_avg_epoch_loss, final_avg_epoch_accuracy
+        final_avg_epoch_loss = avg_loss
         final_avg_epoch_accuracy = (
             (epoch_correct / epoch_samples) * 100.0
             if epoch_samples > 0
             else float("nan")
         )
-        peak_mem_predictor_train = max(
-            peak_mem_predictor_train, peak_mem_predictor_epoch
-        )
-
+        peak_mem_epoch = 0.0  # legacy CaFo never sampled per-epoch memory here
         logger.info(
-            f"{log_prefix} Epoch {epoch + 1}/{epochs} - Train Loss: "
+            f"{log_prefix} Epoch {_epoch + 1}/{epochs} - Train Loss: "
             f"{final_avg_epoch_loss:.4f}, Train Acc: {final_avg_epoch_accuracy:.2f}%, "
-            f"Peak Mem Epoch: {peak_mem_predictor_epoch:.1f} MiB"
+            f"Peak Mem Epoch: {peak_mem_epoch:.1f} MiB"
         )
         epoch_summary_metrics = {
             "global_step": step_ref[0],
             f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss,
             f"{log_prefix}/Train_Acc_EpochAvg": final_avg_epoch_accuracy,
-            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_predictor_epoch,
+            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_epoch,
         }
         log_metrics(epoch_summary_metrics, wandb_run=wandb_run, commit=True)
 
-        if es_enabled:
-            val_loss, val_acc = evaluate_cafo_predictor(
-                block, predictor, val_loader, device, get_block_input_fn, criterion
+    def _validate(epoch: int) -> bool:
+        if not (es_enabled and predictor_stopping is not None):
+            return False
+        val_loss, val_acc = evaluate_cafo_predictor(
+            block, predictor, val_loader, device, get_block_input_fn, criterion
+        )
+        logger.info(
+            f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Loss: {val_loss:.4f}, "
+            f"Val Acc: {val_acc:.2f}%"
+        )
+        val_metrics = {
+            "global_step": step_ref[0],
+            f"{log_prefix}/Val_Loss_Epoch": val_loss,
+            f"{log_prefix}/Val_Acc_Epoch": val_acc,
+        }
+        log_metrics(val_metrics, wandb_run=wandb_run, commit=True)
+
+        current_es_metric_value = val_acc if "acc" in es_metric_name else val_loss
+
+        if math.isnan(current_es_metric_value):
+            logger.warning(
+                f"{log_prefix} Epoch {epoch + 1}: Early stopping metric "
+                f"'{es_metric_name}' is NaN. Treating as no improvement."
             )
+        should_stop = predictor_stopping.update(current_es_metric_value, epoch + 1)
+        if predictor_stopping.best_epoch == epoch + 1:
+            logger.debug(
+                f"{log_prefix} Epoch {epoch + 1}: Early stopping metric improved "
+                f"to {predictor_stopping.best_value:.4f}. Reset patience."
+            )
+        else:
+            logger.debug(
+                f"{log_prefix} Epoch {epoch + 1}: Early stopping metric did not "
+                f"improve. Patience: {predictor_stopping.bad_epochs}/{es_patience}."
+            )
+
+        if should_stop:
+            logger.info(f"{log_prefix}: Early Stopping Triggered at Epoch {epoch + 1}!")
             logger.info(
-                f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Loss: {val_loss:.4f}, "
-                f"Val Acc: {val_acc:.2f}%"
+                f"  Metric '{es_metric_name}' did not improve for {es_patience} "
+                f"epochs (Best: {predictor_stopping.best_value:.4f})."
             )
-            val_metrics = {
-                "global_step": step_ref[0],
-                f"{log_prefix}/Val_Loss_Epoch": val_loss,
-                f"{log_prefix}/Val_Acc_Epoch": val_acc,
-            }
-            log_metrics(val_metrics, wandb_run=wandb_run, commit=True)
+            return True
+        return False
 
-            current_es_metric_value = val_acc if "acc" in es_metric_name else val_loss
-
-            if math.isnan(current_es_metric_value):
-                logger.warning(
-                    f"{log_prefix} Epoch {epoch + 1}: Early stopping metric "
-                    f"'{es_metric_name}' is NaN. Treating as no improvement."
-                )
-            should_stop = predictor_stopping.update(current_es_metric_value, epoch + 1)
-            if predictor_stopping.best_epoch == epoch + 1:
-                logger.debug(
-                    f"{log_prefix} Epoch {epoch + 1}: Early stopping metric improved "
-                    f"to {predictor_stopping.best_value:.4f}. Reset patience."
-                )
-            else:
-                logger.debug(
-                    f"{log_prefix} Epoch {epoch + 1}: Early stopping metric did not "
-                    f"improve. Patience: {predictor_stopping.bad_epochs}/{es_patience}."
-                )
-
-            if should_stop:
-                logger.info(
-                    f"{log_prefix}: Early Stopping Triggered at Epoch {epoch + 1}!"
-                )
-                logger.info(
-                    f"  Metric '{es_metric_name}' did not improve for {es_patience} "
-                    f"epochs (Best: {predictor_stopping.best_value:.4f})."
-                )
-                break
+    # guard=None: legacy CaFo has no NaN/Inf accounting (RUN-004 = separate PR).
+    outcome = run_epochs(
+        ctx,
+        train_loader,
+        epochs=epochs,
+        log_prefix=log_prefix,
+        logger=logger,
+        optimizer=optimizer,
+        guard=None,
+        batch_loss=_batch_loss,
+        # evaluate_cafo_predictor leaves .eval() set; legacy re-enabled
+        # train mode at the top of every epoch.
+        on_epoch_start=lambda _epoch: predictor.train(),
+        on_epoch_summary=_epoch_summary,
+        validate=_validate,
+        on_log_boundary=_on_log_boundary,
+        epoch_avg=_finalize_epoch,
+    )
+    epochs_trained = outcome.epochs_trained
+    peak_mem_predictor_train = max(peak_mem_predictor_train, outcome.peak_mem)
 
     logger.info(
         f"Finished CaFo training for {log_prefix} after {epochs_trained} epochs. "
