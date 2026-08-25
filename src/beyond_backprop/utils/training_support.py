@@ -12,7 +12,6 @@ import logging
 import os
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Any
 
@@ -281,66 +280,6 @@ def setup_logging(
 logger = logging.getLogger(__name__)
 
 
-def setup_wandb(
-    config: dict[str, Any],
-    project_name: str = "BeyondBackpropagation",
-    entity: str | None = None,
-    run_name: str | None = None,
-    notes: list[str] | None = None,
-    tags: list[str] | None = None,
-    job_type: str = "training",
-) -> Any | None:
-    """Initializes a Weights & Biases run."""
-    try:
-        import wandb
-    except ImportError:
-        logger.error("wandb library not found. Install with `pip install wandb`")
-        return None
-
-    wandb_config = config.get("logging", {}).get("wandb", {})
-    if not wandb_config.get("use_wandb", True):
-        logger.info("Weights & Biases logging is disabled in the configuration.")
-        return None
-
-    try:
-        if not os.getenv("WANDB_API_KEY"):
-            logger.warning(
-                "WANDB_API_KEY environment variable not set. W&B logging might fail or prompt."
-            )
-
-        resolved_entity = (
-            entity or os.getenv("WANDB_ENTITY") or wandb_config.get("entity")
-        )
-        if not resolved_entity:
-            logger.warning(
-                "W&B entity not specified via args, config, or WANDB_ENTITY "
-                "env var. Using W&B default."
-            )
-
-        resolved_project = wandb_config.get("project", project_name)
-        resolved_run_name = (
-            run_name or wandb_config.get("run_name") or config.get("experiment_name")
-        )
-        if not resolved_run_name:
-            resolved_run_name = f"run_{int(time.time())}"
-
-        run = wandb.init(
-            project=resolved_project,
-            entity=resolved_entity,
-            config=config,
-            name=resolved_run_name,
-            notes=notes,  # type: ignore[arg-type]
-            tags=tags,
-            job_type=job_type,
-            reinit=True,
-        )
-        logger.info(f"Weights & Biases run initialized: {run.url if run else 'Failed'}")
-        return run
-    except Exception as e:
-        logger.error(f"Failed to initialize Weights & Biases: {e}", exc_info=True)
-        return None
-
-
 __all__ = [
     "calculate_accuracy",
     "create_directory_if_not_exists",
@@ -349,5 +288,4 @@ __all__ = [
     "log_metrics",
     "save_checkpoint",
     "setup_logging",
-    "setup_wandb",
 ]
