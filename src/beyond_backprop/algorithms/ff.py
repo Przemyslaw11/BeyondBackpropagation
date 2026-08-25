@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import math
-import os
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -55,6 +54,7 @@ def train_ff_model(
     step_ref: list[int] | None = None,
     gpu_handle: Any | None = None,
     nvml_active: bool = False,
+    on_best_epoch: Callable[[], None] | None = None,
 ) -> float:
     """Orchestrates end-to-end training of a model using the Forward-Forward algorithm.
 
@@ -426,6 +426,10 @@ def train_ff_model(
             if ff_stopping.best_epoch == epoch + 1 and new_best is not None:
                 is_best_for_checkpointing = True
                 best_checkpoint_metric_value = float(new_best)
+                if on_best_epoch is not None:
+                    # BEST-001: capture best-validation weights in memory so
+                    # final evaluation is independent of checkpoint_dir.
+                    on_best_epoch()
                 logger.info(
                     f"Epoch {epoch + 1}: Early stopping metric improved to "
                     f"{new_best:.4f}. Reset patience."
@@ -460,6 +464,8 @@ def train_ff_model(
                     f"Epoch {epoch + 1}: New best checkpoint metric: "
                     f"{best_checkpoint_metric_value:.4f}"
                 )
+                if on_best_epoch is not None:
+                    on_best_epoch()
 
         if checkpoint_dir:
             create_directory_if_not_exists(checkpoint_dir)
@@ -484,51 +490,10 @@ def train_ff_model(
         f"{format_time(total_training_time)}"
     )
 
-    if checkpoint_dir:
-        exp_name = config.get("experiment_name", "model")
-        best_checkpoint_filename = f"ff_{exp_name}_best.pth"
-        best_checkpoint_path = os.path.join(checkpoint_dir, best_checkpoint_filename)
-        if os.path.exists(best_checkpoint_path):
-            try:
-                logger.info(f"Loading best model state from: {best_checkpoint_path}")
-                best_state = torch.load(best_checkpoint_path, map_location=device)
-                if isinstance(best_state, dict) and "state_dict" in best_state:
-                    model.load_state_dict(best_state["state_dict"])
-                    loaded_epoch = best_state.get("epoch", "N/A")
-                    loaded_metric = best_state.get("best_metric_value", float("nan"))
-                    logger.info(
-                        "Successfully loaded best model weights "
-                        f"(Epoch: {loaded_epoch}, Metric: {loaded_metric:.4f}) "
-                        "for final evaluation."
-                    )
-                elif isinstance(best_state, dict):
-                    model.load_state_dict(best_state)
-                    logger.info(
-                        "Successfully loaded best model weights (state_dict only) "
-                        "for final evaluation."
-                    )
-                else:
-                    logger.error(
-                        f"Loaded best checkpoint from {best_checkpoint_path} has "
-                        f"unexpected format: {type(best_state)}"
-                    )
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to load best checkpoint from {best_checkpoint_path}: {e}",
-                    exc_info=True,
-                )
-                logger.warning("Proceeding with model state from the last epoch.")
-        else:
-            logger.warning(
-                f"Best checkpoint file '{best_checkpoint_filename}' not found in "
-                f"{checkpoint_dir}. Using model state from the last epoch."
-            )
-    else:
-        logger.warning(
-            "Checkpoint directory not specified. Cannot load best model. "
-            "Using model state from the last epoch."
-        )
+    # BEST-001: best-validation weights are captured in memory via the
+    # on_best_epoch callback and restored by AlgorithmAdapter before final
+    # evaluation. The legacy ff_<exp>_best.pth disk round-trip is gone;
+    # checkpoint files themselves are still written unchanged.
 
     logger.info(
         "NOTE: Reference implementation used PyTorch 1.11. Your environment uses "
@@ -623,6 +588,7 @@ class FFAdapter(AlgorithmAdapter):
             config=context_mapping(context),
             device=torch.device(context.device),
             input_adapter=flatten_if_needed(context),
+            on_best_epoch=lambda: self._snapshot(context.model),
         )
         return result_from_peak_memory(self.name, peak_memory)
 
