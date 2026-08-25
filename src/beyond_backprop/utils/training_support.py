@@ -7,9 +7,11 @@ package so trainers no longer import the legacy namespace.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
+import tempfile
 import time
 from typing import Any
 
@@ -51,7 +53,15 @@ def save_checkpoint(
     best_filename: str = "model_best.pth",
     checkpoint_dir: str = "checkpoints",
 ) -> None:
-    """Saves model checkpoint (verbatim legacy checkpoint naming semantics)."""
+    """Save model checkpoints atomically, raising on failure.
+
+    R1: this saver used to swallow every exception, so e.g. a full disk
+    silently dropped the best-model checkpoint while the run reported success.
+    Failures now propagate. Filenames and payload shapes are preserved
+    verbatim because legacy restart paths load these files directly
+    (decision MIG-002); only the write mechanics changed to
+    temp-file + ``os.replace`` so no partial/corrupt checkpoint can appear.
+    """
     if not checkpoint_dir:
         logger.warning("Checkpoint directory not specified, cannot save checkpoint.")
         return
@@ -60,20 +70,32 @@ def save_checkpoint(
     filepath = os.path.join(checkpoint_dir, filename)
     best_filepath = os.path.join(checkpoint_dir, best_filename)
 
-    try:
-        torch.save(state, filepath)
-        logger.debug(f"Saved checkpoint to {filepath}")
-        if is_best:
-            epoch = state.get("epoch", "?")
-            metric = state.get("best_metric_value", "?")
-            metric_str = f"{metric:.4f}" if isinstance(metric, (int, float)) else "?"
-            logger.info(
-                f"Saved best model state_dict to {best_filepath} "
-                f"(Epoch {epoch}, Metric: {metric_str})"
-            )
-            torch.save(state["state_dict"], best_filepath)
-    except Exception as e:
-        logger.error(f"Failed to save checkpoint to {filepath}: {e}", exc_info=True)
+    def _atomic_torch_save(payload: Any, target: str) -> None:
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(target)}.", dir=checkpoint_dir
+        )
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                torch.save(payload, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, target)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary_path)
+            raise
+
+    _atomic_torch_save(state, filepath)
+    logger.debug(f"Saved checkpoint to {filepath}")
+    if is_best:
+        epoch = state.get("epoch", "?")
+        metric = state.get("best_metric_value", "?")
+        metric_str = f"{metric:.4f}" if isinstance(metric, (int, float)) else "?"
+        logger.info(
+            f"Saved best model state_dict to {best_filepath} "
+            f"(Epoch {epoch}, Metric: {metric_str})"
+        )
+        _atomic_torch_save(state["state_dict"], best_filepath)
 
 
 def _format_metric_for_logging(key: str, value: Any) -> str:

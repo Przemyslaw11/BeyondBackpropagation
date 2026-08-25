@@ -178,3 +178,32 @@ def test_train_cafo_model_trains_blocks_and_predictors_then_evaluates():
 
     values = evaluate_cafo_model(model, val_loader, DEVICE)
     assert 0.0 <= values["eval_accuracy"] <= 100.0
+
+
+def test_train_ff_model_writes_checkpoints_through_legacy_saver(tmp_path):
+    torch.manual_seed(0)
+    config = _base_config()
+    config["checkpointing"] = {"checkpoint_dir": str(tmp_path)}
+    model = FF_MLP(config, DEVICE)
+    train_loader, val_loader = _loaders()
+
+    train_ff_model(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        config=config,
+        device=DEVICE,
+        input_adapter=_flatten,
+    )
+
+    assert (tmp_path / "ff_checkpoint_epoch_2.pth").exists()
+    # The epoch file keeps the full legacy wrapper payload...
+    payload = torch.load(tmp_path / "ff_checkpoint_epoch_2.pth", weights_only=False)
+    assert set(payload) >= {"epoch", "state_dict", "optimizer", "best_metric_value"}
+    # ...while the best file remains a raw state_dict (legacy restart contract).
+    best_files = list(tmp_path.glob("ff_synthetic_best.pth"))
+    assert len(best_files) == 1
+    best = torch.load(best_files[0], weights_only=False)
+    assert best and all(isinstance(value, torch.Tensor) for value in best.values())
+    # No atomic-write temp files left behind.
+    assert not [p.name for p in tmp_path.iterdir() if p.name.startswith(".")]
