@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for contributing! This repository backs a published paper
-(`arXiv:2509.19063v1`), so behavior preservation outranks style: when in doubt,
+(`arXiv:2511.01061v1`), so behavior preservation outranks style: when in doubt,
 change less.
 
 ## Environment setup

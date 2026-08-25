@@ -8,10 +8,9 @@ the published values, `source_tex/`, `slurm_logs/`, and dataset protocols.
 
 ## Paper identification
 
-`arXiv:2509.19063v1` is the authoritative identifier for this work. Existing
-repository citations to `arXiv:2511.01061v1` (README badge and BibTeX entry)
-are retained as cross-references and were deliberately not rewritten; see
-decision SCI-002 in the refactoring decision register.
+`arXiv:2511.01061v1` is the authoritative identifier for this work (the
+published paper; the earlier brief `arXiv:2509.19063v1` is superseded by it).
+See the merged SCI-001 entry in the refactoring decision register.
 
 ## Before and after architecture
 
