@@ -1,25 +1,23 @@
-"""D1 characterization tests: inline early stopping vs canonical EarlyStopping.
+"""D1 early-stopping equivalence tests (characterization -> unification).
 
 These tests feed identical synthetic validation-metric streams through the
 REAL trainer loops (only the per-epoch evaluators are scripted) and compare
 the observed stop points with
 
-1. the legacy inline decision rule (NaN => bad epoch; improve iff strictly
-   ``value > best + delta`` / ``value < best - delta``; stop when bad epochs
-   ``>=`` patience), and
-2. the canonical ``training.early_stopping.EarlyStopping`` used by BP
-   (any non-finite => bad epoch; same improvement test; stop when bad epochs
-   ``>`` patience).
+1. the legacy inline decision rule as it existed before D1 (NaN => bad epoch;
+   improve iff strictly ``value > best + delta`` / ``value < best - delta``;
+   stop when bad epochs ``>=`` patience), and
+2. the canonical ``training.early_stopping.EarlyStopping`` used by BP.
 
-Documented findings (do NOT "fix" silently -- see optimization review D1):
+Status after the D1 swap (step 2): all four trainers use EarlyStopping with
+``patience - 1``, which reproduces the legacy ``>=`` boundary exactly.
+Consequences, pinned here:
 
-* OFF-BY-ONE: for identical finite/NaN streams the canonical class stops one
-  epoch LATER than the inline logic (``>`` vs ``>=``).  BP therefore tolerates
-  one more bad epoch than FF/MF/CaFo did historically.  Unifying in either
-  direction changes the published stop timing for some algorithm.
-* INF EDGE CASE: the inline loops only special-case NaN, so a ``+inf`` metric
-  in ``max`` mode counts as an improvement and resets patience; the canonical
-  class treats every non-finite value as a bad epoch.
+* Finite/NaN streams: trainer stop points are byte-identical to the legacy
+  rule (asserted for every stream/patience combination below).
+* +/-INF EDGE CASE RESOLVED: all algorithms now follow canonical semantics
+  (any non-finite value is a bad epoch). The pre-swap divergence is recorded
+  in ``test_inf_now_follows_canonical_semantics_after_d1_unification``.
 """
 
 from __future__ import annotations
@@ -285,15 +283,19 @@ def test_trainer_stop_point_matches_legacy_rule_and_documents_canonical_off_by_o
     )
 
 
-def test_documented_inf_divergence_between_inline_and_canonical(monkeypatch):
-    """+inf in max mode resets inline patience but is a bad epoch canonically.
+def test_inf_now_follows_canonical_semantics_after_d1_unification(monkeypatch):
+    """After the D1 swap, +/-inf counts as a bad epoch everywhere.
 
-    Characterization only: this pins the divergence so any future unification
-    must decide it explicitly.
+    Deliberate protocol decision: the pre-unification inline rule treated
+    +inf in max mode as an improvement (pinned by the step-1 characterization);
+    finite/NaN streams remain byte-identical.
     """
     stream = [5.0, INF, 6.0, 5.0, 5.0, 5.0, 5.0]
-    # Inline: ep2 inf improves (best=inf); nothing beats inf afterwards; stop@5.
-    inline_epochs = run_ff(monkeypatch, stream, patience=3, mode="max", delta=0.0)
-    assert inline_epochs == legacy_stop_epoch(stream, 3, "max", 0.0) == 5
-    # Canonical: inf is a bad epoch; 6 improves over best 5; stop@7.
-    assert canonical_stop_epoch(stream, 3, "max", 0.0) == 7
+    # Unified behaviour: canonical non-finite handling (inf => bad epoch)
+    # combined with the preserved legacy "bad >= patience" boundary via
+    # patience-1 => stop @6.  (Pre-swap inline stopped @5; canonical with the
+    # full configured patience would stop @7.)
+    epochs = run_ff(monkeypatch, stream, patience=3, mode="max", delta=0.0)
+    assert epochs == 6
+    assert epochs == canonical_stop_epoch(stream, 2, "max", 0.0)
+    assert epochs != legacy_stop_epoch(stream, 3, "max", 0.0)

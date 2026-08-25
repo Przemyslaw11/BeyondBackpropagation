@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from ..architectures.mf_mlp import MF_MLP
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
+from ..training.early_stopping import EarlyStopping
 from ..utils.training_support import (
     create_directory_if_not_exists,
     get_gpu_memory_usage,
@@ -138,8 +139,13 @@ def train_mf_matrix_only(
     if es_enabled:
         es_patience = early_stopping_config.get("mf_early_stopping_patience", 10)
         es_min_delta = early_stopping_config.get("mf_early_stopping_min_delta", 0.0)
-        epochs_no_improve = 0
-        best_es_metric_value = float("inf")
+        # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
+        # boundary on EarlyStopping's strict "bad epochs > patience".
+        matrix_stopping = EarlyStopping(
+            patience=max(int(es_patience) - 1, 0),
+            mode="min",
+            min_delta=float(es_min_delta),
+        )
         logger.info(
             f"{log_prefix}: Early Stopping Enabled - Patience: {es_patience}, "
             f"MinDelta: {es_min_delta}"
@@ -248,14 +254,7 @@ def train_mf_matrix_only(
                 wandb_run=wandb_run,
                 commit=True,
             )
-            if math.isnan(val_loss):
-                epochs_no_improve += 1
-            elif val_loss < best_es_metric_value - es_min_delta:
-                best_es_metric_value = val_loss
-                epochs_no_improve = 0
-            else:
-                epochs_no_improve += 1
-            if epochs_no_improve >= es_patience:
+            if matrix_stopping.update(val_loss, epoch + 1):
                 logger.info(
                     f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---"
                 )
@@ -395,8 +394,13 @@ def train_mf_model(
 
         peak_mem_layer_train = 0.0
         epochs_trained_this_layer = 0
-        epochs_no_improve = 0
-        best_es_val_loss = float("inf")
+        # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
+        # boundary on EarlyStopping's strict "bad epochs > patience".
+        layer_stopping = EarlyStopping(
+            patience=max(int(es_patience) - 1, 0),
+            mode="min",
+            min_delta=float(es_min_delta),
+        )
 
         for epoch in range(epochs_per_layer):
             epochs_trained_this_layer = epoch + 1
@@ -456,12 +460,7 @@ def train_mf_model(
                     model, m_idx, mf_criterion, val_loader, device, input_adapter
                 )
                 # ... (early stopping logic as in train_mf_matrix_only) ...
-                if val_loss < best_es_val_loss - es_min_delta:
-                    best_es_val_loss = val_loss
-                    epochs_no_improve = 0
-                else:
-                    epochs_no_improve += 1
-                if epochs_no_improve >= es_patience:
+                if layer_stopping.update(val_loss, epoch + 1):
                     logger.info(
                         f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---"
                     )

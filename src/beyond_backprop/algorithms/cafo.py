@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from ..architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
+from ..training.early_stopping import EarlyStopping
 from ..utils.training_support import (
     calculate_accuracy,
     create_directory_if_not_exists,
@@ -361,8 +362,6 @@ def train_cafo_predictor_only(
     es_patience = early_stopping_config.get("patience", 10)
     es_mode = early_stopping_config.get("mode", "min").lower()
     es_min_delta = early_stopping_config.get("min_delta", 0.0)
-    epochs_no_improve = 0
-    best_es_metric_value = float("inf") if es_mode == "min" else -float("inf")
 
     if es_enabled:
         if val_loader is None:
@@ -388,6 +387,15 @@ def train_cafo_predictor_only(
                 logger.info(log_msg)
     else:
         logger.info(f"{log_prefix}: Early Stopping Disabled.")
+
+    if es_enabled:
+        # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
+        # boundary on EarlyStopping's strict "bad epochs > patience".
+        predictor_stopping = EarlyStopping(
+            patience=max(int(es_patience) - 1, 0),
+            mode=es_mode,
+            min_delta=float(es_min_delta),
+        )
 
     for epoch in range(epochs):
         epochs_trained = epoch + 1
@@ -496,39 +504,27 @@ def train_cafo_predictor_only(
                     f"{log_prefix} Epoch {epoch + 1}: Early stopping metric "
                     f"'{es_metric_name}' is NaN. Treating as no improvement."
                 )
-                epochs_no_improve += 1
+            should_stop = predictor_stopping.update(
+                current_es_metric_value, epoch + 1
+            )
+            if predictor_stopping.best_epoch == epoch + 1:
+                logger.debug(
+                    f"{log_prefix} Epoch {epoch + 1}: Early stopping metric improved "
+                    f"to {predictor_stopping.best_value:.4f}. Reset patience."
+                )
             else:
-                improved = False
-                if es_mode == "min":
-                    improved = (
-                        current_es_metric_value < best_es_metric_value - es_min_delta
-                    )
-                else:
-                    improved = (
-                        current_es_metric_value > best_es_metric_value + es_min_delta
-                    )
+                logger.debug(
+                    f"{log_prefix} Epoch {epoch + 1}: Early stopping metric did not "
+                    f"improve. Patience: {predictor_stopping.bad_epochs}/{es_patience}."
+                )
 
-                if improved:
-                    best_es_metric_value = current_es_metric_value
-                    epochs_no_improve = 0
-                    logger.debug(
-                        f"{log_prefix} Epoch {epoch + 1}: Early stopping metric improved "
-                        f"to {best_es_metric_value:.4f}. Reset patience."
-                    )
-                else:
-                    epochs_no_improve += 1
-                    logger.debug(
-                        f"{log_prefix} Epoch {epoch + 1}: Early stopping metric did not "
-                        f"improve. Patience: {epochs_no_improve}/{es_patience}."
-                    )
-
-            if epochs_no_improve >= es_patience:
+            if should_stop:
                 logger.info(
                     f"{log_prefix}: Early Stopping Triggered at Epoch {epoch + 1}!"
                 )
                 logger.info(
                     f"  Metric '{es_metric_name}' did not improve for {es_patience} "
-                    f"epochs (Best: {best_es_metric_value:.4f})."
+                    f"epochs (Best: {predictor_stopping.best_value:.4f})."
                 )
                 break
 

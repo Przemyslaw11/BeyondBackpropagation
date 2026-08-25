@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from ..architectures.ff_mlp import FF_MLP
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
+from ..training.early_stopping import EarlyStopping
 from ..utils.training_support import (
     create_directory_if_not_exists,
     format_time,
@@ -127,9 +128,7 @@ def train_ff_model(
     es_patience = train_config.get("early_stopping_patience", 10)
     es_mode = train_config.get("early_stopping_mode", "max").lower()
     es_min_delta = train_config.get("early_stopping_min_delta", 0.0)
-    epochs_no_improve = 0
-    best_es_metric_value = -float("inf") if es_mode == "max" else float("inf")
-    best_checkpoint_metric_value = best_es_metric_value
+    best_checkpoint_metric_value = -float("inf") if es_mode == "max" else float("inf")
 
     if es_enabled:
         if val_loader is None:
@@ -154,6 +153,16 @@ def train_ff_model(
                 )
     else:
         logger.info("Early stopping disabled.")
+
+    if es_enabled:
+        # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
+        # boundary on EarlyStopping's strict "bad epochs > patience", keeping
+        # published stop timing byte-identical on finite/NaN streams.
+        ff_stopping = EarlyStopping(
+            patience=max(int(es_patience) - 1, 0),
+            mode=es_mode,
+            min_delta=float(es_min_delta),
+        )
 
     # --- Optimizer Setup ---
     ff_layer_params = [
@@ -434,37 +443,26 @@ def train_ff_model(
                     f"Epoch {epoch + 1}: Early stopping metric '{es_metric_key}' is "
                     "NaN. Treating as no improvement."
                 )
-                epochs_no_improve += 1
+            should_stop = ff_stopping.update(current_metric_value, epoch + 1)
+            new_best = ff_stopping.best_value
+            if ff_stopping.best_epoch == epoch + 1 and new_best is not None:
+                is_best_for_checkpointing = True
+                best_checkpoint_metric_value = float(new_best)
+                logger.info(
+                    f"Epoch {epoch + 1}: Early stopping metric improved to "
+                    f"{new_best:.4f}. Reset patience."
+                )
             else:
-                improved = False
-                if es_mode == "max":
-                    if current_metric_value > best_es_metric_value + es_min_delta:
-                        improved = True
-                else:
-                    if current_metric_value < best_es_metric_value - es_min_delta:
-                        improved = True
+                logger.info(
+                    f"Epoch {epoch + 1}: Early stopping metric did not improve. "
+                    f"Patience: {ff_stopping.bad_epochs}/{es_patience}."
+                )
 
-                if improved:
-                    best_es_metric_value = current_metric_value
-                    is_best_for_checkpointing = True
-                    best_checkpoint_metric_value = best_es_metric_value
-                    epochs_no_improve = 0
-                    logger.info(
-                        f"Epoch {epoch + 1}: Early stopping metric improved to "
-                        f"{best_es_metric_value:.4f}. Reset patience."
-                    )
-                else:
-                    epochs_no_improve += 1
-                    logger.info(
-                        f"Epoch {epoch + 1}: Early stopping metric did not improve. "
-                        f"Patience: {epochs_no_improve}/{es_patience}."
-                    )
-
-            if epochs_no_improve >= es_patience:
+            if should_stop:
                 logger.info("--- Early Stopping Triggered ---")
                 logger.info(
                     f"Metric '{es_metric_key}' did not improve for {es_patience} "
-                    f"epochs (Best: {best_es_metric_value:.4f})."
+                    f"epochs (Best: {ff_stopping.best_value:.4f})."
                 )
                 logger.info(f"Stopping training at epoch {epoch + 1}.")
                 break
