@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+# Canonical early-stopping defaults (WP8): single source of truth for the
+# fallbacks used by trainer config lookups; configs/base.yaml remains the
+# user-facing source of truth.
+DEFAULT_PATIENCE = 10
+DEFAULT_MIN_DELTA = 0.0
+
 
 @dataclass
 class EarlyStopping:

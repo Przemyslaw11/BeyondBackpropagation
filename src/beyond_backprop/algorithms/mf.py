@@ -16,7 +16,11 @@ from tqdm import tqdm
 
 from ..architectures.mf_mlp import MF_MLP
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
-from ..training.early_stopping import EarlyStopping
+from ..training.early_stopping import (
+    DEFAULT_MIN_DELTA,
+    DEFAULT_PATIENCE,
+    EarlyStopping,
+)
 from ..utils.training_support import (
     create_directory_if_not_exists,
     get_gpu_memory_usage,
@@ -138,8 +142,12 @@ def train_mf_matrix_only(
         es_enabled = False
 
     if es_enabled:
-        es_patience = early_stopping_config.get("mf_early_stopping_patience", 10)
-        es_min_delta = early_stopping_config.get("mf_early_stopping_min_delta", 0.0)
+        es_patience = early_stopping_config.get(
+            "mf_early_stopping_patience", DEFAULT_PATIENCE
+        )
+        es_min_delta = early_stopping_config.get(
+            "mf_early_stopping_min_delta", DEFAULT_MIN_DELTA
+        )
         # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
         # boundary on EarlyStopping's strict "bad epochs > patience".
         matrix_stopping = EarlyStopping(
@@ -334,8 +342,8 @@ def train_mf_model(
     mf_criterion = nn.CrossEntropyLoss()
 
     es_enabled = algo_config.get("mf_early_stopping_enabled", False)
-    es_patience = algo_config.get("mf_early_stopping_patience", 10)
-    es_min_delta = algo_config.get("mf_early_stopping_min_delta", 0.0)
+    es_patience = algo_config.get("mf_early_stopping_patience", DEFAULT_PATIENCE)
+    es_min_delta = algo_config.get("mf_early_stopping_min_delta", DEFAULT_MIN_DELTA)
     mf_early_stopping_config = {
         "mf_early_stopping_enabled": es_enabled,
         "mf_early_stopping_patience": es_patience,

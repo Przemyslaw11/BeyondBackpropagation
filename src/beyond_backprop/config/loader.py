@@ -14,6 +14,8 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from .models import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_BATCH_SIZE_FF,
     AlgorithmName,
     ArchitectureName,
     BackendName,
@@ -771,7 +773,12 @@ def _config_from_mapping(
         device=str(general.get("device", "auto")),
         seed=int(general.get("seed", 42)),
         batch_size=int(
-            loader.get("batch_size", 100 if algorithm is AlgorithmName.FF else 128)
+            loader.get(
+                "batch_size",
+                DEFAULT_BATCH_SIZE_FF
+                if algorithm is AlgorithmName.FF
+                else DEFAULT_BATCH_SIZE,
+            )
         ),
         num_workers=int(loader.get("num_workers", 0)),
         pin_memory=bool(loader.get("pin_memory", False)),

@@ -15,7 +15,11 @@ from tqdm import tqdm
 
 from ..architectures.ff_mlp import FF_MLP
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
-from ..training.early_stopping import EarlyStopping
+from ..training.early_stopping import (
+    DEFAULT_MIN_DELTA,
+    DEFAULT_PATIENCE,
+    EarlyStopping,
+)
 from ..utils.training_support import (
     create_directory_if_not_exists,
     format_time,
@@ -100,9 +104,9 @@ def train_ff_model(
     es_metric_key = train_config.get(
         "early_stopping_metric", "FF_Hinton/Val_Acc_Epoch"
     ).lower()
-    es_patience = train_config.get("early_stopping_patience", 10)
+    es_patience = train_config.get("early_stopping_patience", DEFAULT_PATIENCE)
     es_mode = train_config.get("early_stopping_mode", "max").lower()
-    es_min_delta = train_config.get("early_stopping_min_delta", 0.0)
+    es_min_delta = train_config.get("early_stopping_min_delta", DEFAULT_MIN_DELTA)
     best_checkpoint_metric_value = -float("inf") if es_mode == "max" else float("inf")
 
     if es_enabled:

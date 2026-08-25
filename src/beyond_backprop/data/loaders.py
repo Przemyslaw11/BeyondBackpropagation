@@ -18,7 +18,13 @@ import torch
 import torchvision
 from torch.utils.data import DataLoader, Dataset, Subset, random_split
 
-from ..config.models import AlgorithmName, DatasetName, ExperimentConfig
+from ..config.models import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_BATCH_SIZE_FF,
+    AlgorithmName,
+    DatasetName,
+    ExperimentConfig,
+)
 from ..runtime.backend_policy import get_execution_backend
 from .preprocessing import get_transforms
 from .registry import get_dataset_spec
@@ -259,7 +265,12 @@ def build_dataloaders(
         dataset_name = DatasetName.parse(data.get("name", "mnist"))
         algorithm = AlgorithmName.parse(resolved.get("algorithm", {}).get("name", "bp"))
         batch_size = int(
-            loader.get("batch_size", 100 if algorithm is AlgorithmName.FF else 128)
+            loader.get(
+                "batch_size",
+                DEFAULT_BATCH_SIZE_FF
+                if algorithm is AlgorithmName.FF
+                else DEFAULT_BATCH_SIZE,
+            )
         )
         data_root = str(data.get("root", "./data"))
         val_split = float(data.get("val_split", 0.1))

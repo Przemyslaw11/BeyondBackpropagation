@@ -17,7 +17,11 @@ from tqdm import tqdm
 
 from ..architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
-from ..training.early_stopping import EarlyStopping
+from ..training.early_stopping import (
+    DEFAULT_MIN_DELTA,
+    DEFAULT_PATIENCE,
+    EarlyStopping,
+)
 from ..utils.training_support import (
     calculate_accuracy,
     create_directory_if_not_exists,
@@ -375,9 +379,9 @@ def train_cafo_predictor_only(
 
     es_enabled = early_stopping_config.get("enabled", False)
     es_metric_name = early_stopping_config.get("metric", "val_loss").lower()
-    es_patience = early_stopping_config.get("patience", 10)
+    es_patience = early_stopping_config.get("patience", DEFAULT_PATIENCE)
     es_mode = early_stopping_config.get("mode", "min").lower()
-    es_min_delta = early_stopping_config.get("min_delta", 0.0)
+    es_min_delta = early_stopping_config.get("min_delta", DEFAULT_MIN_DELTA)
 
     if es_enabled:
         if val_loader is None:
@@ -639,9 +643,13 @@ def train_cafo_model(
     predictor_es_config = {
         "enabled": algo_config.get("predictor_early_stopping_enabled", True),
         "metric": algo_config.get("predictor_early_stopping_metric", "val_loss"),
-        "patience": algo_config.get("predictor_early_stopping_patience", 10),
+        "patience": algo_config.get(
+            "predictor_early_stopping_patience", DEFAULT_PATIENCE
+        ),
         "mode": algo_config.get("predictor_early_stopping_mode", "min"),
-        "min_delta": algo_config.get("predictor_early_stopping_min_delta", 0.0),
+        "min_delta": algo_config.get(
+            "predictor_early_stopping_min_delta", DEFAULT_MIN_DELTA
+        ),
     }
 
     if criterion_name.lower() == "crossentropyloss":

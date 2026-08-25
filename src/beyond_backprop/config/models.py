@@ -8,6 +8,11 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, TypeVar
 
+# Canonical default batch sizes (WP8): single source of truth for the
+# FF-specific default and the general default.
+DEFAULT_BATCH_SIZE_FF = 100
+DEFAULT_BATCH_SIZE = 128
+
 _EnumType = TypeVar("_EnumType", bound="_ValueEnum")
 
 
