@@ -205,15 +205,17 @@ def train_cafo_dfa_blocks(
                 total_samples += batch_size
 
             # --- Sample memory usage ---
+            # P2: sample NVML only at logging boundaries instead of every
+            # batch (cadence parity with MF).
+            is_log_time = (batch_idx + 1) % log_interval == 0
+            is_last_batch = batch_idx == len(train_loader) - 1
             current_mem_used = float("nan")
-            if nvml_active and gpu_handle:
+            if nvml_active and gpu_handle and (is_log_time or is_last_batch):
                 mem_info = get_gpu_memory_usage(gpu_handle)
                 if mem_info:
                     current_mem_used = mem_info[0]
                     peak_mem_block_epoch = max(peak_mem_block_epoch, current_mem_used)
 
-            is_log_time = (batch_idx + 1) % log_interval == 0
-            is_last_batch = batch_idx == len(train_loader) - 1
             if is_log_time or is_last_batch:
                 batch_accuracy = calculate_accuracy(aux_output_logits, labels)
                 pbar.set_postfix(
@@ -430,8 +432,12 @@ def train_cafo_predictor_only(
             epoch_correct += batch_correct
             epoch_samples += labels.size(0)
 
+            # P2: sample NVML only at logging boundaries instead of every
+            # batch (cadence parity with MF).
+            is_log_time = (batch_idx + 1) % log_interval == 0
+            is_last_batch = batch_idx == len(train_loader) - 1
             current_mem_used = float("nan")
-            if nvml_active and gpu_handle:
+            if nvml_active and gpu_handle and (is_log_time or is_last_batch):
                 mem_info = get_gpu_memory_usage(gpu_handle)
                 if mem_info:
                     current_mem_used = mem_info[0]
@@ -439,8 +445,6 @@ def train_cafo_predictor_only(
                         peak_mem_predictor_epoch, current_mem_used
                     )
 
-            is_log_time = (batch_idx + 1) % log_interval == 0
-            is_last_batch = batch_idx == len(train_loader) - 1
             if is_log_time or is_last_batch:
                 avg_loss_batch = loss.item()
                 pbar.set_postfix(

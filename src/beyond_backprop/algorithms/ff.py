@@ -339,16 +339,20 @@ def train_ff_model(
                 )
 
             # --- Memory Monitoring & Logging ---
+            # P2: sample NVML only at logging boundaries instead of every
+            # batch (cadence parity with MF); peak tracking therefore samples
+            # at log_interval cadence -- documented measurement note.
+            is_log_time = (batch_idx + 1) % log_interval == 0 or (
+                batch_idx == len(train_loader) - 1
+            )
             current_mem_used = float("nan")
-            if nvml_active and gpu_handle:
+            if nvml_active and gpu_handle and is_log_time:
                 mem_info = get_gpu_memory_usage(gpu_handle)
                 current_mem_used = mem_info[0] if mem_info else float("nan")
                 if not math.isnan(current_mem_used):
                     peak_mem_epoch = max(peak_mem_epoch, current_mem_used)
 
-            if (batch_idx + 1) % log_interval == 0 or (
-                batch_idx == len(train_loader) - 1
-            ):
+            if is_log_time:
                 metrics_to_log = {
                     "global_step": current_global_step,
                     "FF_Hinton/Train_Loss_Batch": total_batch_loss.item(),
