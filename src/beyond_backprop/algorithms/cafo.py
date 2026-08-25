@@ -223,7 +223,7 @@ def train_cafo_dfa_blocks(
                     "CaFo_DFA/BlockTrain_Loss_Batch": loss.item(),
                     "CaFo_DFA/BlockTrain_Acc_Batch": batch_accuracy,
                 }
-                if not torch.isnan(torch.tensor(current_mem_used)):
+                if not math.isnan(current_mem_used):
                     metrics_to_log["CaFo_DFA/BlockTrain_GPU_Mem_MiB_Batch"] = (
                         current_mem_used
                     )
@@ -443,7 +443,7 @@ def train_cafo_predictor_only(
                     f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
                     f"{log_prefix}/Train_Acc_Batch": batch_accuracy,
                 }
-                if not torch.isnan(torch.tensor(current_mem_used)):
+                if not math.isnan(current_mem_used):
                     metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = (
                         current_mem_used
                     )
@@ -491,7 +491,7 @@ def train_cafo_predictor_only(
 
             current_es_metric_value = val_acc if "acc" in es_metric_name else val_loss
 
-            if torch.isnan(torch.tensor(current_es_metric_value)):
+            if math.isnan(current_es_metric_value):
                 logger.warning(
                     f"{log_prefix} Epoch {epoch + 1}: Early stopping metric "
                     f"'{es_metric_name}' is NaN. Treating as no improvement."
@@ -876,7 +876,7 @@ def evaluate_cafo_model(
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
 
     log_msg = f"Eval Results (Agg: {aggregation_method}): Accuracy: {accuracy:.2f}%"
-    if criterion and not torch.isnan(torch.tensor(avg_loss)):
+    if criterion and not math.isnan(avg_loss):
         log_msg += f", Loss: {avg_loss:.4f}"
     logger.info(log_msg)
 

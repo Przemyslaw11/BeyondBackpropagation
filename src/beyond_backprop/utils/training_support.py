@@ -27,13 +27,13 @@ _nvml_initialized = False
 
 def create_directory_if_not_exists(path: str) -> None:
     """Creates a directory if it doesn't already exist."""
-    if path and not os.path.exists(path):
-        try:
-            os.makedirs(path)
-            logger.info(f"Created directory: {path}")
-        except OSError as e:
-            logger.error(f"Failed to create directory {path}: {e}", exc_info=True)
-            raise
+    if not path:
+        return
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Failed to create directory {path}: {e}", exc_info=True)
+        raise
 
 
 def format_time(seconds: float) -> str:

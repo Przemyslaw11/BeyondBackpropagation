@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from collections.abc import Callable
@@ -333,7 +334,7 @@ def train_ff_model(
             if nvml_active and gpu_handle:
                 mem_info = get_gpu_memory_usage(gpu_handle)
                 current_mem_used = mem_info[0] if mem_info else float("nan")
-                if not torch.isnan(torch.tensor(current_mem_used)):
+                if not math.isnan(current_mem_used):
                     peak_mem_epoch = max(peak_mem_epoch, current_mem_used)
 
             if (batch_idx + 1) % log_interval == 0 or (
@@ -356,7 +357,7 @@ def train_ff_model(
                     metrics_to_log[f"Layer_{i + 1}/FF_Acc_Batch"] = ff_metrics_dict.get(
                         key, 0.0
                     )
-                if not torch.isnan(torch.tensor(current_mem_used)):
+                if not math.isnan(current_mem_used):
                     metrics_to_log["FF_Hinton/GPU_Mem_Used_MiB_Batch"] = (
                         current_mem_used
                     )
@@ -428,7 +429,7 @@ def train_ff_model(
         is_best_for_checkpointing = False
 
         if es_enabled:
-            if torch.isnan(torch.tensor(current_metric_value)):
+            if math.isnan(current_metric_value):
                 logger.warning(
                     f"Epoch {epoch + 1}: Early stopping metric '{es_metric_key}' is "
                     "NaN. Treating as no improvement."
@@ -468,7 +469,7 @@ def train_ff_model(
                 logger.info(f"Stopping training at epoch {epoch + 1}.")
                 break
         else:
-            if not torch.isnan(torch.tensor(current_metric_value)):  # noqa: SIM102 - early-stopping structure kept verbatim
+            if not math.isnan(current_metric_value):  # noqa: SIM102 - early-stopping structure kept verbatim
                 if (
                     es_mode == "max"
                     and (current_metric_value > best_checkpoint_metric_value)

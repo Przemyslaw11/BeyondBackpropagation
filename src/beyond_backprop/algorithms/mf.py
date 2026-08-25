@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -200,7 +201,7 @@ def train_mf_matrix_only(
             if is_log_time:
                 metrics: dict[str, int | float] = {"global_step": current_global_step}
                 metrics[f"{log_prefix}/Train_Loss_Batch"] = loss.item()
-                if not torch.isnan(torch.tensor(current_mem_used)):
+                if not math.isnan(current_mem_used):
                     metrics[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = float(
                         current_mem_used
                     )
@@ -247,7 +248,7 @@ def train_mf_matrix_only(
                 wandb_run=wandb_run,
                 commit=True,
             )
-            if torch.isnan(torch.tensor(val_loss)):
+            if math.isnan(val_loss):
                 epochs_no_improve += 1
             elif val_loss < best_es_metric_value - es_min_delta:
                 best_es_metric_value = val_loss
