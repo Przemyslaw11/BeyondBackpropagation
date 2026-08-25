@@ -516,11 +516,11 @@ def evaluate_mf_model(
         f"matrix M_{last_projection_matrix_index}."
     )
     if last_projection_matrix_index >= len(model.projection_matrices):
-        logger.error(
-            f"Index M_{last_projection_matrix_index} out of bounds "
-            f"({len(model.projection_matrices)} matrices)."
+        # EVAL-001: domain guard aborts evaluation instead of returning NaN.
+        raise ValueError(
+            f"Projection matrix index M_{last_projection_matrix_index} out of "
+            f"bounds ({len(model.projection_matrices)} matrices)."
         )
-        return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
     last_projection_matrix = model.get_projection_matrix(last_projection_matrix_index)
 
     pbar = tqdm(data_loader, desc="Evaluating MF MLP", leave=False)
@@ -531,11 +531,11 @@ def evaluate_mf_model(
         all_activations = model.forward_with_intermediate_activations(eval_input)
 
         if len(all_activations) <= last_activation_index:
-            logger.error(
-                f"Activation list len ({len(all_activations)}) too short "
+            # EVAL-001: domain guard aborts evaluation instead of skipping.
+            raise ValueError(
+                f"Activation list length ({len(all_activations)}) too short "
                 f"for a_{last_activation_index}."
             )
-            continue
 
         last_activation = all_activations[last_activation_index].to(device)
         last_projection_matrix = last_projection_matrix.to(device)

@@ -846,36 +846,29 @@ def evaluate_cafo_model(
                             block_outputs[last_block_idx]
                         )
                         predictor_outputs.append(pred_out)
-                    except Exception as e_pred:
+                    except Exception:
                         logger.error(
-                            f"Error LAST predictor ({last_block_idx}): {e_pred}",
+                            f"Error LAST predictor ({last_block_idx}).",
                             exc_info=True,
                         )
-                        return {
-                            "eval_accuracy": float("nan"),
-                            "eval_loss": float("nan"),
-                        }
+                        raise
                 else:
-                    logger.error("Cannot eval 'last': mismatch counts/outputs.")
-                    return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+                    raise ValueError(
+                        "Cannot evaluate 'last' aggregation: mismatched "
+                        "block/predictor counts or outputs."
+                    )
             else:
                 for i, block_out in enumerate(block_outputs):
                     if i < len(predictors):
                         try:
                             pred_out = predictors[i](block_out)
                             predictor_outputs.append(pred_out)
-                        except Exception as e_pred:
-                            logger.error(
-                                f"Error predictor {i}: {e_pred}", exc_info=True
-                            )
-                            return {
-                                "eval_accuracy": float("nan"),
-                                "eval_loss": float("nan"),
-                            }
+                        except Exception:
+                            logger.error(f"Error predictor {i}.", exc_info=True)
+                            raise
 
             if not predictor_outputs:
-                logger.error("No predictor outputs.")
-                return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+                raise ValueError("No predictor outputs were produced for this batch.")
 
             try:
                 final_prediction_logits = aggregate_predictor_outputs(
@@ -894,7 +887,7 @@ def evaluate_cafo_model(
                 total_samples += labels.size(0)
             except Exception as e_agg:
                 logger.error(f"Error during aggregation/loss: {e_agg}", exc_info=True)
-                return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
+                raise
 
     avg_loss = (
         total_loss / total_samples if criterion and total_samples > 0 else float("nan")

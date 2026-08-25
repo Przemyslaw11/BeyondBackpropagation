@@ -550,12 +550,12 @@ def evaluate_ff_model(
     num_classes = model.num_classes
     logger.info("Evaluating FF (Hinton style) model using multi-pass inference.")
     total_correct, total_samples = 0, 0
+    failed_batches = 0
     with torch.no_grad():
         pbar = tqdm(data_loader, desc="Evaluating FF (Hinton) Model", leave=False)
         for batch_idx, (images, labels) in enumerate(pbar):
             images, labels = images.to(device), labels.to(device)
             batch_size = images.shape[0]
-            batch_total_goodness = torch.zeros((batch_size, num_classes), device=device)
             try:
                 # P4: all label candidates evaluated in one stacked forward
                 # pass instead of num_classes sequential passes. Rows are
@@ -573,34 +573,35 @@ def evaluate_ff_model(
                 layer_goodness_list = model.forward_goodness_per_layer(
                     ff_input_candidates
                 )
-                if not layer_goodness_list:
-                    raise ValueError("Eval produced no goodness layers.")
-                total_goodness = aggregate_goodness(layer_goodness_list)
-                if total_goodness.shape != (batch_size * num_classes,):
-                    raise ValueError(f"Bad goodness shape: {total_goodness.shape}")
-                batch_total_goodness = total_goodness.reshape(batch_size, num_classes)
-            except Exception as e_fwd:
-                logger.error(f"Eval fwd error batch {batch_idx + 1}: {e_fwd}")
-                batch_total_goodness.fill_(-torch.inf)
-            try:
-                all_inf_mask = torch.all(
-                    torch.isinf(batch_total_goodness) & (batch_total_goodness < 0),
-                    dim=1,
+            except Exception:
+                # EVAL-001: zero tolerance - a single failed batch aborts
+                # evaluation instead of substituting predictions.
+                failed_batches += 1
+                logger.exception(f"Eval fwd error batch {batch_idx + 1}.")
+                raise
+            # Domain guards are explicit raises, not exception substitutions.
+            if not layer_goodness_list:
+                raise ValueError("Eval produced no goodness layers.")
+            total_goodness = aggregate_goodness(layer_goodness_list)
+            if total_goodness.shape != (batch_size * num_classes,):
+                raise ValueError(f"Bad goodness shape: {total_goodness.shape}")
+            batch_total_goodness = total_goodness.reshape(batch_size, num_classes)
+
+            all_inf_mask = torch.all(
+                torch.isinf(batch_total_goodness) & (batch_total_goodness < 0),
+                dim=1,
+            )
+            predicted_labels = torch.zeros_like(labels)
+            if torch.any(~all_inf_mask):
+                valid_indices = ~all_inf_mask
+                predicted_labels[valid_indices] = torch.argmax(
+                    batch_total_goodness[valid_indices], dim=1
                 )
-                predicted_labels = torch.zeros_like(labels)
-                if torch.any(~all_inf_mask):
-                    valid_indices = ~all_inf_mask
-                    predicted_labels[valid_indices] = torch.argmax(
-                        batch_total_goodness[valid_indices], dim=1
-                    )
-                if torch.any(all_inf_mask):
-                    logger.warning(
-                        f"Eval Batch {batch_idx + 1}: {all_inf_mask.sum().item()}/"
-                        f"{batch_size} samples failed all candidates."
-                    )
-            except Exception as e_pred:
-                logger.error(f"Eval pred err Batch {batch_idx + 1}: {e_pred}")
-                predicted_labels = torch.zeros_like(labels)
+            if torch.any(all_inf_mask):
+                logger.warning(
+                    f"Eval Batch {batch_idx + 1}: {all_inf_mask.sum().item()}/"
+                    f"{batch_size} samples failed all candidates."
+                )
             total_correct += (predicted_labels == labels).sum().item()
             total_samples += batch_size
     accuracy = (total_correct / total_samples) * 100.0 if total_samples > 0 else 0.0
