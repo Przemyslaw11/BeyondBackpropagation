@@ -90,9 +90,11 @@ def run_epochs(
     optimizer: optim.Optimizer,
     guard: NanLossGuard | None,
     batch_loss: BatchLossFn,
+    optimize_in_hook: bool = False,
     on_epoch_start: Callable[[int], None] | None = None,
     on_epoch_summary: Callable[[int, float], None] | None = None,
     validate: Callable[[int], bool] | None = None,
+    on_epoch_end: Callable[[int], None] | None = None,
     log_batch_loss: bool = False,
     on_log_boundary: Callable[[int, torch.Tensor, tqdm], dict[str, int | float] | None]
     | None = None,
@@ -106,12 +108,23 @@ def run_epochs(
     - ``batch_loss(batch_idx, inputs, targets)`` computes the loss for one
       batch; return ``None`` to skip the batch (e.g. malformed forward
       output). The skeleton owns ``zero_grad()/backward()/step()``.
+      With ``optimize_in_hook=True`` the batch_loss owner instead performs
+      its own optimizer stepping (legacy FF guards ``backward()`` in
+      try/except and continues on failure, which the unconditional
+      skeleton stepping cannot express); the cadence boundary and hooks
+      are unchanged -- ``batch_loss`` still returns the batch loss tensor
+      so ``on_log_boundary`` keeps receiving it.
     - ``on_epoch_start(epoch)`` per-epoch mode/grad wiring.
     - ``on_epoch_summary(epoch, avg_loss)`` end-of-epoch summary logging and
       metric emission; receives the completed epoch's average train loss.
     - ``validate(epoch)`` returns ``True`` to early-stop the loop;
       implementations own their :class:`~.early_stopping.EarlyStopping`
       update, so the D1 patience boundary stays caller-side.
+    - ``on_epoch_end(epoch)`` fired only when ``validate`` did NOT stop the
+      epoch (i.e. skipped exactly on the stopping epoch), with no other
+      reordering of ``validate``/``on_epoch_summary``. Legacy FF writes its
+      per-epoch checkpoint in this position; callers gate it themselves
+      (e.g. zero-sample epochs).
     - ``on_log_boundary(batch_idx, loss, pbar)`` optional replacement for
       the built-in single-key batch-log emission; fired at the same cadence
       (every ``ctx.log_interval`` batches or the last batch) for emitters
@@ -188,9 +201,10 @@ def run_epochs(
                     )
                 break  # Break from batch loop
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            if not optimize_in_hook:
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
             if epoch_avg is None:
                 # Eager default path (MF): per-batch accumulation.
@@ -240,6 +254,10 @@ def run_epochs(
             on_epoch_summary(epoch, final_avg_epoch_loss)
         if validate is not None and validate(epoch):
             break
+        if on_epoch_end is not None:
+            # Post-validation epoch-end hook: not fired on the stopping
+            # epoch (the legacy break also skipped everything after it).
+            on_epoch_end(epoch)
 
     return EpochLoopResult(
         epochs_trained=epochs_trained,
