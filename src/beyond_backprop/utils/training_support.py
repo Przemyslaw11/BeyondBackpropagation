@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -205,6 +206,25 @@ def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
 
 
 _logging_configured = False
+
+
+def attach_artifact_log_handler(log_path: Path) -> logging.Handler:
+    """Attach a root-logger FileHandler writing the artifact log (OBS-002).
+
+    Uses the same formatter as :func:`setup_logging`. The file is opened in
+    append mode so retries in the same artifact directory accumulate. Returns
+    the handler so the caller can remove and close it when done.
+    """
+
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(handler)
+    return handler
 
 
 def setup_logging(
