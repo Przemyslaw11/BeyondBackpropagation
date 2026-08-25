@@ -582,45 +582,32 @@ def evaluate_ff_model(
             images, labels = images.to(device), labels.to(device)
             batch_size = images.shape[0]
             batch_total_goodness = torch.zeros((batch_size, num_classes), device=device)
-            for label_candidate in range(num_classes):
-                candidate_labels = torch.full(
-                    (batch_size,), label_candidate, dtype=torch.long, device=device
+            try:
+                # P4: all label candidates evaluated in one stacked forward
+                # pass instead of num_classes sequential passes. Rows are
+                # independent through every layer, so results are identical
+                # to the candidate loop (pinned by test_ff_eval_batching.py).
+                # ponytail: peak activation memory grows ~num_classes x vs
+                # the loop; chunk stacked rows if that ever becomes a problem.
+                stacked_images = images.repeat_interleave(num_classes, dim=0)
+                candidate_labels = torch.arange(num_classes, device=device).repeat(
+                    batch_size
                 )
-                try:
-                    ff_input_candidate, _, _ = generate_ff_hinton_inputs(
-                        images, candidate_labels, num_classes, device
-                    )
-                except Exception as e_gen:
-                    logger.error(f"Eval input gen err {label_candidate}: {e_gen}")
-                    batch_total_goodness[:, label_candidate] = -torch.inf
-                    continue
-                try:
-                    layer_goodness_list = model.forward_goodness_per_layer(
-                        ff_input_candidate
-                    )
-                    if not layer_goodness_list:
-                        total_goodness_candidate = torch.zeros(
-                            (batch_size,), device=device
-                        )
-                        logger.warning(f"Eval no goodness {label_candidate}.")
-                    # Reference sums goodness from layer 1 onwards (index >= 1)
-                    else:
-                        if len(layer_goodness_list) == 1:
-                            logger.warning(
-                                "Eval only 1 hidden layer, using its goodness."
-                            )
-                        total_goodness_candidate = aggregate_goodness(
-                            layer_goodness_list
-                        )
-                    if total_goodness_candidate.shape != (batch_size,):
-                        raise ValueError(
-                            f"Bad goodness shape: {total_goodness_candidate.shape}"
-                        )
-                except Exception as e_fwd:
-                    logger.error(f"Eval fwd err {label_candidate}: {e_fwd}")
-                    batch_total_goodness[:, label_candidate] = -torch.inf
-                    continue
-                batch_total_goodness[:, label_candidate] = total_goodness_candidate
+                ff_input_candidates, _, _ = generate_ff_hinton_inputs(
+                    stacked_images, candidate_labels, num_classes, device
+                )
+                layer_goodness_list = model.forward_goodness_per_layer(
+                    ff_input_candidates
+                )
+                if not layer_goodness_list:
+                    raise ValueError("Eval produced no goodness layers.")
+                total_goodness = aggregate_goodness(layer_goodness_list)
+                if total_goodness.shape != (batch_size * num_classes,):
+                    raise ValueError(f"Bad goodness shape: {total_goodness.shape}")
+                batch_total_goodness = total_goodness.reshape(batch_size, num_classes)
+            except Exception as e_fwd:
+                logger.error(f"Eval fwd error batch {batch_idx + 1}: {e_fwd}")
+                batch_total_goodness.fill_(-torch.inf)
             try:
                 all_inf_mask = torch.all(
                     torch.isinf(batch_total_goodness) & (batch_total_goodness < 0),
