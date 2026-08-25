@@ -88,12 +88,15 @@ def run_epochs(
     log_prefix: str,
     logger: logging.Logger,
     optimizer: optim.Optimizer,
-    guard: NanLossGuard,
+    guard: NanLossGuard | None,
     batch_loss: BatchLossFn,
     on_epoch_start: Callable[[int], None] | None = None,
     on_epoch_summary: Callable[[int, float], None] | None = None,
     validate: Callable[[int], bool] | None = None,
     log_batch_loss: bool = False,
+    on_log_boundary: Callable[[int, torch.Tensor, tqdm], dict[str, int | float] | None]
+    | None = None,
+    epoch_avg: Callable[[], float] | None = None,
     abort_label: str = "MF",
 ) -> EpochLoopResult:
     """Drive the duplicated trainer epoch-loop scaffolding through one skeleton.
@@ -109,6 +112,22 @@ def run_epochs(
     - ``validate(epoch)`` returns ``True`` to early-stop the loop;
       implementations own their :class:`~.early_stopping.EarlyStopping`
       update, so the D1 patience boundary stays caller-side.
+    - ``on_log_boundary(batch_idx, loss, pbar)`` optional replacement for
+      the built-in single-key batch-log emission; fired at the same cadence
+      (every ``ctx.log_interval`` batches or the last batch) for emitters
+      that log several keys and/or a multi-value postfix (CaFo). The hook
+      returns the metric dict (or ``None`` to skip); the skeleton owns the
+      ``log_metrics`` call (``commit=True``) so the emission stays pinnable
+      at :mod:`loop_support`, plus only the cadence boundary.
+    - ``epoch_avg()`` lets the ``batch_loss`` hook own loss accumulation
+      (e.g. P3 deferred ``.item()`` reduction, keeping bit-identical
+      summation order and sync cadence); when given, the skeleton skips its
+      eager ``loss.item() * batch_size`` accumulation and takes the
+      completed epoch's average train loss from this hook. The eager path
+      remains the default (MF).
+    - ``guard=None`` disables RUN-004 NaN/Inf accounting entirely (legacy
+      CaFo has no such check); algorithms whose loops account for invalid
+      losses pass a :class:`NanLossGuard`.
 
     Behavior pinned by characterization tests:
 
@@ -139,7 +158,8 @@ def run_epochs(
             on_epoch_start(epoch)
 
         epoch_loss, epoch_samples = 0.0, 0
-        guard.epoch_aborted = False
+        if guard is not None:
+            guard.epoch_aborted = False
         pbar = tqdm(
             train_loader,
             desc=f"{log_prefix} Epoch {epoch + 1}/{epochs}",
@@ -153,7 +173,7 @@ def run_epochs(
             loss = batch_loss(batch_idx, inputs, targets)
             if loss is None:
                 continue
-            if torch.isnan(loss) or torch.isinf(loss):
+            if guard is not None and (torch.isnan(loss) or torch.isinf(loss)):
                 # RUN-004: legacy break semantics kept; second strike raises.
                 guard.strikes += 1
                 guard.epoch_aborted = True
@@ -172,24 +192,35 @@ def run_epochs(
             loss.backward()
             optimizer.step()
 
-            batch_size = inputs.size(0)
-            epoch_loss += loss.item() * batch_size
-            epoch_samples += batch_size
+            if epoch_avg is None:
+                # Eager default path (MF): per-batch accumulation.
+                batch_size = inputs.size(0)
+                epoch_loss += loss.item() * batch_size
+                epoch_samples += batch_size
 
-            if log_batch_loss and (
-                (batch_idx + 1) % ctx.log_interval == 0
-                # ponytail: DataLoader is Sized but not a Sequence, so the
-                # Iterable annotation makes mypy reject len(); ignore locally.
-                or batch_idx == len(train_loader) - 1  # type: ignore[arg-type]
-            ):
-                metrics: dict[str, int | float] = {
-                    "global_step": current_global_step,
-                    f"{log_prefix}/Train_Loss_Batch": loss.item(),
-                }
-                log_metrics(metrics, wandb_run=ctx.wandb_run, commit=True)
-                pbar.set_postfix(loss=f"{loss.item():.6f}")
+            is_log_time = (batch_idx + 1) % ctx.log_interval == 0
+            # ponytail: DataLoader is Sized but not a Sequence, so the
+            # Iterable annotation makes mypy reject len(); ignore locally.
+            is_last_batch = batch_idx == len(train_loader) - 1  # type: ignore[arg-type]
+            if is_log_time or is_last_batch:
+                if on_log_boundary is not None:
+                    # Caller-owned emission content (multi-key / multi-value
+                    # postfix, e.g. CaFo); the skeleton owns the cadence
+                    # boundary above and the log_metrics call.
+                    boundary_metrics = on_log_boundary(batch_idx, loss, pbar)
+                    if boundary_metrics is not None:
+                        log_metrics(
+                            boundary_metrics, wandb_run=ctx.wandb_run, commit=True
+                        )
+                elif log_batch_loss:
+                    metrics: dict[str, int | float] = {
+                        "global_step": current_global_step,
+                        f"{log_prefix}/Train_Loss_Batch": loss.item(),
+                    }
+                    log_metrics(metrics, wandb_run=ctx.wandb_run, commit=True)
+                    pbar.set_postfix(loss=f"{loss.item():.6f}")
 
-        if guard.epoch_aborted:
+        if guard is not None and guard.epoch_aborted:
             # RUN-004: do not terminate the whole epoch loop on the first
             # NaN/Inf abort; a second aborting epoch raises instead.
             logger.error(
@@ -197,9 +228,14 @@ def run_epochs(
             )
             continue
 
-        final_avg_epoch_loss = (
-            epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
-        )
+        if epoch_avg is not None:
+            # Caller-owned accumulation: the epoch average comes from the
+            # hook so the caller's summation order stays bit-identical.
+            final_avg_epoch_loss = epoch_avg()
+        else:
+            final_avg_epoch_loss = (
+                epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
+            )
         if on_epoch_summary is not None:
             on_epoch_summary(epoch, final_avg_epoch_loss)
         if validate is not None and validate(epoch):
