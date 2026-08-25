@@ -4,6 +4,8 @@
 # optional extra (gpu, tracking, tuning, carbon, research).
 
 # Core ML/DL framework (resolves torch>=2.0 / torchvision>=0.15)
+# weights_only=True checkpoint loading verified against the installed
+# torch 2.13.0; payloads written by save_checkpoint are pure tensors/primitives.
 torch==2.4.0
 torchvision==0.19.0
 

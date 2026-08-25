@@ -101,7 +101,9 @@ class FF_MLP(torch.nn.Module):  # noqa: N801 - published class name
         self.peer_momentum = float(self.algo_params.get("peer_momentum", 0.9))
 
         if self.activation_name == "relu":
-            self.act_fn_train = ReLU_full_grad()
+            # MIG-005: invoke the stateless autograd function statically;
+            # instantiating it is deprecated and will raise in future PyTorch.
+            self.act_fn_train = ReLU_full_grad
             self.act_fn_eval = nn.ReLU()
             if self.bias_init != 0.0:
                 logger.info(
@@ -127,7 +129,7 @@ class FF_MLP(torch.nn.Module):  # noqa: N801 - published class name
                 self.__class__.__name__,
                 self.activation_name,
             )
-            self.act_fn_train = ReLU_full_grad()
+            self.act_fn_train = ReLU_full_grad
             self.act_fn_eval = nn.ReLU()
             self.bias_init = 0.0
 
