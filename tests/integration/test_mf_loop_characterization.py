@@ -12,8 +12,9 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 import beyond_backprop.algorithms.mf as mf_module
-from beyond_backprop.algorithms.mf import train_mf_model
+from beyond_backprop.algorithms.mf import train_mf_matrix_only, train_mf_model
 from beyond_backprop.architectures.mf_mlp import MF_MLP
+from beyond_backprop.training import loop_support
 from beyond_backprop.training.loop_support import build_optimizer
 
 CPU = torch.device("cpu")
@@ -85,3 +86,49 @@ def test_mf_trainer_log_lines_and_metric_keys_are_stable(monkeypatch, caplog):
     assert logged and all("global_step" in d for d in logged)
     loss_keys = [k for d in logged for k in d if "Loss_Epoch" in k or "LocalLoss" in k]
     assert any("Layer_M0" in k or "Layer_W1_M1" in k for k in loss_keys)
+
+
+def test_mf_batch_loss_metric_boundary_is_pinned_at_loop_support(monkeypatch):
+    """Pin the skeleton-emitted per-batch metric dict (WP9 migration guard).
+
+    The ``{prefix}/Train_Loss_Batch`` emission moved from mf.py into the
+    ``run_epochs`` skeleton, so it is captured via loop_support's log_metrics
+    (the mf-module patch above cannot see it). Shape: ``global_step`` first,
+    ``commit=True`` always.
+    """
+    torch.manual_seed(0)
+    model = MF_MLP(input_dim=4, hidden_dims=[3], num_classes=2)
+    dataset = TensorDataset(torch.rand(4, 1, 2, 2), torch.zeros(4, dtype=torch.long))
+    loader = DataLoader(dataset, batch_size=2)
+
+    emitted: list[tuple[dict, bool]] = []
+    monkeypatch.setattr(
+        loop_support,
+        "log_metrics",
+        lambda metrics, wandb_run=None, commit=False: emitted.append(
+            (dict(metrics), commit)
+        ),
+    )
+
+    model.get_projection_matrix(0).requires_grad_(True)
+    matrix_optimizer = build_optimizer(
+        "Adam", [model.get_projection_matrix(0)], lr=1e-3
+    )
+    train_mf_matrix_only(
+        model=model,
+        matrix_index=0,
+        optimizer=matrix_optimizer,
+        criterion=torch.nn.CrossEntropyLoss(),
+        train_loader=loader,
+        epochs=1,
+        device=CPU,
+        input_adapter=lambda tensor: tensor.view(tensor.shape[0], -1),
+        early_stopping_config={},
+        step_ref=[-1],
+    )
+
+    assert emitted, "skeleton must emit per-batch metrics via loop_support"
+    keys = {key for metrics, _ in emitted for key in metrics}
+    assert "Layer_M0/Train_Loss_Batch" in keys
+    assert all(list(metrics)[0] == "global_step" for metrics, _ in emitted)
+    assert all(commit is True for _, commit in emitted)

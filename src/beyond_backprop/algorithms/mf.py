@@ -20,7 +20,12 @@ from ..training.early_stopping import (
     DEFAULT_PATIENCE,
     EarlyStopping,
 )
-from ..training.loop_support import build_optimizer
+from ..training.loop_support import (
+    EpochContext,
+    NanLossGuard,
+    build_optimizer,
+    run_epochs,
+)
 from ..utils.training_support import (
     create_directory_if_not_exists,
     log_metrics,
@@ -129,10 +134,6 @@ def train_mf_matrix_only(
     model.eval()  # Keep feedforward layers frozen
     logger.info(f"--- Starting MF training for {log_prefix} ---")
 
-    peak_mem_matrix_train = 0.0
-    final_avg_epoch_loss = float("nan")
-    epochs_trained = 0
-
     es_enabled = early_stopping_config.get("mf_early_stopping_enabled", False)
     if es_enabled and val_loader is None:
         logger.warning(f"{log_prefix}: ES enabled but no val_loader. Disabling.")
@@ -159,128 +160,94 @@ def train_mf_matrix_only(
     else:
         logger.info(f"{log_prefix}: Early Stopping Disabled.")
 
-    # RUN-002: NaN/Inf loss still breaks the batch loop (legacy stop timing),
+    # RUN-004: NaN/Inf loss still breaks the batch loop (legacy stop timing),
     # but a second epoch aborting on NaN/Inf raises instead of looping.
-    nan_loss_breaks = 0
-    epoch_aborted_on_nan = False
+    ctx = EpochContext(
+        step_ref=step_ref, log_interval=log_interval, wandb_run=wandb_run
+    )
+    guard = NanLossGuard()
 
-    for epoch in range(epochs):
-        epochs_trained = epoch + 1
-        epoch_loss, epoch_samples = 0.0, 0
-        peak_mem_matrix_epoch = 0.0
-        epoch_aborted_on_nan = False
-        projection_matrix.requires_grad_(True)
+    def _batch_loss(
+        batch_idx: int, images: torch.Tensor, labels: torch.Tensor
+    ) -> torch.Tensor | None:
+        images, labels = images.to(device), labels.to(device)
+        with torch.no_grad():
+            adapted_input = input_adapter(images)
+            all_activations = model.forward_with_intermediate_activations(adapted_input)
+            if len(all_activations) <= matrix_index:
+                logger.error(f"{log_prefix} Batch {batch_idx}: Act list too short.")
+                return None
+            activation_a_i = all_activations[matrix_index]
+        return mf_local_loss_fn(activation_a_i, projection_matrix, labels, criterion)
 
-        pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs}"
-        pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
-
-        for batch_idx, (images, labels) in enumerate(pbar):
-            step_ref[0] += 1
-            current_global_step = step_ref[0]
-            images, labels = images.to(device), labels.to(device)
-
-            with torch.no_grad():
-                adapted_input = input_adapter(images)
-                all_activations = model.forward_with_intermediate_activations(
-                    adapted_input
-                )
-                if len(all_activations) <= matrix_index:
-                    logger.error(f"{log_prefix} Batch {batch_idx}: Act list too short.")
-                    continue
-                activation_a_i = all_activations[matrix_index]
-
-            loss = mf_local_loss_fn(
-                activation_a_i, projection_matrix, labels, criterion
-            )
-            if torch.isnan(loss) or torch.isinf(loss):
-                # RUN-002: keep the legacy break semantics but account for it;
-                # a second epoch aborting on NaN/Inf fails the run.
-                nan_loss_breaks += 1
-                epoch_aborted_on_nan = True
-                logger.error(
-                    f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
-                )
-                if nan_loss_breaks >= 2:
-                    raise RuntimeError(
-                        f"MF training aborted on NaN/Inf loss in "
-                        f"{nan_loss_breaks} epochs for {log_prefix}; aborting run."
-                    )
-                break  # Break from batch loop
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            batch_size = images.size(0)
-            epoch_loss += loss.item() * batch_size
-            epoch_samples += batch_size
-
-            is_log_time = (batch_idx + 1) % log_interval == 0 or (
-                batch_idx == len(train_loader) - 1
-            )
-            if is_log_time:
-                metrics: dict[str, int | float] = {"global_step": current_global_step}
-                metrics[f"{log_prefix}/Train_Loss_Batch"] = loss.item()
-                log_metrics(metrics, wandb_run=wandb_run, commit=True)
-                pbar.set_postfix(loss=f"{loss.item():.6f}")
-
-        if epoch_aborted_on_nan:
-            # RUN-002: do not terminate the whole epoch loop on the first
-            # NaN/Inf abort; a second aborting epoch raises instead.
-            logger.error(
-                f"Terminating {log_prefix} epoch {epoch + 1} due to invalid loss."
-            )
-            continue
-
-        final_avg_epoch_loss = (
-            epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
+    def _validate(epoch: int) -> bool:
+        if not (es_enabled and val_loader is not None):
+            return False
+        projection_matrix.requires_grad_(False)
+        val_loss = evaluate_mf_local_loss(
+            model=model,
+            matrix_index=matrix_index,
+            criterion=criterion,
+            val_loader=val_loader,
+            device=device,
+            input_adapter=input_adapter,
+            log_prefix=log_prefix,
         )
-        peak_mem_matrix_train = max(peak_mem_matrix_train, peak_mem_matrix_epoch)
+        logger.info(
+            f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Local Loss: {val_loss:.6f}"
+        )
+        log_metrics(
+            {
+                "global_step": step_ref[0],
+                f"{log_prefix}/Val_LocalLoss_Epoch": val_loss,
+            },
+            wandb_run=wandb_run,
+            commit=True,
+        )
+        if matrix_stopping.update(val_loss, epoch + 1):
+            logger.info(f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---")
+            return True
+        return False
+
+    def _epoch_summary(epoch: int, avg_loss: float) -> None:
+        peak_mem_epoch = 0.0  # legacy MF never sampled per-epoch memory here
         logger.info(
             f"{log_prefix} Epoch {epoch + 1}/{epochs} - Train Loss: "
-            f"{final_avg_epoch_loss:.6f}, Peak Mem: {peak_mem_matrix_epoch:.1f} MiB"
+            f"{avg_loss:.6f}, Peak Mem: {peak_mem_epoch:.1f} MiB"
         )
-        epoch_metrics = {
-            "global_step": step_ref[0],
-            f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss,
-            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_matrix_epoch,
-        }
-        log_metrics(epoch_metrics, wandb_run=wandb_run, commit=True)
+        log_metrics(
+            {
+                "global_step": step_ref[0],
+                f"{log_prefix}/Train_Loss_EpochAvg": avg_loss,
+                f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_epoch,
+            },
+            wandb_run=wandb_run,
+            commit=True,
+        )
 
-        if es_enabled and val_loader is not None:
-            projection_matrix.requires_grad_(False)
-            val_loss = evaluate_mf_local_loss(
-                model=model,
-                matrix_index=matrix_index,
-                criterion=criterion,
-                val_loader=val_loader,
-                device=device,
-                input_adapter=input_adapter,
-                log_prefix=log_prefix,
-            )
-            log_msg = f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Local Loss: {val_loss:.6f}"
-            logger.info(log_msg)
-            log_metrics(
-                {
-                    "global_step": step_ref[0],
-                    f"{log_prefix}/Val_LocalLoss_Epoch": val_loss,
-                },
-                wandb_run=wandb_run,
-                commit=True,
-            )
-            if matrix_stopping.update(val_loss, epoch + 1):
-                logger.info(
-                    f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---"
-                )
-                break
+    outcome = run_epochs(
+        ctx,
+        train_loader,
+        epochs=epochs,
+        log_prefix=log_prefix,
+        logger=logger,
+        optimizer=optimizer,
+        guard=guard,
+        batch_loss=_batch_loss,
+        on_epoch_start=lambda _epoch: projection_matrix.requires_grad_(True),
+        on_epoch_summary=_epoch_summary,
+        validate=_validate,
+        log_batch_loss=True,
+    )
 
     projection_matrix.requires_grad_(False)
     if diagnostics is not None:
-        diagnostics["nan_loss_breaks"] = float(nan_loss_breaks)
+        diagnostics["nan_loss_breaks"] = float(guard.strikes)
     logger.info(
-        f"--- Finished training for {log_prefix} after {epochs_trained} epochs. ---"
+        f"--- Finished training for {log_prefix} "
+        f"after {outcome.epochs_trained} epochs. ---"
     )
-    return final_avg_epoch_loss, peak_mem_matrix_train, epochs_trained
+    return outcome.final_avg_epoch_loss, outcome.peak_mem, outcome.epochs_trained
 
 
 def train_mf_model(
@@ -307,9 +274,9 @@ def train_mf_model(
     )
 
     algo_config = config.get("algorithm_params", config.get("training", {}))
-    # RUN-002: NaN/Inf loss still breaks the batch loop (legacy stop timing),
+    # RUN-004: NaN/Inf loss still breaks the batch loop (legacy stop timing),
     # but a second epoch aborting on NaN/Inf raises instead of looping.
-    nan_loss_breaks = 0
+    nan_guard = NanLossGuard()
     optimizer_name = algo_config.get("optimizer_type", "Adam")
     lr = algo_config.get("lr", 0.001)
     weight_decay = algo_config.get("weight_decay", 0.0)
@@ -327,6 +294,57 @@ def train_mf_model(
         "mf_early_stopping_patience": es_patience,
         "mf_early_stopping_min_delta": es_min_delta,
     }
+
+    def _build_layer_hooks(
+        i: int,
+        m_idx: int,
+        prefix: str,
+        projection_matrix: nn.Parameter,
+        stopping: EarlyStopping,
+    ) -> tuple[
+        Callable[[int, Any, Any], torch.Tensor | None],
+        Callable[[int], None],
+        Callable[[int], bool],
+    ]:
+        """Bind one layer's epoch-loop hooks (no late-bound loop variables)."""
+
+        def _batch_loss(
+            batch_idx: int, images: torch.Tensor, labels: torch.Tensor
+        ) -> torch.Tensor | None:
+            images, labels = images.to(device), labels.to(device)
+            # Get input for the current layer W_i+1, which is activation a_i
+            with torch.no_grad():
+                prev_activation = input_adapter(images)
+                for k in range(i):  # Recompute forward pass up to layer i-1
+                    temp_linear = model.layers[k * 2]
+                    temp_act_fn = model.layers[k * 2 + 1]
+                    prev_activation = temp_act_fn(temp_linear(prev_activation))
+
+            # Forward through W_i+1 to get a_i+1, with grads for W_i+1
+            pre_act_z = model.layers[i * 2](prev_activation.detach())
+            activation_a_next = model.layers[i * 2 + 1](pre_act_z)
+            return mf_local_loss_fn(
+                activation_a_next, projection_matrix, labels, mf_criterion
+            )
+
+        def _epoch_start(_epoch: int) -> None:
+            model.layers[i * 2].train()
+            model.layers[i * 2 + 1].train()
+            projection_matrix.requires_grad_(True)
+
+        def _validate(epoch: int) -> bool:
+            if not (es_enabled and val_loader is not None):
+                return False
+            model.eval()  # Set all layers to eval for consistent validation
+            val_loss = evaluate_mf_local_loss(
+                model, m_idx, mf_criterion, val_loader, device, input_adapter
+            )
+            if stopping.update(val_loss, epoch + 1):
+                logger.info(f"--- {prefix}: Early Stopping at Epoch {epoch + 1}! ---")
+                return True
+            return False
+
+        return _batch_loss, _epoch_start, _validate
 
     peak_mem_train = 0.0
     total_epochs_trained_all_layers = 0
@@ -409,7 +427,6 @@ def train_mf_model(
         )
 
         peak_mem_layer_train = 0.0
-        epochs_trained_this_layer = 0
         # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
         # boundary on EarlyStopping's strict "bad epochs > patience".
         layer_stopping = EarlyStopping(
@@ -417,82 +434,25 @@ def train_mf_model(
             mode="min",
             min_delta=float(es_min_delta),
         )
-
-        for epoch in range(epochs_per_layer):
-            epochs_trained_this_layer = epoch + 1
-            epoch_loss, epoch_samples = 0.0, 0
-            peak_mem_layer_epoch = 0.0
-            epoch_aborted_on_nan = False
-            model.layers[i * 2].train()
-            model.layers[i * 2 + 1].train()
-            projection_matrix.requires_grad_(True)
-
-            pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs_per_layer}"
-            pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
-
-            for batch_idx, (images, labels) in enumerate(pbar):
-                step_ref[0] += 1
-                images, labels = images.to(device), labels.to(device)
-
-                # Get input for the current layer W_i+1, which is activation a_i
-                with torch.no_grad():
-                    prev_activation = input_adapter(images)
-                    for k in range(i):  # Recompute forward pass up to layer i-1
-                        temp_linear = model.layers[k * 2]
-                        temp_act_fn = model.layers[k * 2 + 1]
-                        prev_activation = temp_act_fn(temp_linear(prev_activation))
-
-                # Forward through W_i+1 to get a_i+1, with grads for W_i+1
-                pre_act_z = model.layers[i * 2](prev_activation.detach())
-                activation_a_next = model.layers[i * 2 + 1](pre_act_z)
-
-                loss = mf_local_loss_fn(
-                    activation_a_next, projection_matrix, labels, mf_criterion
-                )
-                if torch.isnan(loss) or torch.isinf(loss):
-                    # RUN-002: legacy break semantics kept; second strike raises.
-                    nan_loss_breaks += 1
-                    epoch_aborted_on_nan = True
-                    log_msg = f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
-                    logger.error(log_msg)
-                    if nan_loss_breaks >= 2:
-                        raise RuntimeError(
-                            f"MF training aborted on NaN/Inf loss in "
-                            f"{nan_loss_breaks} epochs for {log_prefix}; aborting run."
-                        )
-                    break
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item() * images.size(0)
-                epoch_samples += images.size(0)
-                # ... (logging and memory checking as in train_mf_matrix_only) ...
-
-            if epoch_aborted_on_nan:
-                # RUN-002: give the two-strikes policy a chance to observe a
-                # second NaN/Inf epoch instead of ending this layer now.
-                continue
-            # ponytail: legacy scaffolding computed but never consumed the
-            # epoch average here; kept for parity until WP9 extraction.
-            _final_avg_epoch_loss = (
-                epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
-            )
-            peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch)
-            # ... (epoch logging) ...
-
-            if es_enabled and val_loader is not None:
-                model.eval()  # Set all layers to eval for consistent validation
-                val_loss = evaluate_mf_local_loss(
-                    model, m_idx, mf_criterion, val_loader, device, input_adapter
-                )
-                # ... (early stopping logic as in train_mf_matrix_only) ...
-                if layer_stopping.update(val_loss, epoch + 1):
-                    logger.info(
-                        f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---"
-                    )
-                    break
+        layer_batch_loss, layer_epoch_start, layer_validate = _build_layer_hooks(
+            i, m_idx, log_prefix, projection_matrix, layer_stopping
+        )
+        outcome = run_epochs(
+            EpochContext(
+                step_ref=step_ref, log_interval=log_interval, wandb_run=wandb_run
+            ),
+            train_loader,
+            epochs=epochs_per_layer,
+            log_prefix=log_prefix,
+            logger=logger,
+            optimizer=optimizer,
+            guard=nan_guard,
+            batch_loss=layer_batch_loss,
+            on_epoch_start=layer_epoch_start,
+            validate=layer_validate,
+        )
+        epochs_trained_this_layer = outcome.epochs_trained
+        peak_mem_layer_train = max(peak_mem_layer_train, outcome.peak_mem)
 
         total_epochs_trained_all_layers += epochs_trained_this_layer
         peak_mem_train = max(peak_mem_train, peak_mem_layer_train)
@@ -515,7 +475,7 @@ def train_mf_model(
         f"{total_epochs_trained_all_layers}"
     )
     if diagnostics is not None:
-        diagnostics["nan_loss_breaks"] = float(nan_loss_breaks)
+        diagnostics["nan_loss_breaks"] = float(nan_guard.strikes)
     model.eval()
     return peak_mem_train
 
