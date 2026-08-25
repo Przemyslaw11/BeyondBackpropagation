@@ -110,6 +110,7 @@ def train_mf_matrix_only(
     step_ref: list[int] | None = None,
     gpu_handle: Any | None = None,
     nvml_active: bool = False,
+    diagnostics: dict[str, float] | None = None,
 ) -> tuple[float, float, int]:
     """Trains a single projection matrix (M_i) using local loss for an MF_MLP."""
     if step_ref is None:
@@ -153,10 +154,16 @@ def train_mf_matrix_only(
     else:
         logger.info(f"{log_prefix}: Early Stopping Disabled.")
 
+    # RUN-002: NaN/Inf loss still breaks the batch loop (legacy stop timing),
+    # but a second epoch aborting on NaN/Inf raises instead of looping.
+    nan_loss_breaks = 0
+    epoch_aborted_on_nan = False
+
     for epoch in range(epochs):
         epochs_trained = epoch + 1
         epoch_loss, epoch_samples = 0.0, 0
         peak_mem_matrix_epoch = 0.0
+        epoch_aborted_on_nan = False
         projection_matrix.requires_grad_(True)
 
         pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs}"
@@ -181,9 +188,18 @@ def train_mf_matrix_only(
                 activation_a_i, projection_matrix, labels, criterion
             )
             if torch.isnan(loss) or torch.isinf(loss):
+                # RUN-002: keep the legacy break semantics but account for it;
+                # a second epoch aborting on NaN/Inf fails the run.
+                nan_loss_breaks += 1
+                epoch_aborted_on_nan = True
                 logger.error(
                     f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
                 )
+                if nan_loss_breaks >= 2:
+                    raise RuntimeError(
+                        f"MF training aborted on NaN/Inf loss in "
+                        f"{nan_loss_breaks} epochs for {log_prefix}; aborting run."
+                    )
                 break  # Break from batch loop
 
             optimizer.zero_grad()
@@ -214,9 +230,13 @@ def train_mf_matrix_only(
                 log_metrics(metrics, wandb_run=wandb_run, commit=True)
                 pbar.set_postfix(loss=f"{loss.item():.6f}")
 
-        if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
-            logger.error(f"Terminating {log_prefix} training due to invalid loss.")
-            break  # Break from epoch loop
+        if epoch_aborted_on_nan:
+            # RUN-002: do not terminate the whole epoch loop on the first
+            # NaN/Inf abort; a second aborting epoch raises instead.
+            logger.error(
+                f"Terminating {log_prefix} epoch {epoch + 1} due to invalid loss."
+            )
+            continue
 
         final_avg_epoch_loss = (
             epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
@@ -267,6 +287,8 @@ def train_mf_matrix_only(
         )
 
     projection_matrix.requires_grad_(False)
+    if diagnostics is not None:
+        diagnostics["nan_loss_breaks"] = float(nan_loss_breaks)
     logger.info(
         f"--- Finished training for {log_prefix} after {epochs_trained} epochs. ---"
     )
@@ -284,6 +306,7 @@ def train_mf_model(
     step_ref: list[int] | None = None,
     gpu_handle: Any | None = None,
     nvml_active: bool = False,
+    diagnostics: dict[str, float] | None = None,
 ) -> float:
     """Orchestrates layer-wise training of MF_MLP: M0, then (W1,M1), (W2,M2), etc."""
     if step_ref is None:
@@ -298,6 +321,9 @@ def train_mf_model(
     )
 
     algo_config = config.get("algorithm_params", config.get("training", {}))
+    # RUN-002: NaN/Inf loss still breaks the batch loop (legacy stop timing),
+    # but a second epoch aborting on NaN/Inf raises instead of looping.
+    nan_loss_breaks = 0
     optimizer_name = algo_config.get("optimizer_type", "Adam")
     lr = algo_config.get("lr", 0.001)
     weight_decay = algo_config.get("weight_decay", 0.0)
@@ -347,6 +373,7 @@ def train_mf_model(
             step_ref=step_ref,
             gpu_handle=gpu_handle,
             nvml_active=nvml_active,
+            diagnostics=diagnostics,
         )
         total_epochs_trained_all_layers += epochs_trained_m0
         peak_mem_train = max(peak_mem_train, m0_peak_mem)
@@ -406,6 +433,7 @@ def train_mf_model(
             epochs_trained_this_layer = epoch + 1
             epoch_loss, epoch_samples = 0.0, 0
             peak_mem_layer_epoch = 0.0
+            epoch_aborted_on_nan = False
             model.layers[i * 2].train()
             model.layers[i * 2 + 1].train()
             projection_matrix.requires_grad_(True)
@@ -433,8 +461,16 @@ def train_mf_model(
                     activation_a_next, projection_matrix, labels, mf_criterion
                 )
                 if torch.isnan(loss) or torch.isinf(loss):
+                    # RUN-002: legacy break semantics kept; second strike raises.
+                    nan_loss_breaks += 1
+                    epoch_aborted_on_nan = True
                     log_msg = f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
                     logger.error(log_msg)
+                    if nan_loss_breaks >= 2:
+                        raise RuntimeError(
+                            f"MF training aborted on NaN/Inf loss in "
+                            f"{nan_loss_breaks} epochs for {log_prefix}; aborting run."
+                        )
                     break
 
                 optimizer.zero_grad()
@@ -445,10 +481,13 @@ def train_mf_model(
                 epoch_samples += images.size(0)
                 # ... (logging and memory checking as in train_mf_matrix_only) ...
 
-            if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
-                break
-
-            final_avg_epoch_loss = (
+            if epoch_aborted_on_nan:
+                # RUN-002: give the two-strikes policy a chance to observe a
+                # second NaN/Inf epoch instead of ending this layer now.
+                continue
+            # ponytail: legacy scaffolding computed but never consumed the
+            # epoch average here; kept for parity until WP9 extraction.
+            _final_avg_epoch_loss = (
                 epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
             )
             peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch)
@@ -486,6 +525,8 @@ def train_mf_model(
         f"Finished all layer-wise MF training. Total Epochs (Sum): "
         f"{total_epochs_trained_all_layers}"
     )
+    if diagnostics is not None:
+        diagnostics["nan_loss_breaks"] = float(nan_loss_breaks)
     model.eval()
     return peak_mem_train
 
@@ -561,6 +602,7 @@ class MFAdapter(AlgorithmAdapter):
             self.lifecycle.extend(
                 f"W{i}_M{i}" for i in range(1, int(model.num_hidden_layers) + 1)
             )
+        diagnostics: dict[str, float] = {}
         peak_memory = train_mf_model(
             model=model,
             train_loader=context.train_loader,
@@ -568,8 +610,9 @@ class MFAdapter(AlgorithmAdapter):
             device=torch.device(context.device),
             input_adapter=flatten_if_needed(context),  # type: ignore[arg-type]
             val_loader=context.val_loader,
+            diagnostics=diagnostics,
         )
-        return result_from_peak_memory(self.name, peak_memory)
+        return result_from_peak_memory(self.name, peak_memory, diagnostics)
 
     def evaluate(
         self, model: Any, loader: Any, context: TrainingContext

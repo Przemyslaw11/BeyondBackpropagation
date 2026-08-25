@@ -55,6 +55,7 @@ def train_ff_model(
     gpu_handle: Any | None = None,
     nvml_active: bool = False,
     on_best_epoch: Callable[[], None] | None = None,
+    diagnostics: dict[str, float] | None = None,
 ) -> float:
     """Orchestrates end-to-end training of a model using the Forward-Forward algorithm.
 
@@ -197,6 +198,11 @@ def train_ff_model(
     run_start_time = time.time()
 
     # --- Epoch Loop ---
+    skipped_batches = 0
+    # RUN-002: exception-driven batch skips are tolerated only up to ~1% of
+    # the epoch; beyond that something is broken and the run must fail.
+    max_skipped_batches = max(1, len(train_loader) // 100)
+
     for epoch in range(epochs):
         # --- LR Schedule Update ---
         current_lr_ff = linear_cooldown_lr(initial_ff_lr, epoch, epochs)
@@ -233,7 +239,13 @@ def train_ff_model(
                     images, labels, num_classes, device
                 )
             except Exception as e_gen:
+                skipped_batches += 1
                 logger.error(f"Input gen error: {e_gen}", exc_info=True)
+                if skipped_batches > max_skipped_batches:
+                    raise RuntimeError(
+                        f"FF training skipped {skipped_batches} batches "
+                        f"(threshold {max_skipped_batches}); aborting run."
+                    ) from e_gen
                 continue
 
             stacked_z = torch.cat([pos_images_flat, neg_images_flat], dim=0)
@@ -266,13 +278,20 @@ def train_ff_model(
 
                 total_batch_loss = ff_combined_loss + cls_loss
             except Exception as e_fwd:
+                skipped_batches += 1
                 logger.error(
                     f"Forward/loss error at step {current_global_step}: {e_fwd}",
                     exc_info=True,
                 )
+                if skipped_batches > max_skipped_batches:
+                    raise RuntimeError(
+                        f"FF training skipped {skipped_batches} batches "
+                        f"(threshold {max_skipped_batches}); aborting run."
+                    ) from e_fwd
                 continue
 
             if torch.isnan(total_batch_loss) or torch.isinf(total_batch_loss):
+                skipped_batches += 1
                 logger.error(
                     f"NaN/Inf total loss before backward ({total_batch_loss.item()}) "
                     f"at step {current_global_step}. Skipping batch update."
@@ -495,6 +514,15 @@ def train_ff_model(
     # evaluation. The legacy ff_<exp>_best.pth disk round-trip is gone;
     # checkpoint files themselves are still written unchanged.
 
+    # RUN-002: surface batch accounting without polluting measurements.
+    if diagnostics is not None:
+        diagnostics["skipped_batches"] = float(skipped_batches)
+    if skipped_batches:
+        logger.info(
+            f"FF training diagnostics: {skipped_batches} batches skipped "
+            f"(threshold {max_skipped_batches})."
+        )
+
     logger.info(
         "NOTE: Reference implementation used PyTorch 1.11. Your environment uses "
         f"{torch.__version__}. Small differences in final accuracy might arise "
@@ -581,6 +609,7 @@ class FFAdapter(AlgorithmAdapter):
 
     def fit(self, context: TrainingContext) -> TrainingResult:
         self.lifecycle.extend(("local_goodness_updates", "downstream_classifier"))
+        diagnostics: dict[str, float] = {}
         peak_memory = train_ff_model(
             model=context.model,
             train_loader=context.train_loader,
@@ -589,8 +618,9 @@ class FFAdapter(AlgorithmAdapter):
             device=torch.device(context.device),
             input_adapter=flatten_if_needed(context),
             on_best_epoch=lambda: self._snapshot(context.model),
+            diagnostics=diagnostics,
         )
-        return result_from_peak_memory(self.name, peak_memory)
+        return result_from_peak_memory(self.name, peak_memory, diagnostics)
 
     def evaluate(
         self, model: Any, loader: Any, context: TrainingContext
