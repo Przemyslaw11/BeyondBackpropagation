@@ -23,7 +23,6 @@ from ..training.early_stopping import (
 from ..utils.training_support import (
     create_directory_if_not_exists,
     format_time,
-    get_gpu_memory_usage,
     log_metrics,
     save_checkpoint,
 )
@@ -56,8 +55,6 @@ def train_ff_model(
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     input_adapter: Callable[[torch.Tensor], torch.Tensor] | None = None,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
     on_best_epoch: Callable[[], None] | None = None,
     diagnostics: dict[str, float] | None = None,
 ) -> float:
@@ -342,13 +339,6 @@ def train_ff_model(
             is_log_time = (batch_idx + 1) % log_interval == 0 or (
                 batch_idx == len(train_loader) - 1
             )
-            current_mem_used = float("nan")
-            if nvml_active and gpu_handle and is_log_time:
-                mem_info = get_gpu_memory_usage(gpu_handle)
-                current_mem_used = mem_info[0] if mem_info else float("nan")
-                if not math.isnan(current_mem_used):
-                    peak_mem_epoch = max(peak_mem_epoch, current_mem_used)
-
             if is_log_time:
                 metrics_to_log = {
                     "global_step": current_global_step,
@@ -366,10 +356,6 @@ def train_ff_model(
                     key = f"Layer_{i + 1}/FF_Accuracy"
                     metrics_to_log[f"Layer_{i + 1}/FF_Acc_Batch"] = ff_metrics_dict.get(
                         key, 0.0
-                    )
-                if not math.isnan(current_mem_used):
-                    metrics_to_log["FF_Hinton/GPU_Mem_Used_MiB_Batch"] = (
-                        current_mem_used
                     )
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
                 pbar.set_postfix(

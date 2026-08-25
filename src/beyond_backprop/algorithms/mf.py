@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -23,7 +22,6 @@ from ..training.early_stopping import (
 )
 from ..utils.training_support import (
     create_directory_if_not_exists,
-    get_gpu_memory_usage,
     log_metrics,
     save_checkpoint,
 )
@@ -112,8 +110,6 @@ def train_mf_matrix_only(
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     log_interval: int = 100,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
     diagnostics: dict[str, float] | None = None,
 ) -> tuple[float, float, int]:
     """Trains a single projection matrix (M_i) using local loss for an MF_MLP."""
@@ -221,20 +217,9 @@ def train_mf_matrix_only(
             is_log_time = (batch_idx + 1) % log_interval == 0 or (
                 batch_idx == len(train_loader) - 1
             )
-            current_mem_used = float("nan")
-            if nvml_active and gpu_handle and is_log_time:
-                mem_info = get_gpu_memory_usage(gpu_handle)
-                if mem_info:
-                    current_mem_used = mem_info[0]
-                    peak_mem_matrix_epoch = max(peak_mem_matrix_epoch, current_mem_used)
-
             if is_log_time:
                 metrics: dict[str, int | float] = {"global_step": current_global_step}
                 metrics[f"{log_prefix}/Train_Loss_Batch"] = loss.item()
-                if not math.isnan(current_mem_used):
-                    metrics[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = float(
-                        current_mem_used
-                    )
                 log_metrics(metrics, wandb_run=wandb_run, commit=True)
                 pbar.set_postfix(loss=f"{loss.item():.6f}")
 
@@ -288,12 +273,6 @@ def train_mf_matrix_only(
                 )
                 break
 
-    if nvml_active and gpu_handle:
-        mem_info = get_gpu_memory_usage(gpu_handle)
-        peak_mem_matrix_train = max(
-            peak_mem_matrix_train, mem_info[0] if mem_info else 0.0
-        )
-
     projection_matrix.requires_grad_(False)
     if diagnostics is not None:
         diagnostics["nan_loss_breaks"] = float(nan_loss_breaks)
@@ -312,8 +291,6 @@ def train_mf_model(
     val_loader: DataLoader | None = None,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
     diagnostics: dict[str, float] | None = None,
 ) -> float:
     """Orchestrates layer-wise training of MF_MLP: M0, then (W1,M1), (W2,M2), etc."""
@@ -379,8 +356,6 @@ def train_mf_model(
             wandb_run=wandb_run,
             log_interval=log_interval,
             step_ref=step_ref,
-            gpu_handle=gpu_handle,
-            nvml_active=nvml_active,
             diagnostics=diagnostics,
         )
         total_epochs_trained_all_layers += epochs_trained_m0

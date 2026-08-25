@@ -26,7 +26,6 @@ from ..utils.training_support import (
     calculate_accuracy,
     create_directory_if_not_exists,
     format_time,
-    get_gpu_memory_usage,
     log_metrics,
     save_checkpoint,
 )
@@ -54,8 +53,6 @@ def train_cafo_dfa_blocks(
     device: torch.device,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
 ) -> float:
     """Trains the blocks of the CaFo_CNN model using Direct Feedback Alignment (DFA).
 
@@ -221,13 +218,6 @@ def train_cafo_dfa_blocks(
             # batch (cadence parity with MF).
             is_log_time = (batch_idx + 1) % log_interval == 0
             is_last_batch = batch_idx == len(train_loader) - 1
-            current_mem_used = float("nan")
-            if nvml_active and gpu_handle and (is_log_time or is_last_batch):
-                mem_info = get_gpu_memory_usage(gpu_handle)
-                if mem_info:
-                    current_mem_used = mem_info[0]
-                    peak_mem_block_epoch = max(peak_mem_block_epoch, current_mem_used)
-
             if is_log_time or is_last_batch:
                 batch_accuracy = calculate_accuracy(aux_output_logits, labels)
                 pbar.set_postfix(
@@ -238,10 +228,6 @@ def train_cafo_dfa_blocks(
                     "CaFo_DFA/BlockTrain_Loss_Batch": loss.item(),
                     "CaFo_DFA/BlockTrain_Acc_Batch": batch_accuracy,
                 }
-                if not math.isnan(current_mem_used):
-                    metrics_to_log["CaFo_DFA/BlockTrain_GPU_Mem_MiB_Batch"] = (
-                        current_mem_used
-                    )
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
         # --- End Batch Loop ---
 
@@ -280,11 +266,6 @@ def train_cafo_dfa_blocks(
         f"--- Finished CaFo Block Training (DFA) Phase. "
         f"Duration: {format_time(block_train_duration)} ---"
     )
-
-    if nvml_active and gpu_handle:
-        mem_info = get_gpu_memory_usage(gpu_handle)
-        if mem_info:
-            peak_mem_block_train = max(peak_mem_block_train, mem_info[0])
 
     model.eval()
     for param in model.parameters():
@@ -350,8 +331,6 @@ def train_cafo_predictor_only(
     log_interval: int = 100,
     block_index: int = 0,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
 ) -> tuple[float, float, float, int]:
     """Trains a single CaFoPredictor, keeping its corresponding CaFoBlock frozen.
 
@@ -458,15 +437,6 @@ def train_cafo_predictor_only(
             # batch (cadence parity with MF).
             is_log_time = (batch_idx + 1) % log_interval == 0
             is_last_batch = batch_idx == len(train_loader) - 1
-            current_mem_used = float("nan")
-            if nvml_active and gpu_handle and (is_log_time or is_last_batch):
-                mem_info = get_gpu_memory_usage(gpu_handle)
-                if mem_info:
-                    current_mem_used = mem_info[0]
-                    peak_mem_predictor_epoch = max(
-                        peak_mem_predictor_epoch, current_mem_used
-                    )
-
             if is_log_time or is_last_batch:
                 last_loss, last_correct, last_count = pending_batch_stats[-1]
                 avg_loss_batch = float(last_loss)
@@ -481,10 +451,6 @@ def train_cafo_predictor_only(
                     f"{log_prefix}/Train_Loss_Batch": avg_loss_batch,
                     f"{log_prefix}/Train_Acc_Batch": batch_accuracy,
                 }
-                if not math.isnan(current_mem_used):
-                    metrics_to_log[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = (
-                        current_mem_used
-                    )
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
 
         # P3: reduce deferred batch stats; identical addition order to the
@@ -562,11 +528,6 @@ def train_cafo_predictor_only(
                 )
                 break
 
-    if nvml_active and gpu_handle:
-        mem_info = get_gpu_memory_usage(gpu_handle)
-        if mem_info:
-            peak_mem_predictor_train = max(peak_mem_predictor_train, mem_info[0])
-
     logger.info(
         f"Finished CaFo training for {log_prefix} after {epochs_trained} epochs. "
         f"Overall Peak Mem Predictor: {peak_mem_predictor_train:.1f} MiB"
@@ -589,8 +550,6 @@ def train_cafo_model(
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     input_adapter: Callable | None = None,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
 ) -> float:
     """Orchestrates the training of CaFo_CNN.
 
@@ -615,8 +574,6 @@ def train_cafo_model(
             device=device,
             wandb_run=wandb_run,
             step_ref=step_ref,
-            gpu_handle=gpu_handle,
-            nvml_active=nvml_active,
         )
         peak_mem_train = max(peak_mem_train, peak_mem_block_phase)
     else:
@@ -727,8 +684,6 @@ def train_cafo_model(
                 log_interval=log_interval,
                 block_index=i,
                 step_ref=step_ref,
-                gpu_handle=gpu_handle,
-                nvml_active=nvml_active,
             )
             total_epochs_trained_all_predictors += epochs_trained_this_predictor
             peak_mem_predictor_phase_overall = max(
