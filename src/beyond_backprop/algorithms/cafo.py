@@ -22,6 +22,7 @@ from ..training.early_stopping import (
     DEFAULT_PATIENCE,
     EarlyStopping,
 )
+from ..training.loop_support import build_optimizer
 from ..utils.training_support import (
     calculate_accuracy,
     create_directory_if_not_exists,
@@ -112,8 +113,12 @@ def train_cafo_dfa_blocks(
         logger.error("DFA Block Training: No parameters found to train.")
         return 0.0  # No memory used if nothing to train
 
-    optimizer_kwargs = {"lr": lr, "weight_decay": weight_decay}
-    optimizer = getattr(optim, optimizer_name)(all_params_to_train, **optimizer_kwargs)
+    optimizer = build_optimizer(
+        optimizer_name,
+        all_params_to_train,
+        lr=lr,
+        weight_decay=weight_decay,
+    )
     criterion = nn.CrossEntropyLoss()  # For the auxiliary layer loss
 
     # --- Training Loop ---
@@ -655,13 +660,12 @@ def train_cafo_model(
                 f"{log_prefix} has no parameters requiring gradients. Skipping training."
             )
         else:
-            optimizer_kwargs = {
-                "lr": predictor_lr,
-                "weight_decay": predictor_weight_decay,
-                **optimizer_params_extra,
-            }
-            optimizer = getattr(optim, predictor_optimizer_name)(
-                params_to_optimize, **optimizer_kwargs
+            optimizer = build_optimizer(
+                predictor_optimizer_name,
+                params_to_optimize,
+                lr=predictor_lr,
+                weight_decay=predictor_weight_decay,
+                extra_kwargs=optimizer_params_extra,
             )
 
             (
