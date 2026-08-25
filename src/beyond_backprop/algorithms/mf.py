@@ -20,6 +20,7 @@ from ..training.early_stopping import (
     DEFAULT_PATIENCE,
     EarlyStopping,
 )
+from ..training.loop_support import build_optimizer
 from ..utils.training_support import (
     create_directory_if_not_exists,
     log_metrics,
@@ -339,8 +340,12 @@ def train_mf_model(
     if num_m_matrices > 0:
         m0_params = [model.get_projection_matrix(0)]
         model.get_projection_matrix(0).requires_grad_(True)
-        m0_optimizer = getattr(optim, optimizer_name)(
-            m0_params, lr=lr, weight_decay=weight_decay, **optimizer_extra_kwargs
+        m0_optimizer = build_optimizer(
+            optimizer_name,
+            m0_params,
+            lr=lr,
+            weight_decay=weight_decay,
+            extra_kwargs=optimizer_extra_kwargs,
         )
         _, m0_peak_mem, epochs_trained_m0 = train_mf_matrix_only(
             model=model,
@@ -395,11 +400,12 @@ def train_mf_model(
             logger.error(f"{log_prefix}: No parameters to optimize.")
             continue
 
-        optimizer = getattr(optim, optimizer_name)(
+        optimizer = build_optimizer(
+            optimizer_name,
             params_to_optimize,
             lr=lr,
             weight_decay=weight_decay,
-            **optimizer_extra_kwargs,
+            extra_kwargs=optimizer_extra_kwargs,
         )
 
         peak_mem_layer_train = 0.0
