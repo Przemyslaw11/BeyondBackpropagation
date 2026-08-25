@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -54,6 +55,8 @@ class ExperimentResult:
 TrackerFactory = Callable[[ExperimentConfig], ExperimentTracker]
 MonitorFactory = Callable[[ExperimentConfig], ResourceMonitor]
 
+logger = logging.getLogger(__name__)
+
 
 class ExperimentRunner:
     """Orchestrate shared infrastructure without flattening algorithm lifecycles."""
@@ -87,6 +90,12 @@ class ExperimentRunner:
         """Execute the canonical lifecycle and finalize services on every path."""
         typed_config = self._coerce_config(config)
         mapping = typed_config.to_mapping()
+        # CFG-004: every artifact shows the hyperparameters that actually ran.
+        logger.info(
+            "Resolved algorithm_params for %s: %s",
+            typed_config.algorithm,
+            mapping.get("algorithm_params", {}),
+        )
         tracker: ExperimentTracker | None = None
         monitor: ResourceMonitor | None = None
 
