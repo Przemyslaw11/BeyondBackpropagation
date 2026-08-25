@@ -71,6 +71,10 @@ class CheckpointManager:
         if not path.exists():
             raise CheckpointError(f"Checkpoint not found: {path}")
         try:
+            # Trust boundary: these checkpoints are locally produced and
+            # trusted. weights_only=False is required because legacy payloads
+            # carry non-tensor objects -- do NOT copy this pattern when
+            # loading untrusted checkpoint files.
             payload = torch.load(path, map_location=map_location, weights_only=False)
         except Exception as exc:
             raise CheckpointError(f"Could not load checkpoint {path}: {exc}") from exc

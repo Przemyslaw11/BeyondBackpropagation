@@ -156,9 +156,7 @@ def test_train_cafo_model_trains_blocks_and_predictors_then_evaluates():
         block_lr=0.001,
         predictor_lr=0.001,
     )
-    model = CaFo_CNN(
-        input_channels=1, block_channels=[2], image_size=2, num_classes=2
-    )
+    model = CaFo_CNN(input_channels=1, block_channels=[2], image_size=2, num_classes=2)
     train_loader, val_loader = _loaders()
     step_ref = [-1]
 

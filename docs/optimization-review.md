@@ -234,4 +234,32 @@ deltas are visible per PR.
 *Findings verified against the working tree at commit `e061711`; line numbers
 refer to that revision and may shift as fixes land.*
 
+---
+
+## Resolution log (updated after execution)
+
+| ID | Status | Commit(s) | Notes |
+| --- | --- | --- | --- |
+| P1 | Done | `e98bc47` | 14 sites fixed (5 more found in `cafo.py`/`mf.py` beyond the listed ones) |
+| P2 | Done | `4ef23e6` | FF/CaFo throttled to log-time sampling (MF parity); peak-mem cadence note recorded |
+| P3 | Done (CaFo only) | `878f35f` | FF/MF skipped: their verbatim per-batch NaN guards already sync every step |
+| P4 | Done | `f3f2f8a` | Bitwise equivalence proven on CPU (`test_ff_eval_batching.py`); eval −27% CPU; RNG-stream note recorded |
+| D1 | Done | `5bfa343`, `26baf0c` | Equivalence initially FAILED (off-by-one + ±inf); resolved via user decision: `EarlyStopping(patience-1)` preserves stop timing; ±inf semantics unified to canonical |
+| D2 | Done | this commit | Wrappers deleted; all callers were intra-module |
+| D3 | Done | `e98bc47` | — |
+| D4 | Won't do (now) | — | Per review: no blind migration mid-experiment |
+| D5 | Done | this commit | Env sentinel → module flag + `force=` parameter |
+| D6 | Won't do | — | Still only four scripts; revisit if a fifth appears |
+| R1 | Done | `f2beaa3` | Atomic + raise in shared saver; CheckpointManager migration rejected (payload-format compatibility, MIG-002) |
+| R2 | Done | `e98bc47` | Warning log added |
+| R3 | Done | `e98bc47` | `os.makedirs(exist_ok=True)` |
+| R4 | Done | this commit | Trust-boundary comment added |
+| T1 | Done | `d315761`, later | Synthetic trainer tests + factories tests; total coverage 56% → 78%+ |
+| T2 | Done | this commit | pip cache + coverage HTML artifact in CI |
+
+Protocol deviations accepted and pinned by tests: ±inf early-stopping
+semantics (D1), global-RNG consumption shift from batched FF inference (P4).
+Everything else is behavior-preserving as originally classified.
+
+
 

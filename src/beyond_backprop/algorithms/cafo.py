@@ -536,9 +536,7 @@ def train_cafo_predictor_only(
                     f"{log_prefix} Epoch {epoch + 1}: Early stopping metric "
                     f"'{es_metric_name}' is NaN. Treating as no improvement."
                 )
-            should_stop = predictor_stopping.update(
-                current_es_metric_value, epoch + 1
-            )
+            should_stop = predictor_stopping.update(current_es_metric_value, epoch + 1)
             if predictor_stopping.best_epoch == epoch + 1:
                 logger.debug(
                     f"{log_prefix} Epoch {epoch + 1}: Early stopping metric improved "

@@ -44,32 +44,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def generate_ff_hinton_inputs(
-    base_images: torch.Tensor,
-    base_labels: torch.Tensor,
-    num_classes: int,
-    device: torch.device,
-    replace_value_on: float = 1.0,
-    replace_value_off: float = 0.0,
-    neutral_value: float = 0.1,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Compatibility wrapper around the canonical Hinton input generator."""
-    return generate_hinton_inputs(
-        base_images,
-        base_labels,
-        num_classes,
-        device,
-        replace_value_on,
-        replace_value_off,
-        neutral_value,
-    )
-
-
-def get_linear_cooldown_lr(initial_lr: float, epoch: int, total_epochs: int) -> float:
-    """Compatibility wrapper around the canonical FF learning-rate schedule."""
-    return linear_cooldown_lr(initial_lr, epoch, total_epochs)
-
-
 def train_ff_model(
     model: FF_MLP,
     train_loader: DataLoader,
@@ -225,8 +199,8 @@ def train_ff_model(
     # --- Epoch Loop ---
     for epoch in range(epochs):
         # --- LR Schedule Update ---
-        current_lr_ff = get_linear_cooldown_lr(initial_ff_lr, epoch, epochs)
-        current_lr_ds = get_linear_cooldown_lr(initial_ds_lr, epoch, epochs)
+        current_lr_ff = linear_cooldown_lr(initial_ff_lr, epoch, epochs)
+        current_lr_ds = linear_cooldown_lr(initial_ds_lr, epoch, epochs)
         if len(optimizer.param_groups) > 0:
             optimizer.param_groups[0]["lr"] = current_lr_ff
         if len(optimizer.param_groups) > 1:
@@ -255,7 +229,7 @@ def train_ff_model(
             images, labels = images.to(device), labels.to(device)
 
             try:
-                pos_images_flat, neg_images_flat, _ = generate_ff_hinton_inputs(
+                pos_images_flat, neg_images_flat, _ = generate_hinton_inputs(
                     images, labels, num_classes, device
                 )
             except Exception as e_gen:
@@ -593,7 +567,7 @@ def evaluate_ff_model(
                 candidate_labels = torch.arange(num_classes, device=device).repeat(
                     batch_size
                 )
-                ff_input_candidates, _, _ = generate_ff_hinton_inputs(
+                ff_input_candidates, _, _ = generate_hinton_inputs(
                     stacked_images, candidate_labels, num_classes, device
                 )
                 layer_goodness_list = model.forward_goodness_per_layer(

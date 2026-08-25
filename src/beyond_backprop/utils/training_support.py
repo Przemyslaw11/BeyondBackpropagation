@@ -204,23 +204,32 @@ def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
     return accuracy
 
 
-def setup_logging(log_level: str = "INFO", log_file: str | None = None) -> None:
+_logging_configured = False
+
+
+def setup_logging(
+    log_level: str = "INFO", log_file: str | None = None, *, force: bool = False
+) -> None:
     """Configures the root logger.
+
+    Reconfiguration is tracked with a module-level flag so that several runs
+    can execute in one process (e.g., in-process Optuna trials) and redirect
+    logs via a fresh ``setup_logging`` call; pass ``force=True`` to
+    deliberately reconfigure.
 
     Args:
         log_level: Logging level string (e.g., 'DEBUG', 'INFO', 'WARNING').
         log_file: Optional path to a file for logging.
+        force: Reconfigure even if logging was already set up.
     """
+    global _logging_configured
     level = getattr(logging, log_level.upper(), logging.INFO)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     root_logger = logging.getLogger()
-    if (
-        not root_logger.hasHandlers()
-        or os.environ.get("LOGGING_SETUP_COMPLETE") is None
-    ):
+    if force or not _logging_configured:
         root_logger.setLevel(level)
 
         for handler in root_logger.handlers[:]:
@@ -243,7 +252,7 @@ def setup_logging(log_level: str = "INFO", log_file: str | None = None) -> None:
             root_logger.addHandler(file_handler)
             root_logger.info(f"Logging to file: {log_file}")
 
-        os.environ["LOGGING_SETUP_COMPLETE"] = "1"
+        _logging_configured = True
         root_logger.info(f"Root logger setup complete. Level: {log_level.upper()}")
     else:
         root_logger.info("Root logger already configured.")

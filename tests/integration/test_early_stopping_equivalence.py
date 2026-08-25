@@ -52,16 +52,52 @@ STREAMS: dict[str, list[float]] = {
     "stagnant": [1.0] * 14,
     "improving": [10.0 - 0.25 * i for i in range(14)],
     "recovery_then_stagnation": [
-        5.0, 4.9, 4.95, 4.8, 4.85, 4.99, 4.99, 4.99,
-        4.99, 4.99, 4.99, 4.99, 4.99, 4.99,
+        5.0,
+        4.9,
+        4.95,
+        4.8,
+        4.85,
+        4.99,
+        4.99,
+        4.99,
+        4.99,
+        4.99,
+        4.99,
+        4.99,
+        4.99,
+        4.99,
     ],
     "nan_gaps": [
-        5.0, NAN, 4.9, NAN, NAN, 4.85, NAN, NAN,
-        NAN, NAN, NAN, NAN, NAN, NAN,
+        5.0,
+        NAN,
+        4.9,
+        NAN,
+        NAN,
+        4.85,
+        NAN,
+        NAN,
+        NAN,
+        NAN,
+        NAN,
+        NAN,
+        NAN,
+        NAN,
     ],
     "exact_tie_with_delta": [
-        1.0, 1.0, 1.0, 0.4, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.4,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
     ],
 }
 
@@ -75,8 +111,8 @@ def legacy_stop_epoch(
     for epoch, value in enumerate(stream[:MAX_EPOCHS], start=1):
         if math.isnan(value):
             bad += 1
-        elif (value > best + min_delta) if mode == "max" else (
-            value < best - min_delta
+        elif (
+            (value > best + min_delta) if mode == "max" else (value < best - min_delta)
         ):
             best = value
             bad = 0

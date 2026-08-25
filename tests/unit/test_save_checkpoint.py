@@ -52,7 +52,9 @@ def test_save_checkpoint_raises_instead_of_swallowing(tmp_path, monkeypatch) -> 
     assert list(tmp_path.iterdir()) == []
 
 
-def test_failed_best_save_leaves_existing_checkpoint_intact(tmp_path, monkeypatch) -> None:
+def test_failed_best_save_leaves_existing_checkpoint_intact(
+    tmp_path, monkeypatch
+) -> None:
     good_state = _state()
     save_checkpoint(
         good_state,
