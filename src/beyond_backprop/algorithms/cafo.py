@@ -126,6 +126,9 @@ def train_cafo_dfa_blocks(
         total_loss = 0.0
         total_correct = 0
         total_samples = 0
+        # P3: defer .item() to end of epoch (order-preserving => bit-identical
+        # sums) so the step loop performs no device synchronizations.
+        pending_batch_stats: list[tuple[torch.Tensor, torch.Tensor, int]] = []
         peak_mem_block_epoch = 0.0
         pbar = tqdm(
             train_loader, desc=f"DFA Block Epoch {epoch + 1}/{epochs}", leave=False
@@ -199,9 +202,14 @@ def train_cafo_dfa_blocks(
 
             # --- Logging & Metrics ---
             with torch.no_grad():
-                total_loss += loss.item() * batch_size
                 predicted_labels = torch.argmax(aux_output_logits, dim=1)
-                total_correct += (predicted_labels == labels).sum().item()
+                pending_batch_stats.append(
+                    (
+                        loss.detach(),
+                        (predicted_labels == labels).sum().detach(),
+                        batch_size,
+                    )
+                )
                 total_samples += batch_size
 
             # --- Sample memory usage ---
@@ -232,6 +240,12 @@ def train_cafo_dfa_blocks(
                     )
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
         # --- End Batch Loop ---
+
+        # P3: reduce deferred batch stats; identical addition order to the
+        # previous per-batch accumulation, so epoch metrics are bit-identical.
+        for loss_value, correct_value, count in pending_batch_stats:
+            total_loss += loss_value.item() * count
+            total_correct += int(correct_value)
 
         avg_loss = total_loss / total_samples if total_samples > 0 else float("nan")
         avg_acc = (
@@ -403,6 +417,9 @@ def train_cafo_predictor_only(
         epochs_trained = epoch + 1
         predictor.train()
         epoch_loss, epoch_correct, epoch_samples = 0.0, 0, 0
+        # P3: defer .item() to end of epoch (order-preserving => bit-identical
+        # sums) so the step loop performs no device synchronizations.
+        pending_batch_stats: list[tuple[torch.Tensor, torch.Tensor, int]] = []
         peak_mem_predictor_epoch = 0.0
         pbar = tqdm(
             train_loader, desc=f"{log_prefix} Epoch {epoch + 1}/{epochs}", leave=False
@@ -424,13 +441,14 @@ def train_cafo_predictor_only(
 
             with torch.no_grad():
                 pred_labels = torch.argmax(predictions, dim=1)
-                batch_correct = (pred_labels == labels).sum().item()
-            batch_accuracy = (
-                (batch_correct / labels.size(0)) * 100.0 if labels.size(0) > 0 else 0.0
-            )
-            epoch_loss += loss.item() * labels.size(0)
-            epoch_correct += batch_correct
-            epoch_samples += labels.size(0)
+                pending_batch_stats.append(
+                    (
+                        loss.detach(),
+                        (pred_labels == labels).sum().detach(),
+                        labels.size(0),
+                    )
+                )
+                epoch_samples += labels.size(0)
 
             # P2: sample NVML only at logging boundaries instead of every
             # batch (cadence parity with MF).
@@ -446,7 +464,11 @@ def train_cafo_predictor_only(
                     )
 
             if is_log_time or is_last_batch:
-                avg_loss_batch = loss.item()
+                last_loss, last_correct, last_count = pending_batch_stats[-1]
+                avg_loss_batch = float(last_loss)
+                batch_accuracy = (
+                    (int(last_correct) / last_count) * 100.0 if last_count else 0.0
+                )
                 pbar.set_postfix(
                     loss=f"{avg_loss_batch:.4f}", acc=f"{batch_accuracy:.2f}%"
                 )
@@ -460,6 +482,12 @@ def train_cafo_predictor_only(
                         current_mem_used
                     )
                 log_metrics(metrics_to_log, wandb_run=wandb_run, commit=True)
+
+        # P3: reduce deferred batch stats; identical addition order to the
+        # previous per-batch accumulation, so epoch metrics are bit-identical.
+        for loss_value, correct_value, count in pending_batch_stats:
+            epoch_loss += loss_value.item() * count
+            epoch_correct += int(correct_value)
 
         final_avg_epoch_loss = (
             epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
