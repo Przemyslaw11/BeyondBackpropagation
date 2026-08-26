@@ -7,10 +7,12 @@ package so trainers no longer import the legacy namespace.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
-import time
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -27,13 +29,13 @@ _nvml_initialized = False
 
 def create_directory_if_not_exists(path: str) -> None:
     """Creates a directory if it doesn't already exist."""
-    if path and not os.path.exists(path):
-        try:
-            os.makedirs(path)
-            logger.info(f"Created directory: {path}")
-        except OSError as e:
-            logger.error(f"Failed to create directory {path}: {e}", exc_info=True)
-            raise
+    if not path:
+        return
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Failed to create directory {path}: {e}", exc_info=True)
+        raise
 
 
 def format_time(seconds: float) -> str:
@@ -51,7 +53,15 @@ def save_checkpoint(
     best_filename: str = "model_best.pth",
     checkpoint_dir: str = "checkpoints",
 ) -> None:
-    """Saves model checkpoint (verbatim legacy checkpoint naming semantics)."""
+    """Save model checkpoints atomically, raising on failure.
+
+    R1: this saver used to swallow every exception, so e.g. a full disk
+    silently dropped the best-model checkpoint while the run reported success.
+    Failures now propagate. Filenames and payload shapes are preserved
+    verbatim because legacy restart paths load these files directly
+    (decision MIG-002); only the write mechanics changed to
+    temp-file + ``os.replace`` so no partial/corrupt checkpoint can appear.
+    """
     if not checkpoint_dir:
         logger.warning("Checkpoint directory not specified, cannot save checkpoint.")
         return
@@ -60,20 +70,32 @@ def save_checkpoint(
     filepath = os.path.join(checkpoint_dir, filename)
     best_filepath = os.path.join(checkpoint_dir, best_filename)
 
-    try:
-        torch.save(state, filepath)
-        logger.debug(f"Saved checkpoint to {filepath}")
-        if is_best:
-            epoch = state.get("epoch", "?")
-            metric = state.get("best_metric_value", "?")
-            metric_str = f"{metric:.4f}" if isinstance(metric, (int, float)) else "?"
-            logger.info(
-                f"Saved best model state_dict to {best_filepath} "
-                f"(Epoch {epoch}, Metric: {metric_str})"
-            )
-            torch.save(state["state_dict"], best_filepath)
-    except Exception as e:
-        logger.error(f"Failed to save checkpoint to {filepath}: {e}", exc_info=True)
+    def _atomic_torch_save(payload: Any, target: str) -> None:
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(target)}.", dir=checkpoint_dir
+        )
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                torch.save(payload, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, target)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary_path)
+            raise
+
+    _atomic_torch_save(state, filepath)
+    logger.debug(f"Saved checkpoint to {filepath}")
+    if is_best:
+        epoch = state.get("epoch", "?")
+        metric = state.get("best_metric_value", "?")
+        metric_str = f"{metric:.4f}" if isinstance(metric, (int, float)) else "?"
+        logger.info(
+            f"Saved best model state_dict to {best_filepath} "
+            f"(Epoch {epoch}, Metric: {metric_str})"
+        )
+        _atomic_torch_save(state["state_dict"], best_filepath)
 
 
 def _format_metric_for_logging(key: str, value: Any) -> str:
@@ -182,23 +204,51 @@ def calculate_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> float:
     return accuracy
 
 
-def setup_logging(log_level: str = "INFO", log_file: str | None = None) -> None:
+_logging_configured = False
+
+
+def attach_artifact_log_handler(log_path: Path) -> logging.Handler:
+    """Attach a root-logger FileHandler writing the artifact log (OBS-002).
+
+    Uses the same formatter as :func:`setup_logging`. The file is opened in
+    append mode so retries in the same artifact directory accumulate. Returns
+    the handler so the caller can remove and close it when done.
+    """
+
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def setup_logging(
+    log_level: str = "INFO", log_file: str | None = None, *, force: bool = False
+) -> None:
     """Configures the root logger.
+
+    Reconfiguration is tracked with a module-level flag so that several runs
+    can execute in one process (e.g., in-process Optuna trials) and redirect
+    logs via a fresh ``setup_logging`` call; pass ``force=True`` to
+    deliberately reconfigure.
 
     Args:
         log_level: Logging level string (e.g., 'DEBUG', 'INFO', 'WARNING').
         log_file: Optional path to a file for logging.
+        force: Reconfigure even if logging was already set up.
     """
+    global _logging_configured
     level = getattr(logging, log_level.upper(), logging.INFO)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     root_logger = logging.getLogger()
-    if (
-        not root_logger.hasHandlers()
-        or os.environ.get("LOGGING_SETUP_COMPLETE") is None
-    ):
+    if force or not _logging_configured:
         root_logger.setLevel(level)
 
         for handler in root_logger.handlers[:]:
@@ -221,73 +271,13 @@ def setup_logging(log_level: str = "INFO", log_file: str | None = None) -> None:
             root_logger.addHandler(file_handler)
             root_logger.info(f"Logging to file: {log_file}")
 
-        os.environ["LOGGING_SETUP_COMPLETE"] = "1"
+        _logging_configured = True
         root_logger.info(f"Root logger setup complete. Level: {log_level.upper()}")
     else:
         root_logger.info("Root logger already configured.")
 
 
 logger = logging.getLogger(__name__)
-
-
-def setup_wandb(
-    config: dict[str, Any],
-    project_name: str = "BeyondBackpropagation",
-    entity: str | None = None,
-    run_name: str | None = None,
-    notes: list[str] | None = None,
-    tags: list[str] | None = None,
-    job_type: str = "training",
-) -> Any | None:
-    """Initializes a Weights & Biases run."""
-    try:
-        import wandb
-    except ImportError:
-        logger.error("wandb library not found. Install with `pip install wandb`")
-        return None
-
-    wandb_config = config.get("logging", {}).get("wandb", {})
-    if not wandb_config.get("use_wandb", True):
-        logger.info("Weights & Biases logging is disabled in the configuration.")
-        return None
-
-    try:
-        if not os.getenv("WANDB_API_KEY"):
-            logger.warning(
-                "WANDB_API_KEY environment variable not set. W&B logging might fail or prompt."
-            )
-
-        resolved_entity = (
-            entity or os.getenv("WANDB_ENTITY") or wandb_config.get("entity")
-        )
-        if not resolved_entity:
-            logger.warning(
-                "W&B entity not specified via args, config, or WANDB_ENTITY "
-                "env var. Using W&B default."
-            )
-
-        resolved_project = wandb_config.get("project", project_name)
-        resolved_run_name = (
-            run_name or wandb_config.get("run_name") or config.get("experiment_name")
-        )
-        if not resolved_run_name:
-            resolved_run_name = f"run_{int(time.time())}"
-
-        run = wandb.init(
-            project=resolved_project,
-            entity=resolved_entity,
-            config=config,
-            name=resolved_run_name,
-            notes=notes,  # type: ignore[arg-type]
-            tags=tags,
-            job_type=job_type,
-            reinit=True,
-        )
-        logger.info(f"Weights & Biases run initialized: {run.url if run else 'Failed'}")
-        return run
-    except Exception as e:
-        logger.error(f"Failed to initialize Weights & Biases: {e}", exc_info=True)
-        return None
 
 
 __all__ = [
@@ -298,5 +288,4 @@ __all__ = [
     "log_metrics",
     "save_checkpoint",
     "setup_logging",
-    "setup_wandb",
 ]

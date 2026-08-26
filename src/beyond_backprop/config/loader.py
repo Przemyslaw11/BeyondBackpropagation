@@ -14,6 +14,8 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from .models import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_BATCH_SIZE_FF,
     AlgorithmName,
     ArchitectureName,
     BackendName,
@@ -186,42 +188,83 @@ _ALLOWED_SECTION_KEYS = {
 _ALLOWED_BACKEND_KEYS = {"results_dir", "log_file", "data_loader", "env"}
 _ALLOWED_BACKEND_LOADER_KEYS = {"num_workers", "pin_memory"}
 _ALLOWED_WANDB_KEYS = {"use_wandb", "project", "entity", "mode", "name"}
-_ALLOWED_ALGORITHM_PARAMS = {
-    "aggregation_method",
-    "block_lr",
-    "block_optimizer_type",
-    "block_training_epochs",
-    "block_weight_decay",
-    "downstream_learning_rate",
-    "downstream_momentum",
-    "downstream_weight_decay",
-    "epochs_per_block",
-    "epochs_per_layer",
-    "ff_learning_rate",
-    "ff_momentum",
-    "ff_weight_decay",
-    "log_interval",
-    "loss_type",
-    "lr",
-    "mf_early_stopping_enabled",
-    "mf_early_stopping_min_delta",
-    "mf_early_stopping_patience",
-    "num_epochs_per_block",
-    "optimizer_type",
-    "peer_momentum",
-    "peer_normalization_factor",
-    "predictor_early_stopping_enabled",
-    "predictor_early_stopping_metric",
-    "predictor_early_stopping_min_delta",
-    "predictor_early_stopping_mode",
-    "predictor_early_stopping_patience",
-    "predictor_lr",
-    "predictor_optimizer_type",
-    "predictor_weight_decay",
-    "threshold",
-    "train_blocks",
-    "weight_decay",
+_ALGO_PARAMS_BP: frozenset[str] = frozenset()
+_ALGO_PARAMS_FF = frozenset(
+    {
+        "downstream_learning_rate",
+        "downstream_momentum",
+        "downstream_weight_decay",
+        "ff_learning_rate",
+        "ff_momentum",
+        "ff_weight_decay",
+        "optimizer_type",
+        "peer_momentum",
+        "peer_normalization_factor",
+        # Legacy: present in tracked FF/tuning configs but consumed by no trainer.
+        "threshold",
+    }
+)
+_ALGO_PARAMS_MF = frozenset(
+    {
+        "epochs_per_layer",
+        "log_interval",
+        "lr",
+        "mf_early_stopping_enabled",
+        "mf_early_stopping_min_delta",
+        "mf_early_stopping_patience",
+        "optimizer_type",
+        "weight_decay",
+    }
+)
+_ALGO_PARAMS_CAFO = frozenset(
+    {
+        "aggregation_method",
+        "block_lr",
+        "block_optimizer_type",
+        "block_training_epochs",
+        "block_weight_decay",
+        "dfa_feedback_matrix_type",
+        # Legacy alias normalized to num_epochs_per_block by
+        # normalize_legacy_config; tolerated here for raw-mapping validation.
+        "epochs_per_block",
+        "log_interval",
+        "loss_type",
+        # Legacy: present in tracked CaFo configs but consumed by no trainer
+        # (superseded by block_/predictor_ variants).
+        "lr",
+        "num_epochs_per_block",
+        "optimizer_params",
+        "optimizer_type",
+        "predictor_early_stopping_enabled",
+        "predictor_early_stopping_metric",
+        "predictor_early_stopping_min_delta",
+        "predictor_early_stopping_mode",
+        "predictor_early_stopping_patience",
+        "predictor_lr",
+        "predictor_optimizer_type",
+        "predictor_weight_decay",
+        "train_blocks",
+        "weight_decay",
+    }
+)
+_ALLOWED_ALGORITHM_PARAMS_BY_ALGORITHM = {
+    "bp": _ALGO_PARAMS_BP,
+    "cafo": _ALGO_PARAMS_CAFO,
+    "ff": _ALGO_PARAMS_FF,
+    "mf": _ALGO_PARAMS_MF,
 }
+_ALL_ALGORITHM_PARAMS = (
+    _ALGO_PARAMS_BP | _ALGO_PARAMS_CAFO | _ALGO_PARAMS_FF | _ALGO_PARAMS_MF
+)
+# Keys contributed to every experiment by configs/base.yaml during merge;
+# they must be tolerated regardless of the resolved algorithm.
+_BASE_TEMPLATE_PARAMS = frozenset(
+    {
+        "mf_early_stopping_enabled",
+        "mf_early_stopping_min_delta",
+        "mf_early_stopping_patience",
+    }
+)
 _ALLOWED_MODEL_PARAMS = {
     "activation",
     "bias",
@@ -289,7 +332,22 @@ def _check_unknown_keys(config: Mapping[str, Any]) -> None:
         raise ConfigValidationError(
             "Configuration section 'algorithm_params' must be a mapping"
         )
-    unknown = sorted(set(algorithm_params) - _ALLOWED_ALGORITHM_PARAMS)
+    algorithm_section = config.get("algorithm")
+    algorithm_name = ""
+    if isinstance(algorithm_section, Mapping):
+        name_value = algorithm_section.get("name")
+        if isinstance(name_value, str):
+            algorithm_name = name_value.strip().lower()
+    # CFG-004: reject unknown algorithm_params keys for the resolved
+    # algorithm. Base templates without an algorithm.name fall back to the
+    # union so only truly unknown keys are rejected.
+    algo_allowed: frozenset[str] = (
+        _ALLOWED_ALGORITHM_PARAMS_BY_ALGORITHM.get(
+            algorithm_name, _ALL_ALGORITHM_PARAMS
+        )
+        | _BASE_TEMPLATE_PARAMS
+    )
+    unknown = sorted(set(algorithm_params) - algo_allowed)
     if unknown:
         raise ConfigValidationError(f"Unknown keys in 'algorithm_params': {unknown}")
     model = config.get("model", {})
@@ -715,7 +773,12 @@ def _config_from_mapping(
         device=str(general.get("device", "auto")),
         seed=int(general.get("seed", 42)),
         batch_size=int(
-            loader.get("batch_size", 100 if algorithm is AlgorithmName.FF else 128)
+            loader.get(
+                "batch_size",
+                DEFAULT_BATCH_SIZE_FF
+                if algorithm is AlgorithmName.FF
+                else DEFAULT_BATCH_SIZE,
+            )
         ),
         num_workers=int(loader.get("num_workers", 0)),
         pin_memory=bool(loader.get("pin_memory", False)),

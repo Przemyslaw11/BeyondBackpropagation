@@ -57,6 +57,20 @@ class CompositeResourceMonitor:
         co2e = next(
             (item.co2e_g for item in snapshots if item.co2e_g is not None), None
         )
+        # WP10: role-aware merge keyed by reporting monitor. Each metric
+        # role (duration, energy, memory, carbon) must be claimed by at most
+        # one contributing monitor; ambiguous duplicates raise instead of
+        # silently picking the first non-null value.
+        for role in ("duration_sec", "energy_wh", "peak_memory_mib", "co2e_g"):
+            contributors = [
+                item.source for item in snapshots if getattr(item, role) is not None
+            ]
+            if len(contributors) > 1:
+                raise ValueError(
+                    f"CompositeResourceMonitor: monitors {contributors} both "
+                    f"report '{role}'; remove the duplicate monitor."
+                )
+
         sources = "+".join(item.source for item in snapshots)
         return ResourceSnapshot(
             duration_sec=duration,

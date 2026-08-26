@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import torch
@@ -102,7 +103,8 @@ class BPAdapter(AlgorithmAdapter):
                 else (float("nan"), float("nan"))
             )
             current_value = val_accuracy if "accuracy" in monitor_metric else val_loss
-            improved = bool(torch.isfinite(torch.tensor(current_value))) and (
+            value_is_finite = math.isfinite(current_value)
+            improved = value_is_finite and (
                 current_value > best_value
                 if mode == "max"
                 else current_value < best_value
@@ -123,7 +125,7 @@ class BPAdapter(AlgorithmAdapter):
                         algorithm=self.name,
                         best_metric_name=monitor_metric,
                         best_metric_value=float(current_value)
-                        if torch.isfinite(torch.tensor(current_value))
+                        if value_is_finite
                         else None,
                         config_hash=getattr(context.config, "config_hash", None),
                     )
@@ -135,7 +137,7 @@ class BPAdapter(AlgorithmAdapter):
                         algorithm=self.name,
                         best_metric_name=monitor_metric,
                         best_metric_value=float(current_value)
-                        if torch.isfinite(torch.tensor(current_value))
+                        if value_is_finite
                         else None,
                         config_hash=getattr(context.config, "config_hash", None),
                     )
@@ -151,13 +153,13 @@ class BPAdapter(AlgorithmAdapter):
                     algorithm=self.name,
                     best_metric_name=monitor_metric,
                     best_metric_value=float(best_value)
-                    if torch.isfinite(torch.tensor(best_value))
+                    if math.isfinite(best_value)
                     else None,
                     config_hash=getattr(context.config, "config_hash", None),
                 )
             if (
                 stopping is not None
-                and torch.isfinite(torch.tensor(current_value))
+                and value_is_finite
                 and stopping.update(current_value, epoch + 1)
             ):
                 break

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ from ..contracts import (
 from ..data import build_dataloaders
 from ..monitoring import profile_model
 from ..runtime import collect_run_metadata, resolve_device, set_seed
+from ..utils.training_support import attach_artifact_log_handler
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,8 @@ class ExperimentResult:
 
 TrackerFactory = Callable[[ExperimentConfig], ExperimentTracker]
 MonitorFactory = Callable[[ExperimentConfig], ResourceMonitor]
+
+logger = logging.getLogger(__name__)
 
 
 class ExperimentRunner:
@@ -87,6 +91,12 @@ class ExperimentRunner:
         """Execute the canonical lifecycle and finalize services on every path."""
         typed_config = self._coerce_config(config)
         mapping = typed_config.to_mapping()
+        # CFG-004: every artifact shows the hyperparameters that actually ran.
+        logger.info(
+            "Resolved algorithm_params for %s: %s",
+            typed_config.algorithm,
+            mapping.get("algorithm_params", {}),
+        )
         tracker: ExperimentTracker | None = None
         monitor: ResourceMonitor | None = None
 
@@ -99,6 +109,7 @@ class ExperimentRunner:
         error: str | None = None
         metadata: RunMetadata | None = None
         profiling: dict[str, Any] = {}
+        artifact_log_handler: logging.Handler | None = None
 
         try:
             status = RunStatus.RUNNING
@@ -128,6 +139,17 @@ class ExperimentRunner:
 
                 monitor = build_resource_monitor(typed_config)
             checkpoint_manager = self._checkpoint_manager(mapping, artifact_target)
+            # OBS-002: mirror console logging into the artifact directory for
+            # the duration of run(); dedupe against an already-attached handler
+            # targeting the same file (e.g. backend.<x>.log_file).
+            artifact_log_path = Path(artifact_target) / "logs" / "run.log"
+            attached_targets = {
+                os.path.realpath(getattr(handler, "baseFilename", ""))
+                for handler in logging.getLogger().handlers
+                if isinstance(handler, logging.FileHandler)
+            }
+            if os.path.realpath(artifact_log_path) not in attached_targets:
+                artifact_log_handler = attach_artifact_log_handler(artifact_log_path)
             metadata = collect_run_metadata(
                 typed_config.experiment_name,
                 device=str(device),
@@ -180,6 +202,7 @@ class ExperimentRunner:
             status = RunStatus.SUCCEEDED
         except Exception as exc:
             status = RunStatus.FAILED
+            logger.exception("Experiment failed: %s", exc)
             error = f"{type(exc).__name__}: {exc}"
             training_result = TrainingResult(
                 status=RunStatus.FAILED,
@@ -187,6 +210,10 @@ class ExperimentRunner:
                 error=error,
             )
         finally:
+            if artifact_log_handler is not None:
+                logging.getLogger().removeHandler(artifact_log_handler)
+                artifact_log_handler.close()
+                artifact_log_handler = None
             if monitor_started and monitor is not None:
                 try:
                     monitor_started = False
@@ -352,10 +379,12 @@ class ExperimentRunner:
             json.dumps(profiling or {}, indent=2, sort_keys=True), encoding="utf-8"
         )
         log_path = target / "logs" / "run.log"
-        log_path.write_text(
-            f"status={status.value}\nexperiment_name={config.experiment_name}\n",
-            encoding="utf-8",
-        )
+        # OBS-002: append the two-line summary instead of truncating so the
+        # artifact FileHandler's records from this run survive on disk.
+        with log_path.open("a", encoding="utf-8") as log_file_handle:
+            log_file_handle.write(
+                f"status={status.value}\nexperiment_name={config.experiment_name}\n"
+            )
 
         summary = {
             "status": status.value,

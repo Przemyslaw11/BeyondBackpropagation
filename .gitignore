@@ -215,3 +215,4 @@ source_tex/
 
 # Agent convention files (personal)
 .clinerules/
+slurm_logs/

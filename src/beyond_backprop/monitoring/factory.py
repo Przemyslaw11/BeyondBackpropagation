@@ -28,18 +28,14 @@ def build_resource_monitor(config: ExperimentConfig | Mapping[str, Any]):
 
     monitors: list[Any] = [WallClockResourceMonitor()]
     if settings.get("energy_enabled", False):
+        # WP10: NVML only exists on CUDA hosts; CPU-only hosts get the clock
+        # (and carbon, if enabled) monitors instead of a doomed NVML probe.
         device = resolve_device(mapping)
         if getattr(device, "type", str(device)) == "cuda":
             monitors.append(
                 NvmlResourceMonitor(
                     device_index=int(settings.get("device_index", 0)),
                     interval_sec=float(settings.get("energy_interval_sec", 0.2)),
-                )
-            )
-        else:
-            monitors.append(
-                NvmlResourceMonitor(
-                    interval_sec=float(settings.get("energy_interval_sec", 0.2))
                 )
             )
 

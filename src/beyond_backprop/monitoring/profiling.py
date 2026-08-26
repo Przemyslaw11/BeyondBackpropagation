@@ -43,8 +43,6 @@ def profile_model(
         del output
         if inputs and isinstance(inputs[0], torch.Tensor):
             batch = inputs[0].shape[0]
-            output_shape = getattr(module, "_last_output_shape", None)
-            del output_shape
             # The output is captured through the closure below; this hook is
             # installed with ``with_kwargs=False`` for all supported PyTorch versions.
             nonlocal forward_flops

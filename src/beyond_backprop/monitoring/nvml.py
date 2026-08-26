@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import threading
 import time
 from typing import Any
 
 from ..contracts import ResourceSnapshot
+
+logger = logging.getLogger(__name__)
 
 
 class NvmlResourceMonitor:
@@ -42,7 +45,13 @@ class NvmlResourceMonitor:
             self._stop_event = threading.Event()
             self._thread = threading.Thread(target=self._sample_loop, daemon=True)
             self._thread.start()
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "NVML monitoring unavailable (%s: %s); resource snapshot will "
+                "report measured=False with source 'nvml-unavailable'.",
+                type(exc).__name__,
+                exc,
+            )
             self._nvml = None
             self._handle = None
 

@@ -65,12 +65,20 @@ def flatten_if_needed(
     return flatten
 
 
-def result_from_peak_memory(algorithm: str, peak_memory: Any) -> TrainingResult:
+def result_from_peak_memory(
+    algorithm: str,
+    peak_memory: Any,
+    diagnostics: Mapping[str, float] | None = None,
+) -> TrainingResult:
     """Create a successful result from the legacy trainers' return value."""
     metrics: dict[str, MetricValue] = {}
     if peak_memory is not None:
         with contextlib.suppress(TypeError, ValueError):
             metrics["peak_memory_mib"] = metric(float(peak_memory), unit="MiB")
+    for name, value in (diagnostics or {}).items():
+        # RUN-002: unmeasured provenance keeps counters out of scientific
+        # measurements while still persisting them in artifacts.
+        metrics[name] = metric(float(value), source="trainer", measured=False)
     return TrainingResult(status=RunStatus.SUCCEEDED, metrics=metrics)
 
 

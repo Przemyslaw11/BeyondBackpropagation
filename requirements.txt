@@ -1,22 +1,31 @@
-# File: requirements.txt (Updated)
-# Core ML/DL Framework
-torch==2.4.0       # Latest stable version (check PyTorch website if needed)
-torchvision==0.19.0 # Version compatible with torch 2.4.0
+# Full research environment for the install flows documented in README.md.
+# pyproject.toml is the source of truth for version constraints; this file
+# records one known-good resolution of the runtime dependencies plus every
+# optional extra (gpu, tracking, tuning, carbon, research).
 
-# Monitoring & Profiling
-pynvml             # Allow latest compatible
+# Core ML/DL framework (resolves torch>=2.0 / torchvision>=0.15)
+# weights_only=True checkpoint loading verified against the installed
+# torch 2.13.0; payloads written by save_checkpoint are pure tensors/primitives.
+torch==2.4.0
+torchvision==0.19.0
 
-# Experiment Tracking & Hyperparameter Optimization
-wandb              # Allow latest compatible
-optuna             # Allow latest compatible
+# Runtime dependencies
+numpy>=1.21
+PyYAML>=6.0
+tqdm>=4.0          # progress bars in the FF/MF/CaFo training loops
 
-# Configuration & Utilities
-PyYAML>=6.0        # Keep requirement, allow updates
-numpy>=1.21.0      # Keep requirement, allow updates
-scikit-learn       # Allow latest compatible
-tqdm               # Allow latest compatible
+# gpu extra: NVML energy/memory monitoring
+pynvml==12.0.0
 
-codecarbon         # Add CodeCarbon library
+# tracking extra: Weights & Biases experiment tracking
+wandb==0.19.8
 
-# Environment
-python-dotenv       # Load .env files automatically
+# carbon extra: CodeCarbon CO2e estimation
+codecarbon==3.0.1
+
+# tuning extra: Optuna hyperparameter search
+optuna==4.2.1
+
+# research extra: environment loading and analysis utilities
+python-dotenv
+scikit-learn

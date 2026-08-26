@@ -15,9 +15,19 @@ from tqdm import tqdm
 
 from ..architectures.mf_mlp import MF_MLP
 from ..contracts import EvaluationResult, TrainingContext, TrainingResult
+from ..training.early_stopping import (
+    DEFAULT_MIN_DELTA,
+    DEFAULT_PATIENCE,
+    EarlyStopping,
+)
+from ..training.loop_support import (
+    EpochContext,
+    NanLossGuard,
+    build_optimizer,
+    run_epochs,
+)
 from ..utils.training_support import (
     create_directory_if_not_exists,
-    get_gpu_memory_usage,
     log_metrics,
     save_checkpoint,
 )
@@ -106,8 +116,7 @@ def train_mf_matrix_only(
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     log_interval: int = 100,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
+    diagnostics: dict[str, float] | None = None,
 ) -> tuple[float, float, int]:
     """Trains a single projection matrix (M_i) using local loss for an MF_MLP."""
     if step_ref is None:
@@ -125,20 +134,25 @@ def train_mf_matrix_only(
     model.eval()  # Keep feedforward layers frozen
     logger.info(f"--- Starting MF training for {log_prefix} ---")
 
-    peak_mem_matrix_train = 0.0
-    final_avg_epoch_loss = float("nan")
-    epochs_trained = 0
-
     es_enabled = early_stopping_config.get("mf_early_stopping_enabled", False)
     if es_enabled and val_loader is None:
         logger.warning(f"{log_prefix}: ES enabled but no val_loader. Disabling.")
         es_enabled = False
 
     if es_enabled:
-        es_patience = early_stopping_config.get("mf_early_stopping_patience", 10)
-        es_min_delta = early_stopping_config.get("mf_early_stopping_min_delta", 0.0)
-        epochs_no_improve = 0
-        best_es_metric_value = float("inf")
+        es_patience = early_stopping_config.get(
+            "mf_early_stopping_patience", DEFAULT_PATIENCE
+        )
+        es_min_delta = early_stopping_config.get(
+            "mf_early_stopping_min_delta", DEFAULT_MIN_DELTA
+        )
+        # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
+        # boundary on EarlyStopping's strict "bad epochs > patience".
+        matrix_stopping = EarlyStopping(
+            patience=max(int(es_patience) - 1, 0),
+            mode="min",
+            min_delta=float(es_min_delta),
+        )
         logger.info(
             f"{log_prefix}: Early Stopping Enabled - Patience: {es_patience}, "
             f"MinDelta: {es_min_delta}"
@@ -146,131 +160,94 @@ def train_mf_matrix_only(
     else:
         logger.info(f"{log_prefix}: Early Stopping Disabled.")
 
-    for epoch in range(epochs):
-        epochs_trained = epoch + 1
-        epoch_loss, epoch_samples = 0.0, 0
-        peak_mem_matrix_epoch = 0.0
-        projection_matrix.requires_grad_(True)
+    # RUN-004: NaN/Inf loss still breaks the batch loop (legacy stop timing),
+    # but a second epoch aborting on NaN/Inf raises instead of looping.
+    ctx = EpochContext(
+        step_ref=step_ref, log_interval=log_interval, wandb_run=wandb_run
+    )
+    guard = NanLossGuard()
 
-        pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs}"
-        pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
+    def _batch_loss(
+        batch_idx: int, images: torch.Tensor, labels: torch.Tensor
+    ) -> torch.Tensor | None:
+        images, labels = images.to(device), labels.to(device)
+        with torch.no_grad():
+            adapted_input = input_adapter(images)
+            all_activations = model.forward_with_intermediate_activations(adapted_input)
+            if len(all_activations) <= matrix_index:
+                logger.error(f"{log_prefix} Batch {batch_idx}: Act list too short.")
+                return None
+            activation_a_i = all_activations[matrix_index]
+        return mf_local_loss_fn(activation_a_i, projection_matrix, labels, criterion)
 
-        for batch_idx, (images, labels) in enumerate(pbar):
-            step_ref[0] += 1
-            current_global_step = step_ref[0]
-            images, labels = images.to(device), labels.to(device)
-
-            with torch.no_grad():
-                adapted_input = input_adapter(images)
-                all_activations = model.forward_with_intermediate_activations(
-                    adapted_input
-                )
-                if len(all_activations) <= matrix_index:
-                    logger.error(f"{log_prefix} Batch {batch_idx}: Act list too short.")
-                    continue
-                activation_a_i = all_activations[matrix_index]
-
-            loss = mf_local_loss_fn(
-                activation_a_i, projection_matrix, labels, criterion
-            )
-            if torch.isnan(loss) or torch.isinf(loss):
-                logger.error(
-                    f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
-                )
-                break  # Break from batch loop
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            batch_size = images.size(0)
-            epoch_loss += loss.item() * batch_size
-            epoch_samples += batch_size
-
-            is_log_time = (batch_idx + 1) % log_interval == 0 or (
-                batch_idx == len(train_loader) - 1
-            )
-            current_mem_used = float("nan")
-            if nvml_active and gpu_handle and is_log_time:
-                mem_info = get_gpu_memory_usage(gpu_handle)
-                if mem_info:
-                    current_mem_used = mem_info[0]
-                    peak_mem_matrix_epoch = max(peak_mem_matrix_epoch, current_mem_used)
-
-            if is_log_time:
-                metrics: dict[str, int | float] = {"global_step": current_global_step}
-                metrics[f"{log_prefix}/Train_Loss_Batch"] = loss.item()
-                if not torch.isnan(torch.tensor(current_mem_used)):
-                    metrics[f"{log_prefix}/GPU_Mem_Used_MiB_Batch"] = float(
-                        current_mem_used
-                    )
-                log_metrics(metrics, wandb_run=wandb_run, commit=True)
-                pbar.set_postfix(loss=f"{loss.item():.6f}")
-
-        if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
-            logger.error(f"Terminating {log_prefix} training due to invalid loss.")
-            break  # Break from epoch loop
-
-        final_avg_epoch_loss = (
-            epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
+    def _validate(epoch: int) -> bool:
+        if not (es_enabled and val_loader is not None):
+            return False
+        projection_matrix.requires_grad_(False)
+        val_loss = evaluate_mf_local_loss(
+            model=model,
+            matrix_index=matrix_index,
+            criterion=criterion,
+            val_loader=val_loader,
+            device=device,
+            input_adapter=input_adapter,
+            log_prefix=log_prefix,
         )
-        peak_mem_matrix_train = max(peak_mem_matrix_train, peak_mem_matrix_epoch)
+        logger.info(
+            f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Local Loss: {val_loss:.6f}"
+        )
+        log_metrics(
+            {
+                "global_step": step_ref[0],
+                f"{log_prefix}/Val_LocalLoss_Epoch": val_loss,
+            },
+            wandb_run=wandb_run,
+            commit=True,
+        )
+        if matrix_stopping.update(val_loss, epoch + 1):
+            logger.info(f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---")
+            return True
+        return False
+
+    def _epoch_summary(epoch: int, avg_loss: float) -> None:
+        peak_mem_epoch = 0.0  # legacy MF never sampled per-epoch memory here
         logger.info(
             f"{log_prefix} Epoch {epoch + 1}/{epochs} - Train Loss: "
-            f"{final_avg_epoch_loss:.6f}, Peak Mem: {peak_mem_matrix_epoch:.1f} MiB"
+            f"{avg_loss:.6f}, Peak Mem: {peak_mem_epoch:.1f} MiB"
         )
-        epoch_metrics = {
-            "global_step": step_ref[0],
-            f"{log_prefix}/Train_Loss_EpochAvg": final_avg_epoch_loss,
-            f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_matrix_epoch,
-        }
-        log_metrics(epoch_metrics, wandb_run=wandb_run, commit=True)
-
-        if es_enabled and val_loader is not None:
-            projection_matrix.requires_grad_(False)
-            val_loss = evaluate_mf_local_loss(
-                model=model,
-                matrix_index=matrix_index,
-                criterion=criterion,
-                val_loader=val_loader,
-                device=device,
-                input_adapter=input_adapter,
-                log_prefix=log_prefix,
-            )
-            log_msg = f"{log_prefix} Epoch {epoch + 1}/{epochs} - Val Local Loss: {val_loss:.6f}"
-            logger.info(log_msg)
-            log_metrics(
-                {
-                    "global_step": step_ref[0],
-                    f"{log_prefix}/Val_LocalLoss_Epoch": val_loss,
-                },
-                wandb_run=wandb_run,
-                commit=True,
-            )
-            if torch.isnan(torch.tensor(val_loss)):
-                epochs_no_improve += 1
-            elif val_loss < best_es_metric_value - es_min_delta:
-                best_es_metric_value = val_loss
-                epochs_no_improve = 0
-            else:
-                epochs_no_improve += 1
-            if epochs_no_improve >= es_patience:
-                logger.info(
-                    f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---"
-                )
-                break
-
-    if nvml_active and gpu_handle:
-        mem_info = get_gpu_memory_usage(gpu_handle)
-        peak_mem_matrix_train = max(
-            peak_mem_matrix_train, mem_info[0] if mem_info else 0.0
+        log_metrics(
+            {
+                "global_step": step_ref[0],
+                f"{log_prefix}/Train_Loss_EpochAvg": avg_loss,
+                f"{log_prefix}/Peak_GPU_Mem_Epoch_MiB": peak_mem_epoch,
+            },
+            wandb_run=wandb_run,
+            commit=True,
         )
+
+    outcome = run_epochs(
+        ctx,
+        train_loader,
+        epochs=epochs,
+        log_prefix=log_prefix,
+        logger=logger,
+        optimizer=optimizer,
+        guard=guard,
+        batch_loss=_batch_loss,
+        on_epoch_start=lambda _epoch: projection_matrix.requires_grad_(True),
+        on_epoch_summary=_epoch_summary,
+        validate=_validate,
+        log_batch_loss=True,
+    )
 
     projection_matrix.requires_grad_(False)
+    if diagnostics is not None:
+        diagnostics["nan_loss_breaks"] = float(guard.strikes)
     logger.info(
-        f"--- Finished training for {log_prefix} after {epochs_trained} epochs. ---"
+        f"--- Finished training for {log_prefix} "
+        f"after {outcome.epochs_trained} epochs. ---"
     )
-    return final_avg_epoch_loss, peak_mem_matrix_train, epochs_trained
+    return outcome.final_avg_epoch_loss, outcome.peak_mem, outcome.epochs_trained
 
 
 def train_mf_model(
@@ -282,8 +259,7 @@ def train_mf_model(
     val_loader: DataLoader | None = None,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     step_ref: list[int] | None = None,
-    gpu_handle: Any | None = None,
-    nvml_active: bool = False,
+    diagnostics: dict[str, float] | None = None,
 ) -> float:
     """Orchestrates layer-wise training of MF_MLP: M0, then (W1,M1), (W2,M2), etc."""
     if step_ref is None:
@@ -298,6 +274,9 @@ def train_mf_model(
     )
 
     algo_config = config.get("algorithm_params", config.get("training", {}))
+    # RUN-004: NaN/Inf loss still breaks the batch loop (legacy stop timing),
+    # but a second epoch aborting on NaN/Inf raises instead of looping.
+    nan_guard = NanLossGuard()
     optimizer_name = algo_config.get("optimizer_type", "Adam")
     lr = algo_config.get("lr", 0.001)
     weight_decay = algo_config.get("weight_decay", 0.0)
@@ -308,13 +287,64 @@ def train_mf_model(
     mf_criterion = nn.CrossEntropyLoss()
 
     es_enabled = algo_config.get("mf_early_stopping_enabled", False)
-    es_patience = algo_config.get("mf_early_stopping_patience", 10)
-    es_min_delta = algo_config.get("mf_early_stopping_min_delta", 0.0)
+    es_patience = algo_config.get("mf_early_stopping_patience", DEFAULT_PATIENCE)
+    es_min_delta = algo_config.get("mf_early_stopping_min_delta", DEFAULT_MIN_DELTA)
     mf_early_stopping_config = {
         "mf_early_stopping_enabled": es_enabled,
         "mf_early_stopping_patience": es_patience,
         "mf_early_stopping_min_delta": es_min_delta,
     }
+
+    def _build_layer_hooks(
+        i: int,
+        m_idx: int,
+        prefix: str,
+        projection_matrix: nn.Parameter,
+        stopping: EarlyStopping,
+    ) -> tuple[
+        Callable[[int, Any, Any], torch.Tensor | None],
+        Callable[[int], None],
+        Callable[[int], bool],
+    ]:
+        """Bind one layer's epoch-loop hooks (no late-bound loop variables)."""
+
+        def _batch_loss(
+            batch_idx: int, images: torch.Tensor, labels: torch.Tensor
+        ) -> torch.Tensor | None:
+            images, labels = images.to(device), labels.to(device)
+            # Get input for the current layer W_i+1, which is activation a_i
+            with torch.no_grad():
+                prev_activation = input_adapter(images)
+                for k in range(i):  # Recompute forward pass up to layer i-1
+                    temp_linear = model.layers[k * 2]
+                    temp_act_fn = model.layers[k * 2 + 1]
+                    prev_activation = temp_act_fn(temp_linear(prev_activation))
+
+            # Forward through W_i+1 to get a_i+1, with grads for W_i+1
+            pre_act_z = model.layers[i * 2](prev_activation.detach())
+            activation_a_next = model.layers[i * 2 + 1](pre_act_z)
+            return mf_local_loss_fn(
+                activation_a_next, projection_matrix, labels, mf_criterion
+            )
+
+        def _epoch_start(_epoch: int) -> None:
+            model.layers[i * 2].train()
+            model.layers[i * 2 + 1].train()
+            projection_matrix.requires_grad_(True)
+
+        def _validate(epoch: int) -> bool:
+            if not (es_enabled and val_loader is not None):
+                return False
+            model.eval()  # Set all layers to eval for consistent validation
+            val_loss = evaluate_mf_local_loss(
+                model, m_idx, mf_criterion, val_loader, device, input_adapter
+            )
+            if stopping.update(val_loss, epoch + 1):
+                logger.info(f"--- {prefix}: Early Stopping at Epoch {epoch + 1}! ---")
+                return True
+            return False
+
+        return _batch_loss, _epoch_start, _validate
 
     peak_mem_train = 0.0
     total_epochs_trained_all_layers = 0
@@ -328,8 +358,12 @@ def train_mf_model(
     if num_m_matrices > 0:
         m0_params = [model.get_projection_matrix(0)]
         model.get_projection_matrix(0).requires_grad_(True)
-        m0_optimizer = getattr(optim, optimizer_name)(
-            m0_params, lr=lr, weight_decay=weight_decay, **optimizer_extra_kwargs
+        m0_optimizer = build_optimizer(
+            optimizer_name,
+            m0_params,
+            lr=lr,
+            weight_decay=weight_decay,
+            extra_kwargs=optimizer_extra_kwargs,
         )
         _, m0_peak_mem, epochs_trained_m0 = train_mf_matrix_only(
             model=model,
@@ -345,8 +379,7 @@ def train_mf_model(
             wandb_run=wandb_run,
             log_interval=log_interval,
             step_ref=step_ref,
-            gpu_handle=gpu_handle,
-            nvml_active=nvml_active,
+            diagnostics=diagnostics,
         )
         total_epochs_trained_all_layers += epochs_trained_m0
         peak_mem_train = max(peak_mem_train, m0_peak_mem)
@@ -385,86 +418,41 @@ def train_mf_model(
             logger.error(f"{log_prefix}: No parameters to optimize.")
             continue
 
-        optimizer = getattr(optim, optimizer_name)(
+        optimizer = build_optimizer(
+            optimizer_name,
             params_to_optimize,
             lr=lr,
             weight_decay=weight_decay,
-            **optimizer_extra_kwargs,
+            extra_kwargs=optimizer_extra_kwargs,
         )
 
         peak_mem_layer_train = 0.0
-        epochs_trained_this_layer = 0
-        epochs_no_improve = 0
-        best_es_val_loss = float("inf")
-
-        for epoch in range(epochs_per_layer):
-            epochs_trained_this_layer = epoch + 1
-            epoch_loss, epoch_samples = 0.0, 0
-            peak_mem_layer_epoch = 0.0
-            model.layers[i * 2].train()
-            model.layers[i * 2 + 1].train()
-            projection_matrix.requires_grad_(True)
-
-            pbar_desc = f"{log_prefix} Epoch {epoch + 1}/{epochs_per_layer}"
-            pbar = tqdm(train_loader, desc=pbar_desc, leave=False)
-
-            for batch_idx, (images, labels) in enumerate(pbar):
-                step_ref[0] += 1
-                images, labels = images.to(device), labels.to(device)
-
-                # Get input for the current layer W_i+1, which is activation a_i
-                with torch.no_grad():
-                    prev_activation = input_adapter(images)
-                    for k in range(i):  # Recompute forward pass up to layer i-1
-                        temp_linear = model.layers[k * 2]
-                        temp_act_fn = model.layers[k * 2 + 1]
-                        prev_activation = temp_act_fn(temp_linear(prev_activation))
-
-                # Forward through W_i+1 to get a_i+1, with grads for W_i+1
-                pre_act_z = model.layers[i * 2](prev_activation.detach())
-                activation_a_next = model.layers[i * 2 + 1](pre_act_z)
-
-                loss = mf_local_loss_fn(
-                    activation_a_next, projection_matrix, labels, mf_criterion
-                )
-                if torch.isnan(loss) or torch.isinf(loss):
-                    log_msg = f"NaN/Inf loss at {log_prefix}, Epoch {epoch + 1}, Batch {batch_idx}."
-                    logger.error(log_msg)
-                    break
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item() * images.size(0)
-                epoch_samples += images.size(0)
-                # ... (logging and memory checking as in train_mf_matrix_only) ...
-
-            if "loss" in locals() and (torch.isnan(loss) or torch.isinf(loss)):
-                break
-
-            final_avg_epoch_loss = (
-                epoch_loss / epoch_samples if epoch_samples > 0 else float("nan")
-            )
-            peak_mem_layer_train = max(peak_mem_layer_train, peak_mem_layer_epoch)
-            # ... (epoch logging) ...
-
-            if es_enabled and val_loader is not None:
-                model.eval()  # Set all layers to eval for consistent validation
-                val_loss = evaluate_mf_local_loss(
-                    model, m_idx, mf_criterion, val_loader, device, input_adapter
-                )
-                # ... (early stopping logic as in train_mf_matrix_only) ...
-                if val_loss < best_es_val_loss - es_min_delta:
-                    best_es_val_loss = val_loss
-                    epochs_no_improve = 0
-                else:
-                    epochs_no_improve += 1
-                if epochs_no_improve >= es_patience:
-                    logger.info(
-                        f"--- {log_prefix}: Early Stopping at Epoch {epoch + 1}! ---"
-                    )
-                    break
+        # D1: patience-1 emulates the verbatim legacy "bad epochs >= patience"
+        # boundary on EarlyStopping's strict "bad epochs > patience".
+        layer_stopping = EarlyStopping(
+            patience=max(int(es_patience) - 1, 0),
+            mode="min",
+            min_delta=float(es_min_delta),
+        )
+        layer_batch_loss, layer_epoch_start, layer_validate = _build_layer_hooks(
+            i, m_idx, log_prefix, projection_matrix, layer_stopping
+        )
+        outcome = run_epochs(
+            EpochContext(
+                step_ref=step_ref, log_interval=log_interval, wandb_run=wandb_run
+            ),
+            train_loader,
+            epochs=epochs_per_layer,
+            log_prefix=log_prefix,
+            logger=logger,
+            optimizer=optimizer,
+            guard=nan_guard,
+            batch_loss=layer_batch_loss,
+            on_epoch_start=layer_epoch_start,
+            validate=layer_validate,
+        )
+        epochs_trained_this_layer = outcome.epochs_trained
+        peak_mem_layer_train = max(peak_mem_layer_train, outcome.peak_mem)
 
         total_epochs_trained_all_layers += epochs_trained_this_layer
         peak_mem_train = max(peak_mem_train, peak_mem_layer_train)
@@ -486,6 +474,8 @@ def train_mf_model(
         f"Finished all layer-wise MF training. Total Epochs (Sum): "
         f"{total_epochs_trained_all_layers}"
     )
+    if diagnostics is not None:
+        diagnostics["nan_loss_breaks"] = float(nan_guard.strikes)
     model.eval()
     return peak_mem_train
 
@@ -516,11 +506,11 @@ def evaluate_mf_model(
         f"matrix M_{last_projection_matrix_index}."
     )
     if last_projection_matrix_index >= len(model.projection_matrices):
-        logger.error(
-            f"Index M_{last_projection_matrix_index} out of bounds "
-            f"({len(model.projection_matrices)} matrices)."
+        # EVAL-001: domain guard aborts evaluation instead of returning NaN.
+        raise ValueError(
+            f"Projection matrix index M_{last_projection_matrix_index} out of "
+            f"bounds ({len(model.projection_matrices)} matrices)."
         )
-        return {"eval_accuracy": float("nan"), "eval_loss": float("nan")}
     last_projection_matrix = model.get_projection_matrix(last_projection_matrix_index)
 
     pbar = tqdm(data_loader, desc="Evaluating MF MLP", leave=False)
@@ -531,11 +521,11 @@ def evaluate_mf_model(
         all_activations = model.forward_with_intermediate_activations(eval_input)
 
         if len(all_activations) <= last_activation_index:
-            logger.error(
-                f"Activation list len ({len(all_activations)}) too short "
+            # EVAL-001: domain guard aborts evaluation instead of skipping.
+            raise ValueError(
+                f"Activation list length ({len(all_activations)}) too short "
                 f"for a_{last_activation_index}."
             )
-            continue
 
         last_activation = all_activations[last_activation_index].to(device)
         last_projection_matrix = last_projection_matrix.to(device)
@@ -561,6 +551,7 @@ class MFAdapter(AlgorithmAdapter):
             self.lifecycle.extend(
                 f"W{i}_M{i}" for i in range(1, int(model.num_hidden_layers) + 1)
             )
+        diagnostics: dict[str, float] = {}
         peak_memory = train_mf_model(
             model=model,
             train_loader=context.train_loader,
@@ -568,8 +559,9 @@ class MFAdapter(AlgorithmAdapter):
             device=torch.device(context.device),
             input_adapter=flatten_if_needed(context),  # type: ignore[arg-type]
             val_loader=context.val_loader,
+            diagnostics=diagnostics,
         )
-        return result_from_peak_memory(self.name, peak_memory)
+        return result_from_peak_memory(self.name, peak_memory, diagnostics)
 
     def evaluate(
         self, model: Any, loader: Any, context: TrainingContext

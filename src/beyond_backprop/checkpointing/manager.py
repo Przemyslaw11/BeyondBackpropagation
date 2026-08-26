@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import Any
 import torch
 
 from ..contracts import CheckpointMetadata
+
+logger = logging.getLogger(__name__)
 
 
 class CheckpointError(RuntimeError):
@@ -71,9 +74,29 @@ class CheckpointManager:
         if not path.exists():
             raise CheckpointError(f"Checkpoint not found: {path}")
         try:
-            payload = torch.load(path, map_location=map_location, weights_only=False)
-        except Exception as exc:
-            raise CheckpointError(f"Could not load checkpoint {path}: {exc}") from exc
+            # MIG-005: canonical payloads written by save_checkpoint are pure
+            # state_dicts / dicts of tensors and primitives, which the strict
+            # weights_only loader accepts.
+            payload = torch.load(path, map_location=map_location, weights_only=True)
+        except Exception as strict_exc:
+            # Explicit fallback for historical payloads embedding non-safe
+            # objects; never downgrade silently. Trust boundary: checkpoints
+            # here are locally produced and trusted -- do NOT copy this
+            # pattern when loading untrusted checkpoint files.
+            logger.warning(
+                "weights_only load failed for %s (%s); retrying unrestricted "
+                "for this locally produced checkpoint",
+                path,
+                strict_exc,
+            )
+            try:
+                payload = torch.load(
+                    path, map_location=map_location, weights_only=False
+                )
+            except Exception as exc:
+                raise CheckpointError(
+                    f"Could not load checkpoint {path}: {exc}"
+                ) from exc
         if not isinstance(payload, dict):
             raise CheckpointError(f"Invalid checkpoint payload: {path}")
 
