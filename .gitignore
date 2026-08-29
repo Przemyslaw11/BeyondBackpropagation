@@ -207,4 +207,10 @@ slurm-*.out # Older SLURM naming pattern, just in case
 *.bbl
 *.blg  
 
-master_thesis/
+master_thesis/*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.out
+
+# Rasterised figure previews, for inspection only
+artifacts/preview/

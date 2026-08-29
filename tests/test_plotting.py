@@ -166,3 +166,126 @@ def test_trace_energy_agrees_with_the_recorded_energy(table: tidy.Table):
         assert power * duration == pytest.approx(recorded, rel=0.02), run_id
         compared += 1
     assert compared > 900
+
+
+# --- The figures -------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def live(table: tidy.Table) -> tidy.Table:
+    """What scripts/make_figures.py actually plots: nothing superseded."""
+    return table.where(superseded="")
+
+
+def test_figure_constants_match_the_preregistered_analysis():
+    """A margin that drifts between the test and the plot is a silent lie."""
+    from scripts import analyze_ablation_ladder as ladder
+    from src.plotting import figures
+
+    assert figures.EQUIVALENCE_MARGIN_PP == ladder.ACCURACY_EQUIVALENCE_MARGIN_PP
+    assert figures.N_BOOTSTRAP == ladder.N_BOOTSTRAP
+    assert figures.BOOTSTRAP_SEED == ladder.BOOTSTRAP_SEED
+
+
+def test_excluding_superseded_runs_drops_exactly_the_two_known_protocols(
+    table: tidy.Table, live: tidy.Table
+):
+    dropped = set(table.distinct("run_id")) - set(live.distinct("run_id"))
+    sources = {run_id.split("/")[0] for run_id in dropped}
+    assert sources == {"equal_epochs_noval", "reproduction_m0mem_bug"}
+
+
+@pytest.mark.parametrize("summary_path", PHASE4_SUMMARIES, ids=lambda p: p.stem)
+def test_figure_bootstrap_reproduces_the_preregistered_intervals(
+    live: tidy.Table, summary_path: Path
+):
+    """The forest plot must not draw an interval the analysis did not compute."""
+    from src.plotting import figures
+
+    if not summary_path.is_file():
+        pytest.skip(f"{summary_path} absent")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    checked = 0
+    for contrast in summary["contrasts"]:
+        for row in contrast["rows"]:
+            if row["n_pairs"] < 2:
+                continue
+            baseline = live.where(
+                phase="phase4", experiment_name=contrast["baseline"]
+            ).values(row["metric"])
+            method = live.where(
+                phase="phase4", experiment_name=contrast["method"]
+            ).values(row["metric"])
+            if not baseline or not method:
+                continue
+            estimate = (
+                figures.paired_difference_ci
+                if row["kind"] == "difference"
+                else figures.paired_ratio_ci
+            )
+            point, low, high, n = estimate(baseline, method)
+            assert n == row["n_pairs"]
+            assert point == pytest.approx(row["point"], rel=1e-9, abs=1e-9)
+            # The endpoints cannot match exactly: summarize_phase4.py advances one
+            # shared Generator across every contrast, so its draw sequence depends
+            # on call order. At n=5 the resampling grid is coarse, and this is the
+            # resulting Monte-Carlo slack -- a real join or unit error would move
+            # the point estimate, or the interval by many multiples of its width.
+            span = max(abs(row["high"] - row["low"]), 1e-12)
+            assert abs(low - row["low"]) < 0.15 * span
+            assert abs(high - row["high"]) < 0.15 * span
+            checked += 1
+    assert checked >= 20
+
+
+def test_every_forest_entry_carries_a_verdict_and_a_seed_count(live: tidy.Table):
+    from src.plotting import figures
+
+    entries = figures._forest_rows_ladder(live) + figures._forest_rows_phase4(live)
+    assert len(entries) >= 25
+    for _, _, point, low, high, n in entries:
+        assert n >= 2
+        assert low <= point <= high
+        assert figures.equivalence_verdict(
+            low, high, figures.EQUIVALENCE_MARGIN_PP
+        ) in {"equivalent", "different", "inconclusive"}
+
+
+def test_every_plotted_trace_is_nvml_and_not_a_wandb_system_panel(live: tidy.Table):
+    """W&B's own system.* stream is what the submitted figures used. None of the
+    trace columns here can come from it: they are read from the monitor's CSV."""
+    hardware = {
+        column: instrument
+        for column, (_, instrument) in tidy.TRACE_COLUMNS.items()
+        if column != "timestamp_sec"
+    }
+    assert hardware
+    for column, instrument in hardware.items():
+        lowered = instrument.lower()
+        assert "nvml" in lowered or "psutil" in lowered, column
+        assert "wandb" not in lowered and "system" not in lowered, column
+
+    trace_rows = [r for r in live.rows if r["metric"].startswith("trace_")]
+    assert trace_rows
+    for row in trace_rows:
+        assert row["monitoring_csv_path"].startswith("results/monitoring/")
+        assert "wandb" not in row["instrument"].lower()
+
+
+def test_figures_render_byte_identically(live: tidy.Table, tmp_path: Path):
+    """The PDF backend stamps a creation date unless it is suppressed."""
+    import hashlib
+
+    from src.plotting import figures, style
+
+    style.apply_style()
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    for build in (figures.ladder_waterfall, figures.equivalence_forest):
+        a = build(live, first)
+        b = build(live, second)
+        assert hashlib.sha256(a.read_bytes()).hexdigest() == (
+            hashlib.sha256(b.read_bytes()).hexdigest()
+        ), f"{a.name} is not reproducible"
