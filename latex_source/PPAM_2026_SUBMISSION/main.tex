@@ -490,46 +490,48 @@ accuracy margin justifies the cost.
   \end{tabular}
 \end{table}
 
-The same slow, volatile convergence is visible on MNIST
-(Figure~\ref{fig:ff_convergence_dynamics}), where \FF{}'s validation
-accuracy rises substantially more slowly than \BP{}'s, accompanied by an
-erratic training loss consistent with the indirect goodness supervision
-signal. The hardware-level cause of the efficiency penalty is revealed by
-the autopsy of the Fashion-MNIST configuration in
-Figure~\ref{fig:ff_resource_utilization}: volatile GPU clock speeds
-during \FF{} training indicate inefficient hardware saturation relative to
-\BP{}'s stable, high utilisation. Counterintuitively, \FF{} consumed slightly
-\emph{more} peak memory than \BP{} in these tests, refuting a key presumed
+The cost is not a matter of power draw
+(Figure~\ref{fig:ff_convergence_dynamics}): \FF{} and \BP{} sit at comparable
+wattage, and \FF{}'s energy bill is run up almost entirely by how long it takes
+to reach its stopping criterion. The hardware-level reading of the
+Fashion-MNIST configuration in Figure~\ref{fig:ff_resource_utilization} rules
+out the obvious alternative explanations. Both algorithms hold the SM clock
+near its ceiling throughout, so the penalty is not throttling. And on both
+instruments---NVML device-wide and the \texttt{torch} allocator---\FF{}
+consumed slightly \emph{more} peak memory than \BP{}, refuting a key presumed
 advantage.
 
 \begin{figure}[tb]
   \centering
-  \subfloat[Validation Accuracy]{\includegraphics[width=0.48\linewidth]{plots/FF_1.png}}%
-  \hfill
-  \subfloat[Training Loss]{\includegraphics[width=0.48\linewidth]{plots/FF_2.png}}
+  \includegraphics{plots/generated/fig_ff_cost.pdf}
   \vspace{-4pt}
-  \caption{Convergence dynamics of \FF{} vs.\ \BP{} on the MNIST
-    4$\times$2000 MLP\@. \FF{}'s validation accuracy rises substantially
-    more slowly than \BP{}'s, and exhibits an erratic, elevated training
-    loss compared to \BP{}'s smooth, monotonic decrease, consistent with
-    the goodness metric's less direct supervision signal.
-    Dataset: MNIST; Architecture: 4$\times$2000 MLP.}
+  \caption{The measured cost of \FF{} against \BP{}. (a) Final test accuracy,
+    bootstrap 95\% CIs over $n=7$ seeds. (b) Cumulative GPU energy against
+    wall-clock time for the median-duration run of each method on the
+    Fashion-MNIST 4$\times$2000 MLP, integrated from the NVML power trace
+    (\SI{5}{\hertz}, \texttt{nvmlDeviceGetPowerUsage}). \FF{} draws comparable
+    power but runs roughly \num{7} times longer, so it ends at several times
+    \BP{}'s energy for statistically indistinguishable accuracy.
+    Per-epoch convergence curves are not shown: every \FF{} run with per-epoch
+    history in the run archive predates the evaluation fix of commit
+    \texttt{9a14332} and therefore reports an epoch-2 network, and the corrected
+    runs were archived without history.}
   \label{fig:ff_convergence_dynamics}
 \end{figure}
 
 \begin{figure}[tb]
   \centering
-  \subfloat[Memory Usage (\si{\mebibyte})]{\includegraphics[width=0.48\linewidth]{plots/FF_4.png}}%
-  \hfill
-  \subfloat[GPU Clock Speed (\si{\mega\hertz})]{\includegraphics[width=0.48\linewidth]{plots/FF_5.png}}
+  \includegraphics{plots/generated/fig_ff_resource.pdf}
   \vspace{-4pt}
-  \caption{Hardware-level autopsy of \FF{} vs.\ \BP{} on the Fashion-MNIST
-    4$\times$2000 MLP\@. \FF{} consumes slightly more peak GPU memory than
-    \BP{}, contradicting the theoretical expectation that eliminating the
-    backward pass reduces memory. \FF{} also exhibits volatile GPU clock
-    speeds indicating underutilisation of the compute pipeline, whereas
-    \BP{} maintains stable, high clock rates.
-    Dataset: Fashion-MNIST; Architecture: 4$\times$2000 MLP.}
+  \caption{Hardware-level comparison of \FF{} against \BP{} on the
+    Fashion-MNIST 4$\times$2000 MLP\@. (a) Peak memory read by two instruments:
+    NVML reports the whole device including a CUDA context neither algorithm
+    controls, while \texttt{torch.cuda.max\_memory\_allocated} reports this
+    process. On both, \FF{} uses slightly \emph{more} memory than \BP{},
+    refuting the presumed advantage of eliminating the backward pass.
+    (b) SM clock (NVML, \SI{5}{\hertz}, rolling mean over \SI{10}{\second}) for
+    the median-duration run of each method; both stay pinned near
+    \SI{1300}{\mega\hertz}, so neither result is a throttling artefact.}
   \label{fig:ff_resource_utilization}
 \end{figure}
 
@@ -600,18 +602,18 @@ across all datasets.
 
 \begin{figure}[tb]
   \centering
-  \subfloat[Validation Accuracy]{\includegraphics[width=0.48\linewidth]{plots/CaFo_1.png}}%
-  \hfill
-  \subfloat[Validation Loss]{\includegraphics[width=0.48\linewidth]{plots/CaFo_2.png}}
+  \includegraphics{plots/generated/fig_cafo_profile.pdf}
   \vspace{-4pt}
-  \caption{Convergence dynamics of \CaFo{} variants vs.\ \BP{} on the
-    Fashion-MNIST 3-block CNN\@. \BP{} shows smooth, monotonic convergence.
-    \CaFoDFA{} achieves competitive accuracy but incurs an
-    upfront pretraining cost visible as a flat initial segment (the DFA
-    block-pretraining stage), which is included in all reported energy
-    and time figures. \CaFoRand{} is highly volatile, reflecting
-    the limitations of random fixed features.
-    Dataset: Fashion-MNIST; Architecture: 3-block CNN.}
+  \caption{\CaFo{} variants against \BP{}. (a) Final test accuracy across four
+    datasets on the 3-block CNN, bootstrap 95\% CIs over $n=5$ seeds;
+    \CaFoRand{} loses ground as the task hardens, exposing the limits of random
+    fixed features. (b) GPU power (NVML, \SI{5}{\hertz}, rolling mean over
+    \SI{5}{\second}) for the median-duration run on Fashion-MNIST. The upfront
+    DFA block-pretraining stage is the elevated ${\approx}\SI{125}{\watt}$ regime
+    over the first ${\approx}\SI{40}{\second}$; it is included in every reported
+    energy and time figure. Per-epoch convergence curves are omitted because
+    \CaFo{} trains each block's predictor independently and logs no global
+    validation curve.}
   \label{fig:cafo_convergence}
 \end{figure}
 
@@ -684,53 +686,56 @@ representing the strongest case for \MF{}'s efficiency advantage.
 \par}
 
 {\looseness=-1
-Hardware monitoring further validates \MF{}'s lean design on the CIFAR-10
-task. As shown in Figure~\ref{fig:mf_hardware_and_memory}, \MF{}'s local
-training regime results in lower GPU utilisation and a reduced thermal
-profile compared to \BP{}\@. The memory trace in
-Figure~\ref{fig:mf_hardware_and_memory}(c) shows \MF{} sitting below \BP{}
-for the whole of training and finishing earlier, consistent with its
-shorter wall-clock time. Neither trace grows over the course of the run,
-and the separation between them is small relative to the fixed CUDA
-context that the reading includes.
+Hardware monitoring on the CIFAR-10 task shows what \MF{}'s local training
+regime actually does to the device
+(Figure~\ref{fig:mf_hardware_and_memory}). \MF{} draws less power and keeps
+the GPU roughly half as busy as \BP{}, but it stays on the device almost four
+times as long, so the lower instantaneous draw does not translate into lower
+energy. Its per-layer stages are visible as steps in both the utilisation and
+the memory trace. The device-wide memory reading separates the two algorithms
+by little because it includes the fixed CUDA context that neither of them
+controls; Figure~\ref{fig:time_memory_frontier} reports the per-process figure
+instead.
 \par}
 
 \begin{figure}[tb]
   \centering
-  \subfloat[GPU Utilisation (\si{\percent})]{\includegraphics[width=0.32\linewidth]{plots/mf_3.png}}%
-  \hfill
-  \subfloat[GPU Temperature (\si{\degreeCelsius})]{\includegraphics[width=0.32\linewidth]{plots/mf_4.png}}%
-  \hfill
-  \subfloat[Memory Usage (\si{\mebibyte})]{\includegraphics[width=0.32\linewidth]{plots/MF_5.png}}
+  \includegraphics{plots/generated/fig_mf_hardware.pdf}
   \vspace{-4pt}
-  \caption{Hardware monitoring of \MF{} vs.\ \BP{} on the CIFAR-10
-    3$\times$2000 MLP\@. \MF{}'s lower average GPU utilisation~(a) and
-    reduced thermal profile~(b) are consistent with lower energy
-    consumption. \MF{}'s memory trace~(c) remains below \BP{}'s throughout
-    and ends earlier, reflecting its shorter training run; neither trace
-    grows over the run.
-    Dataset: CIFAR-10; Architecture: 3$\times$2000 MLP;
-    GPU: NVIDIA A100-SXM4-40GB.}
+  \caption{Hardware monitoring of the \BP{}$\to$\MF{} ladder on the CIFAR-10
+    3$\times$2000 MLP, median-duration run per rung. All three traces are NVML
+    at \SI{5}{\hertz} (rolling mean over \SI{5}{\second}); none is a
+    Weights~\&~Biases system panel. (a) \MF{} draws roughly
+    \SI{61}{\watt} against \BP{}'s \SI{78}{\watt}, but for almost four times as
+    long, so the area under the curve---the energy---is far larger.
+    (b)~Utilisation and (c)~device memory expose \MF{}'s per-layer stages as
+    visible steps. The device-memory reading includes the fixed CUDA context,
+    which is why the rungs separate by so little; see
+    Figure~\ref{fig:time_memory_frontier} for the per-process figure.}
   \label{fig:mf_hardware_and_memory}
 \end{figure}
 
 \needspace{3\baselineskip}
-Figure~\ref{fig:mf_bp_cifar10_mlp_conv_curves} illustrates that \MF{}
-converges to a lower final validation loss than \BP{}'s global end-to-end
-optimisation on identical architectures, consistent with \MF{}'s
-accuracy advantage. We discuss a possible regularisation hypothesis to explain
-this in Section~\ref{sec:discussion_why_mf}.
+Figure~\ref{fig:mf_bp_cifar10_mlp_conv_curves} shows where that cost is
+actually spent. Every rung of the ladder draws close to the same power, so
+energy tracks wall-clock time almost exactly and the ranking of the rungs by
+energy is the ranking by duration. \MF{} nonetheless reaches higher accuracy
+than \BP{} on identical architectures; we discuss a possible regularisation
+hypothesis in Section~\ref{sec:discussion_why_mf}.
 
 \begin{figure}[tb]
   \centering
-  \includegraphics[width=0.65\linewidth]{plots/mf_1.png}
+  \includegraphics{plots/generated/fig_mf_bp_cost_curves.pdf}
   \vspace{-4pt}
-  \caption{Validation loss convergence of \MF{} vs.\ \BP{} on the CIFAR-10
-    3$\times$2000 MLP\@. \MF{}'s greedy local optimisations converge to a
-    lower final validation loss, suggesting a possible regularisation
-    effect of layer-wise training (see Section~\ref{sec:discussion_why_mf}
-    for discussion and required diagnostic experiments).
-    Dataset: CIFAR-10; Architecture: 3$\times$2000 MLP.}
+  \caption{What a training run costs, on the CIFAR-10 3$\times$2000 MLP\@.
+    (a) Cumulative GPU energy against wall-clock time for the
+    median-duration run of each ladder rung, integrated from the NVML power
+    trace; the end marker is the total. (b) Every seed, total energy against
+    training time, with iso-power guides. All four rungs sit near the same
+    power draw, so energy is set almost entirely by how long the run takes.
+    A validation-loss comparison is not shown: \MF{} optimises a separate local
+    objective per layer and logs no global validation curve, so no such series
+    exists for it in the run archive.}
   \label{fig:mf_bp_cifar10_mlp_conv_curves}
 \end{figure}
 
@@ -739,6 +744,80 @@ A complete summary comparing the relative performance and efficiency of
 each algorithm against its fair \BP{} baseline across all tested
 configurations is presented in the supplementary material.
 \par}
+
+% ---- 5.4 ---------------------------------------------------
+\needspace{3\baselineskip}
+\subsection{Where the Cost Comes From}
+\label{sec:ladder}
+
+Attributing \MF{}'s cost to \MF{} as a whole explains nothing. We therefore
+interpolate between \BP{} and \MF{} in single-change steps---auxiliary
+supervision, the learned readout $M_L$, gradient locality, and, where
+activations can be cached, two caching strategies---and measure each step
+separately (Figure~\ref{fig:ladder_waterfall}). One step dominates. Detaching
+the gradient at every layer boundary adds between \num{228} and \num{272}~pp of
+\BP{}'s energy across the four configurations, while auxiliary supervision and
+the readout together move it by at most \num{40}~pp and on the two CIFAR tasks
+partly cancel. The overhead is not an implementation detail that tuning will
+remove: it is the price of locality itself.
+
+Caching activations is the obvious remedy, and it does not work
+(Figure~\ref{fig:time_memory_frontier}). Caching on the device buys no time and
+costs several times the per-process memory; caching on the host adds
+\num{261}~pp of \BP{}'s energy on MNIST and \num{441}~pp on Fashion-MNIST on
+top of \MF{}'s own overhead. Neither strategy reaches a point that \MF{}
+without caching does not already dominate.
+
+Finally, we report accuracy differences as intervals rather than as verdicts
+(Figure~\ref{fig:equivalence_forest}). Of \num{28} contrasts, eleven are
+equivalent within the preregistered margin, sixteen are different, and one is
+inconclusive: \CaFoDFA{} against \BP{} on the Fashion-MNIST CNN, whose interval
+spans $[\num{-0.03},\num{+0.61}]$~pp at five seeds---wide enough to contain
+both the margin and values well outside it. We mark such a contrast
+inconclusive rather than reading it as evidence of parity.
+
+\begin{figure}[tb]
+  \centering
+  \includegraphics{plots/generated/fig_ladder_waterfall.pdf}
+  \vspace{-4pt}
+  \caption{Decomposition of the \BP{}$\to$\MF{} energy change into five
+    single-change steps. (a) Cumulative GPU energy on the CIFAR-10
+    3$\times$2000 MLP as a percentage of \BP{}, each bar one rung transition.
+    (b) The same per-step contributions for all four configurations. Gradient
+    locality accounts for essentially the whole increase everywhere. Energy is
+    the trapezoidal integral of the NVML power trace (\SI{5}{\hertz}); bars are
+    seed means over \numrange{20}{122} seeds per rung.}
+  \label{fig:ladder_waterfall}
+\end{figure}
+
+\begin{figure}[tb]
+  \centering
+  \includegraphics{plots/generated/fig_time_memory_frontier.pdf}
+  \vspace{-4pt}
+  \caption{Time against memory for \BP{} and the three \MF{} caching
+    strategies. Top row: peak memory allocated by this process
+    (\texttt{torch.cuda.max\_memory\_allocated}), which excludes the fixed CUDA
+    context. Bottom row: peak host resident set size (psutil). The shaded
+    quadrant is the region dominated by \MF{} without caching---worse on both
+    axes. Both caching strategies fall inside it, so neither is on the frontier.
+    Markers are seed means with bootstrap 95\% CIs, \numrange{20}{122} seeds
+    per point.}
+  \label{fig:time_memory_frontier}
+\end{figure}
+
+\begin{figure}[tb]
+  \centering
+  \includegraphics{plots/generated/fig_equivalence_forest.pdf}
+  \vspace{-4pt}
+  \caption{Paired differences in final test accuracy, bootstrap 95\% CIs
+    (\num{10000} resamples, fixed seed). The shaded band is the preregistered
+    $\pm$\num{0.25}~pp equivalence margin. A contrast is resolved as equivalent
+    only when its whole interval lies inside the band, and as different only
+    when the interval excludes zero; everything else is marked inconclusive.
+    Paired seed counts are given per row. (a) The \BP{}$\to$\MF{}
+    ladder. (b) \FF{} and \CaFo{} against their matched \BP{} baselines.}
+  \label{fig:equivalence_forest}
+\end{figure}
 
 \FloatBarrier
 
