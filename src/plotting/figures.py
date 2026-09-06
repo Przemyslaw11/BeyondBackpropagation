@@ -328,7 +328,7 @@ def ladder_waterfall(table: Table, out_dir: Path) -> Path:
     left.set_xticks(range(len(rungs) + 1))
     left.set_xticklabels(
         ["BP"] + list(SHORT_TRANSITION[: len(rungs) - 1]) + ["MF\ntotal"],
-        fontsize=style.SMALL_FONT_PT - 0.5,
+        fontsize=style.SMALL_FONT_PT,
     )
     left.set_ylabel("Training energy\n(% of BP)")
     left.set_ylim(0, max(relative) * 1.22)
@@ -361,9 +361,10 @@ def ladder_waterfall(table: Table, out_dir: Path) -> Path:
         )
     right.axhline(0.0, color="0.3", linewidth=0.6, zorder=3)
     right.set_xticks(positions)
-    right.set_xticklabels(SHORT_TRANSITION, fontsize=style.SMALL_FONT_PT - 0.5)
+    right.set_xticklabels(SHORT_TRANSITION, fontsize=style.SMALL_FONT_PT)
+    right.set_xlim(-0.75, len(RUNG_TRANSITIONS) - 0.25)
     right.set_ylabel("Contribution to energy\nchange (pp of BP)")
-    right.legend(loc="upper left", fontsize=style.SMALL_FONT_PT - 0.5, ncol=1)
+    right.legend(loc="upper left", fontsize=style.SMALL_FONT_PT, ncol=1)
     _panel_label(right, "(b)")
 
     return style.save(fig, out_dir / "fig_ladder_waterfall.pdf")
@@ -431,7 +432,7 @@ def ladder_power(table: Table, out_dir: Path) -> Path:
             )
         axes.set_xticks(positions)
         axes.set_xticklabels(
-            [SHORT_CONFIG[c] for c in LADDER_CONFIGS], fontsize=style.SMALL_FONT_PT - 1
+            [SHORT_CONFIG[c] for c in LADDER_CONFIGS], fontsize=style.SMALL_FONT_PT
         )
         axes.set_ylabel(label)
 
@@ -531,7 +532,7 @@ def time_memory_frontier(table: Table, out_dir: Path) -> Path:
                     transform=panel.transAxes,
                     ha="right",
                     va="top",
-                    fontsize=style.SMALL_FONT_PT - 1,
+                    fontsize=style.SMALL_FONT_PT,
                     color="0.35",
                 )
             if column == 0:
@@ -645,7 +646,7 @@ def _draw_forest(axes, entries, margin: float, xlabel: str) -> None:
         [f"{label}   {config}  ($n{{=}}{n}$)" for label, config, _, _, _, n in entries][
             ::-1
         ],
-        fontsize=style.SMALL_FONT_PT - 1,
+        fontsize=style.SMALL_FONT_PT,
     )
     axes.set_ylim(-0.7, len(entries) - 0.3)
     axes.set_xlabel(xlabel)
@@ -801,10 +802,10 @@ def ff_resource(table: Table, out_dir: Path) -> Path:
                 f"{value:.0f}",
                 ha="center",
                 va="bottom",
-                fontsize=style.SMALL_FONT_PT - 1,
+                fontsize=style.SMALL_FONT_PT,
             )
     left.set_xticks(positions)
-    left.set_xticklabels([label for _, label in instruments], fontsize=style.SMALL_FONT_PT - 0.5)
+    left.set_xticklabels([label for _, label in instruments], fontsize=style.SMALL_FONT_PT)
     left.set_ylabel("Peak memory (MiB)")
     left.set_ylim(0, None)
     _panel_label(left, "(a)")
@@ -872,7 +873,7 @@ def ff_cost(table: Table, out_dir: Path) -> Path:
             zorder=3,
         )
     left.set_xticks(positions)
-    left.set_xticklabels([p[2] for p in pairs], fontsize=style.SMALL_FONT_PT - 0.5)
+    left.set_xticklabels([p[2] for p in pairs], fontsize=style.SMALL_FONT_PT)
     left.set_ylabel("Test accuracy (%)")
     left.set_ylim(0, 105)
     _panel_label(left, "(a)")
@@ -930,7 +931,10 @@ def cafo_profile(table: Table, out_dir: Path) -> Path:
         ("cifar100", "CIFAR-100"),
     )
     fig, (left, right) = plt.subplots(
-        1, 2, figsize=style.figure_size(1.0, height_in=2.0)
+        1,
+        2,
+        figsize=style.figure_size(1.0, height_in=2.0),
+        width_ratios=(1.3, 1.0),
     )
 
     positions = np.arange(len(datasets))
@@ -963,9 +967,10 @@ def cafo_profile(table: Table, out_dir: Path) -> Path:
             zorder=3,
         )
     left.set_xticks(positions)
-    left.set_xticklabels([d[1] for d in datasets], fontsize=style.SMALL_FONT_PT - 1)
+    left.set_xticklabels([d[1] for d in datasets], fontsize=style.SMALL_FONT_PT)
     left.set_ylabel("Test accuracy (%)")
     left.set_ylim(0, 105)
+    left.set_xlim(-0.55, len(datasets) - 0.45)
     _panel_label(left, "(a)")
 
     entries = (
@@ -1089,7 +1094,7 @@ def diag_early_stopping(table: Table, out_dir: Path) -> Path:
         panel.set_xticks(positions)
         panel.set_xticklabels(
             [SHORT_CONFIG[c].replace("\n", " ") for c, _ in configs],
-            fontsize=style.SMALL_FONT_PT - 1,
+            fontsize=style.SMALL_FONT_PT,
             rotation=32,
             ha="right",
             rotation_mode="anchor",
@@ -1148,7 +1153,7 @@ def diag_cache_strategy(table: Table, out_dir: Path) -> Path:
         panel.axhline(0.0, color="0.3", linewidth=0.6, zorder=3)
         panel.set_xticks(positions)
         panel.set_xticklabels(
-            [label for _, label in metrics], fontsize=style.SMALL_FONT_PT - 1
+            [label for _, label in metrics], fontsize=style.SMALL_FONT_PT
         )
         panel.set_ylabel("Change against MF\nrecomputation (%)")
     _panel_label(axes[0], f"(a) {CACHEABLE_CONFIGS[0].replace('x', chr(215))}")
@@ -1270,7 +1275,7 @@ def mf_bp_cost_curves(table: Table, out_dir: Path) -> Path:
             (limit, limit * watts / 3600.0),
             textcoords="offset points",
             xytext=(-2, 2),
-            fontsize=style.SMALL_FONT_PT - 1,
+            fontsize=style.SMALL_FONT_PT,
             color="0.45",
             va="bottom",
             ha="right",
