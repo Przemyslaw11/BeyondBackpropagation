@@ -1259,28 +1259,27 @@ def mf_bp_cost_curves(table: Table, out_dir: Path) -> Path:
     right.set_ylabel("Total GPU energy\n(Wh, NVML)")
     right.set_xlim(0, None)
     right.set_ylim(0, None)
-    # Iso-power guides, drawn once the scatter has settled the limits.
-    limit = right.get_xlim()[1]
+    # Iso-power guides, drawn once the scatter has settled the limits. They are
+    # solid: any dash pattern here reads as a fourth algorithm.
+    limit, top = right.get_xlim()[1], right.get_ylim()[1]
     for watts in (40, 60, 80):
-        right.plot(
-            [0, limit],
-            [0, limit * watts / 3600.0],
-            color="0.72",
-            linewidth=0.5,
-            linestyle=(0, (1, 2)),
-            zorder=1,
-        )
+        slope = watts / 3600.0
+        x_end = min(limit, top / slope)
+        right.plot([0, x_end], [0, slope * x_end], color="0.8", linewidth=0.6, zorder=1)
+        # Labelled mid-span: both ends of panel (b) are occupied by the clusters.
+        x_label = min(0.45 * limit, 0.9 * x_end)
         right.annotate(
             f"{watts} W",
-            (limit, limit * watts / 3600.0),
+            (x_label, slope * x_label),
             textcoords="offset points",
-            xytext=(-2, 2),
+            xytext=(0, 2),
             fontsize=style.SMALL_FONT_PT,
             color="0.45",
             va="bottom",
-            ha="right",
+            ha="center",
         )
     right.set_xlim(0, limit)
+    right.set_ylim(0, top)
     _panel_label(right, "(b)")
 
     handles, labels = _trace_legend(drawn)

@@ -795,7 +795,10 @@ inconclusive rather than reading it as evidence of parity.
   \includegraphics{plots/generated/fig_time_memory_frontier.pdf}
   \vspace{-4pt}
   \caption{Time against memory for \BP{} and the three \MF{} caching
-    strategies. Top row: peak memory allocated by this process
+    strategies. Only the two MNIST-scale configurations appear: random crop
+    and horizontal flip make a cached activation stale by construction, so
+    caching is not defined on the CIFAR tasks and those rungs were never run.
+    Top row: peak memory allocated by this process
     (\texttt{torch.cuda.max\_memory\_allocated}), which excludes the fixed CUDA
     context. Bottom row: peak host resident set size (psutil). The shaded
     quadrant is the region dominated by \MF{} without caching---worse on both
