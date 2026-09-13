@@ -24,9 +24,10 @@ import matplotlib.pyplot as plt
 #: LNCS ``\textwidth`` in millimetres (llncs.cls sets a 122 mm text block).
 TEXTWIDTH_MM = 122.0
 
-#: Base font size in points. The 7 pt floor applies to tick labels only.
+#: Base font size in points. Task 2 allows a 7 pt floor on tick labels, but the
+#: acceptance criterion asks for 8 pt everywhere, so nothing here goes below it.
 BASE_FONT_PT = 8.0
-SMALL_FONT_PT = 7.0
+SMALL_FONT_PT = 8.0
 
 #: Okabe-Ito, the eight-colour palette that survives all common CVD types.
 OKABE_ITO: Dict[str, str] = {
@@ -50,6 +51,8 @@ class SeriesStyle:
     color: str
     linestyle: str
     marker: str
+    #: Six rungs of grouped bars cannot be told apart by lightness alone.
+    hatch: str = ""
 
     def line_kwargs(self, **overrides) -> Dict:
         kwargs = {
@@ -65,14 +68,14 @@ class SeriesStyle:
 # Linestyle and marker vary with colour so every panel reads in greyscale.
 SERIES: Dict[str, SeriesStyle] = {
     "bp": SeriesStyle("BP", OKABE_ITO["black"], "-", "o"),
-    "bp_ds": SeriesStyle("BP-DS", OKABE_ITO["orange"], "--", "s"),
-    "mf_joint": SeriesStyle("MF-Joint", OKABE_ITO["sky_blue"], "-.", "^"),
-    "mf_recompute": SeriesStyle("MF", OKABE_ITO["bluish_green"], ":", "D"),
+    "bp_ds": SeriesStyle("BP-DS", OKABE_ITO["orange"], "--", "s", "///"),
+    "mf_joint": SeriesStyle("MF-Joint", OKABE_ITO["sky_blue"], "-.", "^", "..."),
+    "mf_recompute": SeriesStyle("MF", OKABE_ITO["bluish_green"], ":", "D", "\\\\\\"),
     "mf_cache_device": SeriesStyle(
-        "MF-cache-device", OKABE_ITO["blue"], (0, (3, 1, 1, 1)), "v"
+        "MF-cache-device", OKABE_ITO["blue"], (0, (3, 1, 1, 1)), "v", "xxx"
     ),
     "mf_cache_host": SeriesStyle(
-        "MF-cache-host", OKABE_ITO["reddish_purple"], (0, (5, 1)), "P"
+        "MF-cache-host", OKABE_ITO["reddish_purple"], (0, (5, 1)), "P", "---"
     ),
     "ff": SeriesStyle("FF", OKABE_ITO["vermillion"], "--", "s"),
     "cafo_rand": SeriesStyle("CaFo-Rand-CE", OKABE_ITO["orange"], "--", "s"),
@@ -129,6 +132,7 @@ def apply_style() -> None:
             "lines.markersize": 3.0,
             "lines.markeredgewidth": 0.6,
             "patch.linewidth": 0.6,
+            "hatch.linewidth": 0.35,
             "xtick.major.width": 0.5,
             "ytick.major.width": 0.5,
             "xtick.minor.width": 0.4,

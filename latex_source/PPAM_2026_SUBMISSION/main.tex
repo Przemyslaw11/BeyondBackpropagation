@@ -359,9 +359,11 @@ A strict set of protocols was adhered to for all experiments:
         consistent early stopping protocol based on validation
         performance~\cite{prechelt1998early}.
   \item \textbf{Fixed Random Seeds:} All sources of randomness were
-        fixed. Three independent runs used seeds 42, 123, and 7. Full
-        seeding and augmentation details are in
-        the supplementary material.
+        fixed. The submitted version used three seeds (42, 123, 7); every
+        result reported here has been re-measured over at least five, and
+        the \BP{}$\to$\MF{} ladder over twenty or more. Per-table seed
+        counts are given in the captions. Full seeding and augmentation
+        details are in the supplementary material.
 \end{enumerate}
 
 \paragraph{Note on Baseline Completeness.}
@@ -420,10 +422,13 @@ and occupied, so no modelling assumption about the workload enters the
 efficiency figures. The full metric suite is:
 \begin{itemize}
   \item \textbf{Performance:} Test-set classification accuracy
-        (mean~$\pm$~std across three independent runs).
+        (mean~$\pm$~SD across the seeds listed in each caption).
   \item \textbf{Efficiency (Direct Measurement):} Training time
         (\si{\second}), energy consumption (\si{\watt\hour}, via NVML),
-        and peak GPU memory (\si{\mebibyte}, via NVML). Exact NVML API
+        and peak GPU memory (\si{\mebibyte}). Memory is reported both
+        device-wide via NVML and per-process via the \texttt{torch}
+        allocator; the two differ by the fixed CUDA context and the
+        tables state which is used. Exact NVML API
         usage is in the supplementary material.
   \item \textbf{Estimated CO$_2$e and GFLOPs
         (Repository Only):} Available at the public
@@ -438,10 +443,11 @@ efficiency figures. The full metric suite is:
 % ============================================================
 
 The experiments reveal a progression among BP-free algorithms with
-distinct accuracy--efficiency trade-offs, culminating in \MF{}'s favourable
-profile on MLP architectures. Results are reported as
-mean~$\pm$~standard deviation across three independent runs
-(seeds~42,~123,~7).
+distinct accuracy--efficiency trade-offs. Under a stopping rule applied
+uniformly to every algorithm, none of the three is cheaper than \BP{};
+what separates them is how they spend the extra cost and what they buy
+with it. Results are reported as mean~$\pm$~SD over the seed counts
+given in each caption.
 
 % ---- 5.1 ---------------------------------------------------
 \needspace{3\baselineskip}
@@ -449,46 +455,25 @@ mean~$\pm$~standard deviation across three independent runs
 Starting Point}
 
 {\looseness=-1
-The experiments confirmed that \FF{} achieves competitive accuracy on its
-native MLP architectures, validating its core premise. However, this
-comes at a prohibitive efficiency cost
-(Table~\ref{tab:ff_bp_mlp_summary}), with slow and volatile convergence
-causing up to a~13$\times$ longer training time (Fashion-MNIST
-4$\times$2000; see supplementary material) and nearly
-10$\times$ greater energy use on the same configuration
-compared to the \BP{} baseline.
-The accuracy advantage over \BP{} was modest ($\leq$0.75~pp) and the
-efficiency penalty was severe, raising the question of whether the
-accuracy margin justifies the cost.
+\FF{} trains to accuracy comparable with \BP{} on its native MLP
+architectures, which validates its core premise, but it does so at a
+prohibitive efficiency cost (Table~\ref{tab:ff_bp_mlp_summary}). On the
+Fashion-MNIST 4$\times$2000 MLP it takes \num{7.4}$\times$ longer and
+draws \num{6.3}$\times$ the energy of the \BP{} baseline; on MNIST
+4$\times$2000 the corresponding factors are \num{6.5}$\times$ and
+\num{5.9}$\times$. The accuracy advantage claimed in the submitted
+version does not survive re-measurement. The submitted \FF{} numbers were
+produced by a checkpoint-selection defect that restored an epoch-2
+network whenever the stopping metric was a loss rather than an accuracy;
+with that corrected and seven seeds per arm, \FF{} is \num{0.70}~pp
+\emph{below} \BP{} on Fashion-MNIST
+($\text{CI}=[-\num{0.87},-\num{0.54}]$) and indistinguishable from it on
+MNIST ($-\num{0.06}$~pp, $[-\num{0.21},+\num{0.07}]$). The efficiency
+penalty is therefore not purchased by an accuracy margin; there is no
+margin.
 \par}
 
-\begin{table}[tb]
-  \centering
-  \caption{Performance and efficiency: \FF{} vs.\ \BP{} on the
-    Fashion-MNIST 4$\times$2000 MLP (mean~$\pm$~std, 3~runs;
-    seeds 42, 123, 7). Better result in each column is shown in
-    \textbf{bold}. Time and Energy cover full training to early
-    stopping. Memory is peak GPU allocation reported by NVML\@.}
-  \label{tab:ff_bp_mlp_summary}
-  \setlength{\tabcolsep}{4pt}%
-  \small
-  \begin{tabular}{l
-      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
-      S[table-format=3.2] @{\,$\pm$\,} S[table-format=2.1]
-      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
-      S[table-format=4.0] @{\,$\pm$\,} S[table-format=1.0]}
-    \toprule
-    {Algorithm} &
-      \multicolumn{2}{c}{Accuracy (\%)} &
-      \multicolumn{2}{c}{Time (\si{\second})} &
-      \multicolumn{2}{c}{Energy (\si{\watt\hour})} &
-      \multicolumn{2}{c}{\shortstack[c]{Peak Mem \\ (\si{\mebibyte})}} \\
-    \midrule
-    \FF{}-AdamW    & \bfseries 89.63 & \bfseries 0.14 & 574.60 & 22.4 & 14.28 & 0.57 & 1190 & 8 \\
-    \BP{} Baseline & 88.88 & 0.08 & \bfseries 43.09 & \bfseries 1.2 & \bfseries 1.48 & \bfseries 0.05 & \bfseries 1168 & \bfseries 4 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\input{tables/generated/ff_bp_mlp_summary}
 
 The cost is not a matter of power draw
 (Figure~\ref{fig:ff_convergence_dynamics}): \FF{} and \BP{} sit at comparable
@@ -511,7 +496,7 @@ advantage.
     Fashion-MNIST 4$\times$2000 MLP, integrated from the NVML power trace
     (\SI{5}{\hertz}, \texttt{nvmlDeviceGetPowerUsage}). \FF{} draws comparable
     power but runs roughly \num{7} times longer, so it ends at several times
-    \BP{}'s energy for statistically indistinguishable accuracy.
+    \BP{}'s energy while finishing \num{0.70}~pp below it on accuracy.
     Per-epoch convergence curves are not shown: every \FF{} run with per-epoch
     history in the run archive predates the evaluation fix of commit
     \texttt{9a14332} and therefore reports an epoch-2 network, and the corrected
@@ -541,56 +526,24 @@ advantage.
 \needspace{3\baselineskip}
 \subsection{\CaFo{}: A Structured Alternative with Acute Trade-offs}
 
-The \CaFo{} algorithm, evaluated on its native 3-block CNN, revealed a
-stark accuracy--efficiency trade-off contingent on its feature-learning
-strategy. The \texttt{CaFo-Rand-CE} variant, using randomly
-initialised fixed feature extractors, offered modest efficiency gains
-but at the cost of a significant 13.23~percentage-point
-accuracy drop on CIFAR-10 relative to \BP{}\@. The \texttt{CaFo-DFA-CE}
-variant substantially improved accuracy but proved exceptionally
-resource-intensive, consuming over four times more energy than
-\BP{} on CIFAR-10. Table~\ref{tab:cafo_bp_cnn_summary} quantifies both
-sides of this trade-off on that configuration.
+The \CaFo{} algorithm, evaluated on its native 3-block CNN, shows a stark
+accuracy--efficiency trade-off contingent on its feature-learning
+strategy---but neither variant is efficient. Re-measured on the current
+cluster with five seeds, \CaFoRand{} is \num{3.7}$\times$ slower and draws
+\num{3.2}$\times$ the energy of \BP{} on CIFAR-10 while losing
+\num{18.8}~pp of accuracy, and \CaFoDFA{} recovers much of that accuracy
+only by spending \num{7.9}$\times$ the time and \num{8.3}$\times$ the
+energy. Across all four datasets the time penalty ranges from
+\num{3.6}$\times$ to \num{10.5}$\times$ and the energy penalty from
+\num{2.9}$\times$ to \num{10.9}$\times$. The one genuine win is memory:
+\CaFoRand{} holds \num{16}\% less peak per-process device memory than
+\BP{} on CIFAR-10, because its fixed random extractors need no backward
+pass. Table~\ref{tab:cafo_bp_cnn_summary} quantifies the trade-off on
+that configuration. These figures replace the back-ported values of the
+submitted version, which were measured on an earlier software stack and
+overstated \CaFo{}'s standing considerably.
 
-% PROVISIONAL DATA: the three-seed figures below are recovered from the
-% archived 2025 runs (NVIDIA driver 570.86.15) and were reconfirmed by
-% reparsing the per-run logs. They must be regenerated on the current
-% cluster (driver 595.71.05) before the paper is finalised.
-\begin{table}[tb]
-  \centering
-  \caption{Performance and efficiency: \CaFo{} variants vs.\ \BP{} on the
-    CIFAR-10 3-block CNN (mean~$\pm$~std, 3~runs).
-    Better result in each column is shown in \textbf{bold}.
-    Time and Energy cover full training to early stopping and include
-    the \CaFoDFA{} block-pretraining stage.
-    Memory is peak GPU allocation reported by NVML\@; it is a
-    device-wide reading that includes the CUDA context and so separates
-    the algorithms only weakly (see
-    Section~\ref{sec:discussion_memory}).
-    These figures are provisional: they were measured on an earlier
-    revision of the cluster software stack and are pending regeneration
-    in the environment reported above.}
-  \label{tab:cafo_bp_cnn_summary}
-  \setlength{\tabcolsep}{4pt}%
-  \small
-  \begin{tabular}{l
-      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
-      S[table-format=4.2] @{\,$\pm$\,} S[table-format=2.2]
-      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
-      S[table-format=4.0] @{\,$\pm$\,} S[table-format=1.0]}
-    \toprule
-    {Algorithm} &
-      \multicolumn{2}{c}{Accuracy (\%)} &
-      \multicolumn{2}{c}{Time (\si{\second})} &
-      \multicolumn{2}{c}{Energy (\si{\watt\hour})} &
-      \multicolumn{2}{c}{\shortstack[c]{Peak Mem \\ (\si{\mebibyte})}} \\
-    \midrule
-    \CaFoRand{}    & 66.09 & 0.32 & \bfseries 332.79 & \bfseries 61.94 & \bfseries 5.50 & \bfseries 1.00 & \bfseries 1014 & \bfseries 0 \\
-    \CaFoDFA{}     & 77.60 & 0.25 & 1314.38 & 37.66 & 27.37 & 0.44 & 1128 & 0 \\
-    \BP{} Baseline & \bfseries 79.32 & \bfseries 3.99 & 339.51 & 18.66 & 6.81 & 0.46 & 1114 & 0 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\input{tables/generated/cafo_bp_cnn_summary}
 
 Figure~\ref{fig:cafo_convergence} illustrates these distinct convergence
 patterns on Fashion-MNIST. The flat initial segment in the
@@ -625,64 +578,42 @@ across all datasets.
 
 % ---- 5.3 ---------------------------------------------------
 \needspace{3\baselineskip}
-\subsection{\MF{}: A Superior Accuracy--Efficiency Profile on MLP
-Architectures}
+\subsection{\MF{}: Higher Accuracy and Lower Memory, at a Higher Total
+Cost}
 
-The Mono-Forward algorithm consistently matched or surpassed \BP{}
-classification accuracy on all tested MLP architectures
-(Table~\ref{tab:mf_bp_perf_eff_summary}). The accuracy advantage was
-+0.51~pp on Fashion-MNIST and +1.21~pp on
-CIFAR-10, the most complex tested configuration.
+Mono-Forward matches or surpasses \BP{} accuracy on every tested MLP
+architecture, and the margin widens with task difficulty: $+\num{0.19}$~pp
+on MNIST, $+\num{0.01}$~pp on Fashion-MNIST, $+\num{3.90}$~pp on CIFAR-10
+and $+\num{5.04}$~pp on CIFAR-100, each over twenty seeds
+(Table~\ref{tab:mf_bp_perf_eff_summary}). It also holds materially less
+per-process device memory on the wider models---\num{27}\% less on
+CIFAR-10 and \num{25}\% less on CIFAR-100---which is the structural
+consequence of never storing a global activation graph.
 Note that CIFAR-10 accuracy for MLP architectures is substantially lower
 than CNN-based state-of-the-art owing to the elimination of spatial
 structure via flattening; the comparison here is strictly between an
 MLP-based \MF{} and an MLP-based \BP{} baseline on identical architectures.
-The accuracy margins are modest, and as noted in the statistical note
-above, with only three runs their statistical robustness cannot be
-formally established; they are empirical observations, not confirmed
-claims.
 
-\begin{table}[tb]
-  \centering
-  \caption{Performance and efficiency: \MF{} vs.\ \BP{} on the CIFAR-10
-    3$\times$2000 MLP (mean~$\pm$~std, 3~runs; seeds 42, 123, 7).
-    Better result in each column is shown in \textbf{bold}.
-    Time and Energy cover full training to early stopping.
-    Memory is peak GPU allocation reported by NVML\@.
-    CIFAR-10 inputs are flattened to 3072-dimensional vectors
-    following the \MF{} protocol. Peak Mem bold reflects a $\sim$5\%
-    margin; see Section~\ref{sec:discussion_memory} for discussion.}
-  \label{tab:mf_bp_perf_eff_summary}
-  \setlength{\tabcolsep}{4pt}%
-  \small
-  \begin{tabular}{l
-      S[table-format=2.2] @{\,$\pm$\,} S[table-format=1.2]
-      S[table-format=3.2] @{\,$\pm$\,} S[table-format=1.1]
-      S[table-format=1.2] @{\,$\pm$\,} S[table-format=1.2]
-      S[table-format=4.0] @{\,$\pm$\,} S[table-format=1.0]}
-    \toprule
-    {Algorithm} &
-      \multicolumn{2}{c}{Accuracy (\%)} &
-      \multicolumn{2}{c}{Time (\si{\second})} &
-      \multicolumn{2}{c}{Energy (\si{\watt\hour})} &
-      \multicolumn{2}{c}{\shortstack[c]{Peak Mem \\ (\si{\mebibyte})}} \\
-    \midrule
-    \MF{}          & \bfseries 62.34 & \bfseries 0.28 & \bfseries 177.70 & \bfseries 7.1 & \bfseries 3.17 & \bfseries 0.12 & \bfseries 1120 & \bfseries 9 \\
-    \BP{} Baseline & 61.13 & 0.35 & 268.45 & 8.1 & 5.35 & 0.19 & 1184 & 5 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+What does not hold is the efficiency claim. Under a stopping rule applied
+per stage to \MF{} and per epoch to \BP{}---the submitted protocol---\MF{}
+appeared \num{33.8}\% faster. Under the harmonised rule it is
+\num{4.0}$\times$ slower and draws \num{3.2}$\times$ the energy on
+CIFAR-10, with the same pattern on all four configurations.
+Section~\ref{sec:ladder} isolates which architectural choice is
+responsible.
+
+\input{tables/generated/mf_bp_perf_eff_summary}
 
 {\looseness=-1
-On Fashion-MNIST, \MF{} achieved higher accuracy (+0.51~pp) at the cost of
-modestly increased training time (+18.20\%) and energy consumption
-(+9.90\% relative to \BP{}), as reported in
-the supplementary material. This configuration represents
-an empirical trade-off: higher accuracy is accompanied by slightly
-higher resource use. On CIFAR-10, the most demanding tested
-configuration, \MF{} was 33.81\% faster and consumed
-40.78\% less energy than \BP{} while achieving higher accuracy,
-representing the strongest case for \MF{}'s efficiency advantage.
+The submitted version reported the opposite conclusion---\MF{}
+\num{33.81}\% faster and \num{40.78}\% less energy-hungry on
+CIFAR-10---and that figure is reproducible, but only under the legacy
+protocol, in which \MF{}'s per-stage patience is spent once per layer
+while \BP{}'s is spent once for the whole network. That comparison
+charges the two algorithms different amounts of training before either
+is allowed to stop, so the efficiency it reports is an artefact of the
+stopping rule rather than a property of the update. Equalising the rule
+reverses the sign.
 \par}
 
 {\looseness=-1
@@ -728,9 +659,11 @@ hypothesis in Section~\ref{sec:discussion_why_mf}.
   \includegraphics{plots/generated/fig_mf_bp_cost_curves.pdf}
   \vspace{-4pt}
   \caption{What a training run costs, on the CIFAR-10 3$\times$2000 MLP\@.
-    (a) Cumulative GPU energy against wall-clock time for the
-    median-duration run of each ladder rung, integrated from the NVML power
-    trace; the end marker is the total. (b) Every seed, total energy against
+    (a) Cumulative GPU energy against wall-clock time, integrated from the
+    NVML power trace of all \num{20} seeds per rung; the line is the seed mean
+    and the band its bootstrap 95\% CI\@. A seed that has finished is held at
+    its own total, so each curve flattens at its completion time and the marker
+    is the mean of those times. (b) Every seed, total energy against
     training time, with iso-power guides. All four rungs sit near the same
     power draw, so energy is set almost entirely by how long the run takes.
     A validation-loss comparison is not shown: \MF{} optimises a separate local

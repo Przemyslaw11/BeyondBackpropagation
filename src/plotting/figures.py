@@ -52,11 +52,11 @@ CACHEABLE_CONFIGS: Tuple[str, ...] = ("MNIST 2x1000", "Fashion-MNIST 2x1000")
 
 #: RUNG_TRANSITIONS carries prose labels; at 122 mm they collide.
 SHORT_TRANSITION: Tuple[str, ...] = (
-    "aux.\nsuperv.",
-    "readout\n$M_L$",
-    "grad.\nlocality",
-    "cache\n(dev.)",
-    "cache\n(host)",
+    "aux. superv.",
+    "readout $M_L$",
+    "grad. locality",
+    "cache (dev.)",
+    "cache (host)",
 )
 
 SHORT_CONFIG: Dict[str, str] = {
@@ -203,6 +203,55 @@ def trace_of(row: Dict[str, str]) -> Dict[str, np.ndarray]:
     return out
 
 
+def _energy_band(
+    rows: Sequence[Dict[str, str]], grid: np.ndarray
+) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, int, float]]:
+    """Bootstrap mean cumulative energy across seeds on a shared wall clock.
+
+    Runs stop at different times, so each seed's curve is held at its own final
+    total past its end: "energy this job had drawn by time t" is defined for a
+    finished job, and truncating to the shortest run would discard the very
+    difference the panel exists to show.
+    """
+    curves = []
+    ends = []
+    for row in rows:
+        trace = trace_of(row)
+        times, power = trace.get("timestamp_sec"), trace.get("power_watts")
+        if times is None or power is None:
+            continue
+        finite = np.isfinite(power)
+        times, power = times[finite], power[finite]
+        if times.size < 2:
+            continue
+        energy = (
+            np.concatenate(
+                [[0.0], np.cumsum(np.diff(times) * 0.5 * (power[1:] + power[:-1]))]
+            )
+            / 3600.0
+        )
+        curves.append(np.interp(grid, times, energy, left=0.0, right=energy[-1]))
+        ends.append(float(times[-1]))
+    if not curves:
+        return None
+
+    stack = np.vstack(curves)
+    count = stack.shape[0]
+    rng = _rng()
+    draws = np.empty((N_BOOTSTRAP, grid.size), dtype=float)
+    for start in range(0, N_BOOTSTRAP, 500):
+        stop = min(start + 500, N_BOOTSTRAP)
+        index = rng.integers(0, count, size=(stop - start, count))
+        draws[start:stop] = stack[index].mean(axis=1)
+    return (
+        stack.mean(axis=0),
+        np.percentile(draws, 2.5, axis=0),
+        np.percentile(draws, 97.5, axis=0),
+        count,
+        float(np.mean(ends)),
+    )
+
+
 def _panel_label(axes, text: str) -> None:
     axes.text(
         -0.02,
@@ -327,8 +376,11 @@ def ladder_waterfall(table: Table, out_dir: Path) -> Path:
 
     left.set_xticks(range(len(rungs) + 1))
     left.set_xticklabels(
-        ["BP"] + list(SHORT_TRANSITION[: len(rungs) - 1]) + ["MF\ntotal"],
+        ["BP"] + list(SHORT_TRANSITION[: len(rungs) - 1]) + ["MF total"],
         fontsize=style.SMALL_FONT_PT,
+        rotation=30,
+        ha="right",
+        rotation_mode="anchor",
     )
     left.set_ylabel("Training energy\n(% of BP)")
     left.set_ylim(0, max(relative) * 1.22)
@@ -361,7 +413,13 @@ def ladder_waterfall(table: Table, out_dir: Path) -> Path:
         )
     right.axhline(0.0, color="0.3", linewidth=0.6, zorder=3)
     right.set_xticks(positions)
-    right.set_xticklabels(SHORT_TRANSITION, fontsize=style.SMALL_FONT_PT)
+    right.set_xticklabels(
+        SHORT_TRANSITION,
+        fontsize=style.SMALL_FONT_PT,
+        rotation=30,
+        ha="right",
+        rotation_mode="anchor",
+    )
     right.set_xlim(-0.75, len(RUNG_TRANSITIONS) - 0.25)
     right.set_ylabel("Contribution to energy\nchange (pp of BP)")
     right.legend(loc="upper left", fontsize=style.SMALL_FONT_PT, ncol=1)
@@ -379,7 +437,7 @@ def ladder_power(table: Table, out_dir: Path) -> Path:
     mean power is its rate-equivalent and comes straight from NVML.
     """
     fig, (left, right) = plt.subplots(
-        1, 2, figsize=style.figure_size(1.0, height_in=2.05)
+        1, 2, figsize=style.figure_size(1.0, height_in=2.6)
     )
 
     positions = np.arange(len(LADDER_CONFIGS))
@@ -417,7 +475,9 @@ def ladder_power(table: Table, out_dir: Path) -> Path:
                 centres,
                 width=width,
                 color=spec.color,
-                edgecolor="none",
+                hatch=spec.hatch,
+                edgecolor="white",
+                linewidth=0.0,
                 zorder=2,
             )
             axes.errorbar(
@@ -432,7 +492,11 @@ def ladder_power(table: Table, out_dir: Path) -> Path:
             )
         axes.set_xticks(positions)
         axes.set_xticklabels(
-            [SHORT_CONFIG[c] for c in LADDER_CONFIGS], fontsize=style.SMALL_FONT_PT
+            [SHORT_CONFIG[c].replace("\n", " ") for c in LADDER_CONFIGS],
+            fontsize=style.SMALL_FONT_PT,
+            rotation=32,
+            ha="right",
+            rotation_mode="anchor",
         )
         axes.set_ylabel(label)
 
@@ -442,9 +506,17 @@ def ladder_power(table: Table, out_dir: Path) -> Path:
     _panel_label(right, "(b)")
 
     handles, labels = _legend_entries(rungs_drawn)
-    handles = [Patch(facecolor=style.series(r).color) for r in rungs_drawn]
+    handles = [
+        Patch(
+            facecolor=style.series(r).color,
+            hatch=style.series(r).hatch,
+            edgecolor="white",
+            linewidth=0.0,
+        )
+        for r in rungs_drawn
+    ]
     style.shared_legend(fig, handles, labels, ncol=len(rungs_drawn) // 2 or 1)
-    fig.get_layout_engine().set(rect=(0, 0.14, 1, 0.86))
+    fig.get_layout_engine().set(rect=(0, 0.11, 1, 0.89))
     return style.save(fig, out_dir / "fig_ladder_power.pdf")
 
 
@@ -686,7 +758,7 @@ def equivalence_forest(table: Table, out_dir: Path) -> Path:
     labels = [
         "equivalent",
         "different",
-        "inconclusive (underpowered)",
+        "inconclusive",
         f"$\\pm${EQUIVALENCE_MARGIN_PP} pp margin",
     ]
     style.shared_legend(fig, handles, labels, ncol=4)
@@ -934,7 +1006,7 @@ def cafo_profile(table: Table, out_dir: Path) -> Path:
         1,
         2,
         figsize=style.figure_size(1.0, height_in=2.0),
-        width_ratios=(1.3, 1.0),
+        width_ratios=(1.8, 1.0),
     )
 
     positions = np.arange(len(datasets))
@@ -1017,7 +1089,7 @@ def mf_hardware(table: Table, out_dir: Path) -> Path:
     _panel_label(util, "(b)")
 
     _plot_trace(memory, scope, entries, "gpu_mem_used_mib")
-    memory.set_ylabel("GPU memory (MiB,\ndevice-wide incl. context)")
+    memory.set_ylabel("GPU memory (MiB,\ndevice-wide)")
     _panel_label(memory, "(c)")
 
     for axes in (power, util, memory):
@@ -1050,7 +1122,7 @@ def diag_early_stopping(table: Table, out_dir: Path) -> Path:
         ("CIFAR-10 3x2000", "mf_cifar10_mlp_3x2000_equal_epochs"),
         ("CIFAR-100 3x2000", "mf_cifar100_mlp_3x2000_equal_epochs"),
     )
-    fig, axes = plt.subplots(1, 3, figsize=style.figure_size(1.0, height_in=2.0))
+    fig, axes = plt.subplots(1, 3, figsize=style.figure_size(1.0, height_in=2.7))
     metrics = (
         ("training_duration_sec", "Training time (s)"),
         ("total_gpu_energy_wh", "Total GPU energy (Wh)"),
@@ -1106,7 +1178,7 @@ def diag_early_stopping(table: Table, out_dir: Path) -> Path:
 
     handles = [Patch(facecolor=colour) for _, _, colour in series]
     style.shared_legend(fig, handles, [name for _, name, _ in series], ncol=3)
-    fig.get_layout_engine().set(rect=(0, 0.14, 1, 0.86))
+    fig.get_layout_engine().set(rect=(0, 0.10, 1, 0.90))
     return style.save(fig, out_dir / "fig_diag_early_stopping.pdf")
 
 
@@ -1192,34 +1264,40 @@ def mf_bp_cost_curves(table: Table, out_dir: Path) -> Path:
         1, 2, figsize=style.figure_size(1.0, height_in=2.0)
     )
 
+    seeded = {
+        rung: [r for r in scope.where(rung=rung, metric="test_accuracy").rows]
+        for rung, _ in entries
+    }
+    horizon = max(
+        (
+            trace["timestamp_sec"][-1]
+            for rows in seeded.values()
+            for trace in (trace_of(row) for row in rows)
+            if trace.get("timestamp_sec") is not None
+            and trace["timestamp_sec"].size
+        ),
+        default=0.0,
+    )
+    grid = np.linspace(0.0, horizon, 160)
+
     drawn: List[str] = []
     for rung, key in entries:
-        row = representative(scope, rung=rung)
-        if row is None:
+        band = _energy_band(seeded[rung], grid)
+        if band is None:
             continue
-        trace = trace_of(row)
-        if not trace:
-            continue
-        times, power = trace["timestamp_sec"], trace["power_watts"]
-        finite = np.isfinite(power)
-        times, power = times[finite], power[finite]
-        energy = (
-            np.concatenate(
-                [[0.0], np.cumsum(np.diff(times) * 0.5 * (power[1:] + power[:-1]))]
-            )
-            / 3600.0
-        )
+        mean, low, high, _, mean_end = band
         spec = style.series(key)
+        left.fill_between(grid, low, high, color=spec.color, alpha=0.18, linewidth=0)
         left.plot(
-            times,
-            energy,
+            grid,
+            mean,
             color=spec.color,
             linestyle=TRACE_DASHES[len(drawn) % len(TRACE_DASHES)],
             linewidth=1.0,
         )
         left.plot(
-            times[-1],
-            energy[-1],
+            mean_end,
+            np.interp(mean_end, grid, mean),
             color=spec.color,
             marker=spec.marker,
             markersize=3.5,
