@@ -1153,6 +1153,130 @@ latex_source/review.tex (all five reviews, in full); latex_source/PPAM_2026_SUBM
 main.tex; the Phase 2 report containing the original early-stopping settings table; the
 Phase 3 analysis output; the Phase 4 old-versus-new hyperparameter tables.
 
+---
+### INHERITED STATE FROM PHASE 5 — read this before your first command
+
+**Repository.** Local `main` and the Athena clone are both at `20c3326`, identical, clean
+apart from an untracked `Phase3_report.md` that predates this work. `pytest tests/` is
+**89 passed, 6 subtests**. `results/runs` is still **712** JSONs and must stay there.
+`git push` to GitHub STILL fails with 403 (`Permission to
+Przemyslaw11/BeyondBackpropagation.git denied to pspyra11`) — roughly 35 commits exist on
+exactly two machines, one of them a cluster home directory that has already overflowed its
+quota once. Raise it with the user; do not attempt credential surgery. Sync recipe:
+```bash
+REMOTE=$(ssh athena 'cd ~/BeyondBackpropagation && git rev-parse HEAD')
+git bundle create /tmp/bbp_sync.bundle main --not "$REMOTE"
+scp -q /tmp/bbp_sync.bundle athena:~/bbp_sync.bundle
+ssh athena 'cd ~/BeyondBackpropagation && git pull -q ~/bbp_sync.bundle main && rm -f ~/bbp_sync.bundle'
+```
+
+**THE PAGE BUDGET IS ALREADY BLOWN. The paper builds at 21 pages against a 15-page
+limit.** Every task below adds text. Plan the cut before you write a word: the constraint
+section already pre-authorises moving the search-space table and the environment listing
+to the public repository. Assume you must remove roughly a third of the current body.
+
+**What Phase 5 built — you do not transcribe numbers any more, you regenerate them.**
+| Artefact | Path | Regenerate with |
+|---|---|---|
+| Tidy table (19944 rows, 996 runs) | `artifacts/tidy/runs.csv` | `src/plotting/tidy.py` |
+| 9 paper figures | `latex_source/PPAM_2026_SUBMISSION/plots/generated/*.pdf` | `scripts/make_figures.py` |
+| 2 diagnostic figures (letter only) | `artifacts/figures/diagnostics/*.pdf` | `scripts/make_figures.py` |
+| 3 result tables | `latex_source/PPAM_2026_SUBMISSION/tables/generated/*.tex` | `scripts/make_tables.py` |
+
+Run everything with `PYTHONPATH=. .venv-local/bin/python`. Figures and tables are
+byte-identical across runs, so a stale number appears as a git diff. Build the paper with
+`latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=/tmp/ppam_build main.tex`.
+
+Figure labels: `fig:ff_convergence_dynamics`, `fig:ff_resource_utilization`,
+`fig:cafo_convergence`, `fig:mf_hardware_and_memory`, `fig:mf_bp_cifar10_mlp_conv_curves`,
+`fig:ladder_waterfall`, `fig:time_memory_frontier`, `fig:equivalence_forest`.
+Table labels: `tab:ff_bp_mlp_summary`, `tab:cafo_bp_cnn_summary`,
+`tab:mf_bp_perf_eff_summary`. A new §5.4 "Where the Cost Comes From" (`sec:ladder`)
+already holds the three new figures and three paragraphs of attribution — task 2 below is
+partly done; extend it rather than duplicating it.
+
+**Numbers you will need, all verified against the tidy table.**
+- Gradient locality adds **+228 to +272 pp** of BP's energy on all four configurations.
+  Auxiliary supervision and the readout together move it by at most 40 pp and partly
+  cancel on CIFAR. Locality is the whole story; caching contributes nothing.
+- Cache-host adds a further **+261 pp** (MNIST) / **+441 pp** (Fashion). Both cache rungs
+  sit inside the quadrant dominated by plain recomputation.
+- Of 28 accuracy contrasts: **11 equivalent, 16 different, 1 inconclusive**. The
+  inconclusive one is CaFo-DFA vs BP on the Fashion CNN, `[-0.03, +0.61]` pp at n=5.
+- Real paired seed counts — **the submitted tables saying "3 runs; seeds 42, 123, 7" were
+  wrong**: FF n=7, CaFo n=5, ladder bp/bp_ds n=60 (MNIST) and n=122 (Fashion), MF rungs
+  n=20 (mf_recompute on Fashion n=48). R4b and R5c are closed by a much larger margin than
+  the submitted text claims.
+- Iso-compute diagnostic: MF's time and energy collapse to BP's level while accuracy drops
+  ~5 pp on CIFAR-10 (66.4 -> 61.3). **MF's cost is dominated by the per-stage stopping
+  rule, not by the algorithm.** This belongs in the letter.
+
+**THE R3c ANSWER IS A SPLIT RESULT. Do not over-generalise it in either direction.**
+Deep supervision was demanded as "the only way to prove" the claim. Measured, MF minus
+BP-DS in accuracy:
+
+| Configuration | MF - BP-DS | 95% CI | n | Verdict |
+|---|---|---|---|---|
+| MNIST 2x1000 | +0.11 pp | [-0.01, +0.23] | 20 | **equivalent** |
+| Fashion-MNIST 2x1000 | -0.06 pp | [-0.17, +0.06] | 48 | **equivalent** |
+| CIFAR-10 3x2000 | +5.56 pp | [+5.37, +5.74] | 20 | **different** |
+| CIFAR-100 3x2000 | +6.10 pp | [+5.88, +6.31] | 20 | **different** |
+
+On the MNIST-scale tasks auxiliary supervision alone reproduces MF's accuracy, so locality
+buys nothing there. On CIFAR it does not, and MF's margin is large and fully resolved.
+Note also that BP-DS is *worse* than plain BP on CIFAR (-1.65 and -1.06 pp, both
+resolved), which is itself a finding. The pre-approved abstract reframing therefore fires
+on the small tasks and not on CIFAR — say exactly that rather than picking the half that
+reads better.
+
+**Claims in the submitted text that the new data contradicts.** Phase 5 already corrected
+these four in `main.tex`; do not reintroduce them, and check the rest of the prose for the
+same pattern.
+1. FF's "volatile GPU clock speeds ... indicate inefficient hardware saturation" — both BP
+   and FF hold the SM clock near **1280 MHz**. Throttling is ruled out, not demonstrated.
+2. MF's "reduced thermal profile" — that panel is gone; a 3 degC spread on a 23-30 degC
+   axis was never evidence.
+3. MF "finishing earlier" than BP — MF runs ~970 s against BP's ~250 s on CIFAR-10 3x2000.
+4. "MF converges to a lower final validation loss" — **no such series exists.** MF logs
+   only `Layer_M0/*` per epoch. A layer-local objective is not the network's validation
+   loss, and no global MF validation curve was ever recorded, in any source.
+
+**Traps that will bite you.**
+- **Task 4 below cites `mf_3.png` for "BP at 16-17% and MF at 9-11% GPU utilisation".
+  That file is a W&B UI export and is retired.** Re-derive utilisation from
+  `trace_mean_gpu_util_percent` in the tidy table before quoting any figure for it. The
+  launch-bound observation is probably sound; the specific percentages are not yet verified
+  against NVML.
+- Every hardware trace now comes from `results/monitoring/*.csv` at ~5 Hz: NVML for power,
+  utilisation, clock, temperature and device memory; **psutil for `process_rss_mib`, which
+  is a HOST metric**; host monotonic clock for timestamps. Task 6's instrument attribution
+  must reflect that split. The W&B archive is not a source of the tidy table at all.
+- `peak_gpu_mem_used_mib` is device-wide and ~95% CUDA context; `peak_torch_alloc_mib` is
+  the honest per-process figure. The generated tables use the latter and say so.
+- Task 5's "GPU-only energy accounting gap" is real and now measurable: NVML cannot see the
+  CPU and PCIe energy that the host-cache variant moves off-instrument.
+- `epochs_completed`, `gpu_energy_wh_per_epoch` and `training_sec_per_epoch` exist only in
+  the Phase 4 records — **0/712 on the ladder and 0/80 on iso-compute**. Any per-epoch
+  claim about the ladder cannot be supported. `test_loss` is 524/712 and 0/80.
+- The shell auto-prefixes `rtk`, which rewrites some commands and swallows piped output.
+  `rtk grep -h` collides with rtk's own help flag. Prefer the editor's file tools.
+
+**Open items Phase 5 handed over rather than closed.**
+1. **Visual QA of the figures is incomplete.** `SMALL_FONT_PT` was raised from 7 to 8 pt in
+   the final commit and the panels were re-fitted around it; tests and the build pass, but
+   only one figure was inspected afterwards. Re-render all eleven in colour AND greyscale
+   and look at them before the camera-ready goes out:
+   `pdftoppm -png [-gray] -r 300 -singlefile <pdf> artifacts/preview/<name>`.
+   The three generated tables have never been visually inspected either.
+2. **Known deviation:** task 6 of Phase 5 asked for bootstrap CI bands on the MF-vs-BP
+   convergence figure. `fig_mf_bp_cost_curves` panel (a) plots one representative NVML
+   trace instead, because traces differ in duration and sample grid and resampling smears
+   the layer-stage steps. Panel (b) carries the per-seed spread as a scatter. If a reviewer
+   asks, this is the honest answer, not an oversight.
+3. A `scripts/export_wandb_archive.py --force` re-export was backgrounded and never
+   finished (stopped at `[2250/2795] written=123`). Nothing depends on it.
+
+---
 ### Reviewer traceability — every one of these must be closed and cited in the letter
 R1a condensed technical report, poor readability | R1b Figures 3 and 4 illegible |
 R2a Section 6 lacks detail and analysis, "seemed preliminary" | R2b architecture details
