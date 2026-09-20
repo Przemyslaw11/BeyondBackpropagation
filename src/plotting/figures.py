@@ -738,7 +738,7 @@ def equivalence_forest(table: Table, out_dir: Path) -> Path:
     fig, (top, bottom) = plt.subplots(
         2,
         1,
-        figsize=style.figure_size(1.0, height_in=0.135 * rows + 1.15),
+        figsize=style.figure_size(1.0, height_in=0.107 * rows + 0.95),
         height_ratios=[len(ladder_entries), len(phase4_entries)],
     )
     _draw_forest(top, ladder_entries, EQUIVALENCE_MARGIN_PP, "")
