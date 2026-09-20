@@ -1,0 +1,27 @@
+% Transcribed from the `legacy_hyperparameters:` blocks preserved in every
+% experiment config, and from configs/base.yaml for the harmonised row.
+\begin{table}[tb]
+  \centering
+  \caption{The stopping rule as submitted, against the harmonised rule used
+    throughout this revision. Ranges span the per-configuration values actually
+    set. The epoch cap is per \emph{unit}: an epoch for \BP{} and \FF{}, a
+    layer for \MF{}, a predictor for \CaFo{}. Every value is transcribed from
+    the configuration files, which are preserved in the repository.}
+  \label{tab:early_stopping}
+  \setlength{\tabcolsep}{3.5pt}%
+  \footnotesize
+  \begin{tabular}{llllll}
+    \toprule
+    Algorithm & Stopping metric & Dir. & Min.\ $\Delta$ & Patience & Epoch cap \\
+    \midrule
+    \multicolumn{6}{l}{\emph{As submitted}} \\
+    \BP{}   & validation loss            & min & 0      & 5--40  & 100 / run \\
+    \FF{}   & validation \emph{accuracy} & max & 0.01   & 20     & 100 / run \\
+    \CaFo{} & local loss, per predictor  & min & 0.0005--0.001 & 5--10 & 12--1271 / pred. \\
+    \MF{}   & local loss, per layer      & min & 0.0001 & 4--10  & 8--15 / layer \\
+    \midrule
+    \multicolumn{6}{l}{\emph{Harmonised (this revision)}} \\
+    all     & validation loss            & min & 0      & 20     & 100 / unit \\
+    \bottomrule
+  \end{tabular}
+\end{table}

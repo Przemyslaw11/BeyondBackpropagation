@@ -47,8 +47,7 @@ COLUMNS: Tuple[Column, ...] = (
 
 MEMORY_NOTE = (
     r"Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process "
-    r"figure; the device-wide NVML reading includes the fixed CUDA context and "
-    r"so separates the algorithms only weakly (Section~\ref{sec:discussion_memory})."
+    r"figure."
 )
 ENERGY_NOTE = (
     r"Time and Energy cover full training to early stopping; energy is the NVML "
@@ -66,6 +65,8 @@ class TableSpec:
     extra: str = ""
     # "method" conflates the MF cache strategies, so ladder tables key on rung.
     arm_column: str = "method"
+    # Heading for this block when the spec is rendered into the combined table.
+    group: str = ""
 
 
 SPECS: Tuple[TableSpec, ...] = (
@@ -78,10 +79,7 @@ SPECS: Tuple[TableSpec, ...] = (
         ),
         filters={"phase": "phase4", "config_group": "Fashion-MNIST 4x2000"},
         arms=(("ff", r"\FF{}-AdamW"), ("bp", r"\BP{} Baseline")),
-        extra=(
-            r"Both instruments are plotted side by side in "
-            r"Figure~\ref{fig:ff_resource_utilization}."
-        ),
+        group=r"Fashion-MNIST 4$\times$2000 MLP",
     ),
     TableSpec(
         key="cafo_bp_cnn_summary",
@@ -101,6 +99,7 @@ SPECS: Tuple[TableSpec, ...] = (
             r"These values supersede the back-ported figures of the submitted "
             r"version, which were measured on an earlier cluster software stack."
         ),
+        group=r"CIFAR-10 3-block CNN",
     ),
     TableSpec(
         key="mf_bp_perf_eff_summary",
@@ -118,7 +117,20 @@ SPECS: Tuple[TableSpec, ...] = (
             r"slower and more energy-hungry arm; Section~\ref{sec:ladder} "
             r"decomposes where that cost comes from."
         ),
+        group=r"CIFAR-10 3$\times$2000 MLP",
     ),
+)
+
+COMBINED_KEY = "headline_summary"
+COMBINED_LABEL = "tab:headline_summary"
+COMBINED_CAPTION = (
+    r"Each algorithm on its native architecture against an identically "
+    r"configured, independently tuned \BP{} baseline, under the harmonised "
+    r"stopping rule of Table~\ref{tab:early_stopping}. Mean~$\pm$~SD over the "
+    r"stated seeds; the better result within each block is shown in "
+    r"\textbf{bold}. CIFAR-10 inputs are flattened to 3072-dimensional vectors "
+    r"for the MLP rows, following the \MF{} protocol, and \CaFo{} times include "
+    r"the \CaFoDFA{} block-pretraining stage."
 )
 
 
@@ -214,6 +226,90 @@ def render(spec: TableSpec, table: Table) -> str:
     )
 
 
+def render_combined(specs: Sequence[TableSpec], table: Table) -> str:
+    """Render every spec as one table, so the paper pays for one float."""
+    blocks: list[Tuple[TableSpec, Dict[str, Dict[str, Tuple[float, float]]], int]] = []
+    for spec in specs:
+        scope = table.where(**spec.filters)
+        statistics: Dict[str, Dict[str, Tuple[float, float]]] = {}
+        seed_counts = set()
+        for method, _ in spec.arms:
+            summary, count = _arm_statistics(scope, spec.arm_column, method)
+            statistics[method] = summary
+            seed_counts.add(count)
+        if len(seed_counts) != 1:
+            raise SystemExit(f"{spec.key}: arms disagree on seed count {sorted(seed_counts)}")
+        blocks.append((spec, statistics, seed_counts.pop()))
+
+    column_spec: list[str] = []
+    for column in COLUMNS:
+        means = [
+            statistics[method][column.metric][0]
+            for spec, statistics, _ in blocks
+            for method, _ in spec.arms
+        ]
+        deviations = [
+            statistics[method][column.metric][1]
+            for spec, statistics, _ in blocks
+            for method, _ in spec.arms
+        ]
+        column_spec.append(
+            _column_format(means, column.decimals)
+            + r" @{\,$\pm$\,} "
+            + _column_format(deviations, column.decimals)
+        )
+
+    span = 1 + 2 * len(COLUMNS)
+    body: list[str] = []
+    for index, (spec, statistics, seeds) in enumerate(blocks):
+        if index:
+            body.append(r"    \addlinespace")
+        body.append(
+            rf"    \multicolumn{{{span}}}{{l}}{{\itshape {spec.group} "
+            rf"($n=\num{{{seeds}}}$)}} \\"
+        )
+        best: Dict[str, str] = {}
+        for column in COLUMNS:
+            means = {m: statistics[m][column.metric][0] for m, _ in spec.arms}
+            chooser = max if column.better == "max" else min
+            best[column.metric] = chooser(means, key=lambda m: means[m])
+        for method, label in spec.arms:
+            cells = [label]
+            for column in COLUMNS:
+                mean, deviation = statistics[method][column.metric]
+                mark = r"\bfseries " if best[column.metric] == method else ""
+                cells.append(f"{mark}{mean:.{column.decimals}f}")
+                cells.append(f"{mark}{deviation:.{column.decimals}f}")
+            body.append("    " + " & ".join(cells) + r" \\")
+
+    headers = " &\n      ".join(
+        rf"\multicolumn{{2}}{{c}}{{{column.header}}}" for column in COLUMNS
+    )
+    caption = f"{COMBINED_CAPTION} {ENERGY_NOTE} {MEMORY_NOTE}"
+    return "\n".join(
+        [
+            "% Generated by scripts/make_tables.py from artifacts/tidy/runs.csv.",
+            "% Do not edit by hand; edit the generator and re-run it.",
+            r"\begin{table}[tb]",
+            r"  \centering",
+            rf"  \caption{{{caption}}}",
+            rf"  \label{{{COMBINED_LABEL}}}",
+            r"  \setlength{\tabcolsep}{4pt}%",
+            r"  \small",
+            r"  \begin{tabular}{l",
+            "      " + "\n      ".join(column_spec) + "}",
+            r"    \toprule",
+            "    {Algorithm} &\n      " + headers + r" \\",
+            r"    \midrule",
+            *body,
+            r"    \bottomrule",
+            r"  \end{tabular}",
+            r"\end{table}",
+            "",
+        ]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--table", type=Path, default=DEFAULT_TABLE)
@@ -222,9 +318,10 @@ def main() -> None:
 
     table = Table.load(arguments.table).where(superseded="")
     arguments.out.mkdir(parents=True, exist_ok=True)
-    for spec in SPECS:
-        text = render(spec, table)
-        path = arguments.out / f"{spec.key}.tex"
+    rendered = {spec.key: render(spec, table) for spec in SPECS}
+    rendered[COMBINED_KEY] = render_combined(SPECS, table)
+    for key, text in rendered.items():
+        path = arguments.out / f"{key}.tex"
         path.write_text(text, encoding="utf-8")
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
         print(f"{path.relative_to(REPO_ROOT)}  {len(text):5d} B  {digest}")

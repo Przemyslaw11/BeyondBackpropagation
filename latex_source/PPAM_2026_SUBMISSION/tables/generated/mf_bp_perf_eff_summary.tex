@@ -2,7 +2,7 @@
 % Do not edit by hand; edit the generator and re-run it.
 \begin{table}[tb]
   \centering
-  \caption{Performance and efficiency: \MF{} vs.\ \BP{} on the CIFAR-10 3$\times$2000 MLP\@. Mean~$\pm$~SD over \num{20} seeds. Better result in each column is shown in \textbf{bold}. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure; the device-wide NVML reading includes the fixed CUDA context and so separates the algorithms only weakly (Section~\ref{sec:discussion_memory}). CIFAR-10 inputs are flattened to 3072-dimensional vectors following the \MF{} protocol. Under the harmonised stopping rule \MF{} is the slower and more energy-hungry arm; Section~\ref{sec:ladder} decomposes where that cost comes from.}
+  \caption{Performance and efficiency: \MF{} vs.\ \BP{} on the CIFAR-10 3$\times$2000 MLP\@. Mean~$\pm$~SD over \num{20} seeds. Better result in each column is shown in \textbf{bold}. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure. CIFAR-10 inputs are flattened to 3072-dimensional vectors following the \MF{} protocol. Under the harmonised stopping rule \MF{} is the slower and more energy-hungry arm; Section~\ref{sec:ladder} decomposes where that cost comes from.}
   \label{tab:mf_bp_perf_eff_summary}
   \setlength{\tabcolsep}{4pt}%
   \small

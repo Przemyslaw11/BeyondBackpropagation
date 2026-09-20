@@ -1,0 +1,671 @@
+% ============================================================
+%  Response to Reviewers
+%  Energy-Efficient Deep Learning Without Backpropagation:
+%  A Rigorous Hardware-Validated Comparison
+%  PPAM 2026
+% ============================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+
+\sisetup{detect-weight=true, detect-family=true}
+\DeclareSIUnit\mebibyte{MiB}
+\emergencystretch=3em
+
+\newcommand{\tmma}{\texttt{torch.cuda.\allowbreak max\_memory\_\allowbreak allocated}}
+
+\newcommand{\FF}{FF}
+\newcommand{\MF}{MF}
+\newcommand{\BP}{BP}
+\newcommand{\CaFo}{CaFo}
+\newcommand{\CaFoRand}{CaFo-Rand}
+\newcommand{\CaFoDFA}{CaFo-DFA}
+\newcommand{\BPDS}{BP-DS}
+
+\newenvironment{comment}%
+  {\begin{quote}\itshape\small}%
+  {\end{quote}}
+
+\newcommand{\where}[1]{\par\smallskip\noindent\textbf{Where:} #1\par}
+
+\setlist[description]{leftmargin=0pt, labelindent=0pt, style=nextline}
+
+\title{\vspace{-1.5cm}Response to Reviewers\\[2pt]
+  \large Energy-Efficient Deep Learning Without Backpropagation:\\
+  A Rigorous Hardware-Validated Comparison}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.2cm}
+
+\section*{Summary}
+
+We thank all five reviewers for their time and for a set of comments that
+turned out to be far more consequential than a normal camera-ready pass. Three
+of them (R2c, R2d, R3c/R5d) pointed at exactly the places where our evidence
+was weakest, and acting on them changed our headline result. We would rather
+report that than defend the accepted version.
+
+The revision rests on a complete re-measurement campaign rather than on
+rewriting. Concretely:
+
+\begin{itemize}[nosep,leftmargin=1.4em]
+  \item \textbf{Every experiment was re-run under a harmonised stopping rule.}
+        The accepted version used a \emph{different} early-stopping criterion
+        for each algorithm --- a defect our own audit found and no reviewer
+        raised (disclosure~D2 below). Because training time and energy are
+        integrals over training duration, an inconsistent stopping rule does
+        not perturb an efficiency comparison, it determines it.
+  \item \textbf{The headline efficiency claim does not survive.} Under the
+        harmonised rule \MF{} is \num{4.0}$\times$ slower than \BP{} and draws
+        \num{3.2}$\times$ the energy on CIFAR-10. The published
+        ``\num{41}\% less energy, \num{34}\% faster'' \emph{is} reproducible
+        under the submitted protocol --- we reproduced it, at
+        \num{42.4}\% [\num{38.9}, \num{44.8}] and \num{33.6}\%
+        [\num{30.2}, \num{36.0}] --- but its \emph{sign reverses} once the
+        stopping rule is equalised. The abstract, the results and the
+        conclusion have all been rewritten accordingly.
+  \item \textbf{What does survive is the accuracy and the memory result.}
+        \MF{} matches or beats \BP{} in every MLP configuration, by
+        \numrange{0.01}{5.04}~pp, and holds up to \num{27}\% less per-process
+        device memory.
+  \item \textbf{Seed counts rose from three to \numrange{5}{122} per
+        contrast}, and every accuracy comparison is now an equivalence test
+        against a preregistered $\pm\num{0.25}$~pp margin with bootstrap
+        confidence intervals.
+  \item \textbf{A five-rung ablation ladder from \BP{} to \MF{}} now
+        attributes the cost, including the deep-supervision control that R3
+        and R5 asked for.
+  \item \textbf{We voluntarily disclose five further defects} found by our own
+        audit, none of them raised in review, under \emph{Voluntary
+        disclosures} below. The repository is public and cited in the paper, so
+        all five are discoverable by any reader after publication.
+\end{itemize}
+
+\noindent
+All numbers below are reproducible from the public repository. Section,
+table and figure references are to the \emph{revised} manuscript, which is
+\textbf{15 pages}, the PPAM limit.
+
+\bigskip
+\noindent\textbf{Revised structure.}
+\S1~Introduction \textbar{} \S2~Background and Related Work \textbar{}
+\S3~Framework for Fair and Rigorous Comparison \textbar{}
+\S4~Experiments and Results (4.1 \FF{}, 4.2 \CaFo{}, 4.3 \MF{},
+4.4 Where the Cost Comes From) \textbar{} \S5~Discussion (5.1 Limitations)
+\textbar{} \S6~Conclusion.
+Table~1 = stopping rules; Table~2 = headline summary for all three algorithms;
+Figure~1 = \MF{} hardware trace; Figure~2 = ablation-ladder waterfall;
+Figure~3 = equivalence forest.
+
+% ============================================================
+\section*{Reviewer 1}
+% ============================================================
+
+\subsection*{R1a --- ``Reads like a very condensed technical report \dots\
+detrimental to readability for the average PPAM reader.''}
+
+Accepted, and this drove a structural rewrite rather than a cosmetic one. The
+former Sections~2 and 3 were merged into a single \S2, Background and Related
+Work, so that each algorithm is introduced once, in prose, alongside the work
+it descends from. The contributions list became a paragraph. \S4 now leads
+with the result and follows with the evidence rather than the reverse.
+
+The discussion, which R2 also found thin, was rebuilt around three named
+questions --- why \MF{} is accurate, which memory instrument one should
+believe, and what the traces imply for hardware co-design --- instead of a
+list of observations.
+
+We also cut hard, because the revision adds a stopping-rule table, an
+ablation-ladder subsection and an equivalence analysis to a paper that already
+exceeded the limit. The figure count went from eight to three, the Optuna
+search-space table and the full environment listing moved to the public
+repository (cited by URL from the Code and data paragraph), and the three
+figures we kept were chosen because each carries an argument the prose cannot.
+
+\where{\S2 (merged); \S4.4; \S5; the manuscript is now \num{15} pages.}
+
+\subsection*{R1b --- ``The plots in Fig.~3 and Fig.~4 are completely
+illegible.''}
+
+Accepted without reservation. Both figures are gone. They were screenshots of
+a Weights~\&~Biases dashboard, exported at browser resolution, with the
+dashboard's own font sizes --- unreadable at LNCS column width, and, as it
+turned out, not reliable either (disclosure~D5).
+
+Every figure in the revision is generated from the measurement archive by a
+committed script, rendered as vector PDF at exactly the LNCS text width
+(\num{345.827}~pt) so that no scaling is applied at inclusion time, with a
+minimum font size of \num{8}~pt and a colour-blind-safe palette that remains
+legible in greyscale. Figure~3, the equivalence forest, replaces the old
+Figure~4 and carries \num{28} contrasts with their confidence intervals in the
+space the screenshot used for one panel.
+
+\where{Figures~1--3; \texttt{scripts/make\_figures.py} in the repository.}
+
+% ============================================================
+\section*{Reviewer 2}
+% ============================================================
+
+\subsection*{R2a --- ``Lack of details and analysis in the main article
+(specifically Section~6) made the paper seem preliminary.''}
+
+Accepted. The discussion was thin because we had description and no
+attribution. It now has both.
+
+\S4.4, \emph{Where the Cost Comes From}, decomposes the \BP{}$\to$\MF{}
+transition into five single-change rungs: detach the gradient, attach
+auxiliary supervision, replace the readout, cache activations on device, cache
+them on host. Measured across all four configurations, \textbf{gradient
+locality alone accounts for \numrange{228}{272}~pp of \BP{}'s energy};
+auxiliary supervision and the readout together move the total by at most
+\num{40}~pp and partly cancel on CIFAR; caching contributes nothing. The
+efficiency result is therefore attributed to a specific architectural
+property, not to an algorithm taken as a whole.
+
+\S5 then explains the mechanism. \textbf{No configuration we measured exceeds
+${\approx}\SI{38}{\percent}$ mean GPU utilisation}, and \MF{} reaches only
+\SI{7.3}{\percent} against \BP{}'s \SI{16.2}{\percent} on CIFAR-10. These
+workloads are bound by kernel launch latency, not by arithmetic: the
+layer-sequential schedule issues many small kernels and waits, so the device
+idles while the run stays resident and the fixed power floor is integrated
+over four times the duration. That single observation explains the energy
+result, the absence of any gain from activation caching, and why the
+conclusion is platform-conditional.
+
+\where{\S4.4; Figure~2; \S5, all three paragraphs.}
+
+\subsection*{R2b --- ``The details of the different ML architectures are
+important \dots\ these details are not discussed much in the paper.''}
+
+Accepted. \S3 now carries a dedicated paragraph, \emph{Architecture, optimiser
+and implementation}, giving: initialisation (Kaiming uniform for all weights
+and projection matrices); optimisers (AdamW for \BP{} and \BPDS{}, Adam on a
+local cross-entropy loss for \CaFo{} predictors and \MF{} layers); MLP
+topology (fully connected, ReLU, \numrange{2}{4} hidden layers of \num{1000}
+or \num{2000} units); the exact \CaFo{} block ($3{\times}3$ convolution, ReLU,
+$2{\times}2$ max-pooling, batch normalisation, \num{32}/\num{128}/\num{512}
+channels, three block predictors summed); and the \FF{} goodness threshold
+$\theta=2.0$ with peer normalisation (factor \num{0.03}, momentum \num{0.9}).
+
+The paragraph also states what we think is the load-bearing implementation
+fact for a hardware paper: every algorithm is built on the same
+\texttt{nn.Linear} and \texttt{nn.Conv2d} primitives in one codebase and
+differs only in the loss construction and in where \texttt{detach()} is
+called, so no method benefits from a fused or hand-written kernel the others
+lack. Data augmentation is now stated explicitly and is identical between each
+algorithm and its baseline.
+
+\where{\S3, \emph{Architecture, optimiser and implementation}; \S3,
+\emph{Experimental Setup}.}
+
+\subsection*{R2c --- ``The paper claimed that the BP baselines were identical
+but algorithm-specific components were removed. The removal of these
+components may be the reason why certain architectures were better one way or
+another.''}
+
+\textbf{This is the most valuable comment we received, and it is correct.} We
+did not argue with it; we measured it.
+
+The ablation ladder in \S4.4 exists precisely to answer it. It puts the
+removed components back, one at a time, on top of \BP{}, and measures accuracy
+and energy at each rung. The result is that the removal is \emph{not} what
+drives the differences: auxiliary supervision and the projection readout
+together account for at most \num{40}~pp of the energy change and partly
+cancel on CIFAR, whereas gradient detachment accounts for
+\numrange{228}{272}~pp.
+
+On accuracy the answer is a split, and we report it as such rather than
+picking the convenient half. \MF{} minus \BPDS{}:
+
+\begin{center}\small
+\begin{tabular}{lrrrl}
+\toprule
+Configuration & \MF{}~$-$~\BPDS{} & 95\% CI & $n$ & Verdict \\
+\midrule
+MNIST 2$\times$1000          & $+0.11$~pp & $[-0.01, +0.23]$ & 20 & equivalent \\
+Fashion-MNIST 2$\times$1000  & $-0.06$~pp & $[-0.17, +0.06]$ & 48 & equivalent \\
+CIFAR-10 3$\times$2000       & $+5.56$~pp & $[+5.37, +5.74]$ & 20 & different \\
+CIFAR-100 3$\times$2000      & $+6.10$~pp & $[+5.88, +6.31]$ & 20 & different \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+On the MNIST-scale tasks, auxiliary supervision alone reproduces \MF{}'s
+accuracy and locality buys nothing. On CIFAR it does not, and \MF{}'s margin
+is large and fully resolved. A further finding falls out of the same
+experiment: \textbf{\BPDS{} is \emph{worse} than plain \BP{} on CIFAR}
+($-\num{1.65}$ and $-\num{1.06}$~pp, both resolved), so auxiliary heads are
+not a free improvement one can bolt onto \BP{}.
+
+\where{\S4.4, \emph{Does locality buy anything deep supervision does not?};
+Figure~2; Figure~3(a); \S3 protocol~2, which now states the objection and
+points at the measurement.}
+
+\subsection*{R2d --- ``As backprop algorithms are more widely used, the
+functionalities in existing software libraries could have been better
+optimised \dots\ than forward-only algorithms.''}
+
+\textbf{The hypothesis was correct in a specific and measurable way, and we
+tested it rather than arguing about it.}
+
+\MF{}'s layer-sequential schedule recomputes the activations of every
+preceding layer at each stage --- an $O(L^2)$ cost that a mature
+implementation would remove by caching. So we implemented the cache, in two
+variants (device-resident and host-resident), and verified it against the
+recomputing path: over \num{1200} and \num{3600} optimiser steps the maximum
+absolute difference in both loss and weights was \textbf{exactly zero}. The
+optimisation is bit-exact.
+
+It bought \textbf{no speedup}: \numrange{1.00}{1.02}$\times$ on device,
+\num{0.97}$\times$ on host, and the device variant costs roughly \num{40}\%
+more per-process memory. The missing optimisation was not missing; it simply
+does not pay, for the reason given under R2a --- at these layer widths the
+device never exceeds ${\approx}\SI{38}{\percent}$ utilisation and the runs are
+launch-bound.
+
+The same reading covers the other two algorithms. \emph{Per data pass},
+\CaFoRand{} is \textbf{cheaper} than \BP{} (\numrange{0.76}{0.90}$\times$
+Wh/epoch) and \FF{} is only \numrange{1.48}{1.76}$\times$ more expensive; the
+end-to-end gaps are made almost entirely of extra epochs (\FF{} needs
+\numrange{2.66}{3.82}$\times$ more, \CaFo{} \numrange{3.0}{7.8}$\times$ more).
+Library maturity is not what separates these methods from \BP{}; convergence
+rate is.
+
+We note that this comment also caused us to \emph{understate} the previously
+published \MF{} advantage in one respect: the submitted implementation carried
+the $O(L^2)$ recomputation, so \MF{}'s cost in the accepted version was
+inflated by an amount we can now bound --- and which turns out to be
+negligible on this hardware.
+
+\where{\S4.4, \emph{Is this simply an unoptimised implementation?}; \S5,
+third paragraph; \S5.1, limitation~3.}
+
+% ============================================================
+\section*{Reviewer 3}
+% ============================================================
+
+\subsection*{R3a --- ``NVML \dots\ is never formally defined or explained.''}
+
+Fixed. NVML is now expanded to the NVIDIA Management Library at first use in
+the abstract and again at first use in the body, with a statement of what it
+does and why it was chosen: it reports physical device state --- instantaneous
+board power, SM clock, utilisation, device memory --- from the driver itself,
+so an efficiency claim rests on a measured quantity rather than on an
+analytical proxy such as a FLOP count.
+
+We went further than the comment asked and \textbf{named the API call behind
+every reported quantity}, because they are not interchangeable:
+\texttt{nvmlDeviceGetPowerUsage} (integrated trapezoidally at \SI{5}{\hertz}
+for energy), \texttt{nvmlDeviceGetUtilizationRates},
+\texttt{nvmlDeviceGetClockInfo}, \texttt{nvmlDeviceGetMemoryInfo}, the host
+monotonic clock for wall-clock time, \tmma{}
+for per-process memory, and \texttt{psutil} for host resident set size. See
+also disclosure~D5.
+
+\where{Abstract; \S3, \emph{Evaluation metrics and instruments}; every figure
+and table caption.}
+
+\subsection*{R3b --- ``The results for CaFo in Section~5.2 are presented purely
+as text \dots\ should be summarised in an equivalent table.''}
+
+Fixed, and generalised. Rather than adding a third standalone table to a paper
+already over its page limit, Table~2 now presents all three algorithms in one
+structure: \FF{}, \CaFo{} (both the random-feature and the DFA-pretrained
+variant) and \MF{}, each against its own tuned \BP{} baseline, with test
+accuracy, training time, GPU energy and peak per-process memory as
+mean~$\pm$~SD over the stated seed count. \CaFo{} therefore gets the columns
+the comment asked for, and the reader gets a single point of comparison.
+
+The \CaFo{} numbers are also no longer back-ported from an earlier cluster
+software stack; all five seeds were re-measured on the current one.
+
+\where{Table~2; \S4.2.}
+
+\subsection*{R3c --- ``Because Mono-Forward places a cross-entropy loss at
+every hidden layer, it inherently behaves like a deep supervision network
+\dots\ add a standard backpropagation baseline that uses matching layer-wise
+auxiliary losses. This is the only way to prove whether MF's gains stem from
+its unique forward-only mechanism or simply from localised objective
+constraints.''}
+
+\textbf{Done, and the answer is a split result that we report in full.} A
+\BPDS{} control was built: identical topology, identical auxiliary
+cross-entropy head at every hidden layer, identical optimiser and tuning
+budget --- the sole difference being that gradients flow end-to-end instead of
+being detached at each stage. The table under R2c gives the outcome.
+
+The honest reading, which is now the reading in the abstract: \emph{deep
+supervision alone reproduces \MF{}'s accuracy on the MNIST-scale tasks, but
+not on CIFAR, where \MF{} leads by more than \num{5}~pp.} Localised objectives
+are a sufficient explanation on easy tasks; detachment is doing real work once
+the task is hard enough. We have deliberately not generalised in either
+direction, and we flag the mechanism (a regularisation hypothesis, grounded in
+the infinite-width analysis of local losses) as a hypothesis, naming the
+diagnostics that would test it and that we have not run.
+
+We are grateful for this comment in particular: it is the one that forced the
+abstract to be reframed from ``locality causes the saving'' to an attributed
+decomposition.
+
+\where{\S4.4, \emph{Does locality buy anything deep supervision does not?};
+Figure~3(a), which carries all sixteen ladder contrasts with their intervals;
+\S5, \emph{Why \MF{} is accurate}; abstract.}
+
+% ============================================================
+\section*{Reviewer 4}
+% ============================================================
+
+\subsection*{R4a --- ``The key term `hardware-validated comparison' is unclear
+and should be explained in more detail.''}
+
+Fixed. \S3 now opens with a definition before anything else is said: a
+hardware-validated comparison is one in which \emph{every efficiency claim is
+backed by a physical quantity read from the GPU itself while the workload runs
+--- energy, elapsed time and memory occupancy --- rather than by an analytical
+proxy such as a FLOP or parameter count.}
+
+The operational content of that definition is supplied immediately afterwards
+in the instruments paragraph (see R3a), and the specific platform is now
+stated with the driver version, because the driver governs NVML power-reading
+semantics: NVIDIA A100-SXM4-40GB on AMD EPYC 7742 nodes, driver 595.71.05,
+Python 3.10.4, PyTorch 2.4.0+cu121.
+
+\where{\S3, opening paragraph; \S3, \emph{Experimental Setup} and
+\emph{Evaluation metrics and instruments}.}
+
+\subsection*{R4b --- ``The statistical analysis is based on only three runs,
+which is insufficient and can be considered only as preliminary evidence.''}
+
+Accepted; this is now closed by a wide margin. Seed counts per contrast are
+\FF{} $n=7$, \CaFo{} $n=5$, \MF{} ladder rungs $n=20$, and the
+\BP{}/\BPDS{} ladder contrasts $n=60$ (MNIST) and $n=122$ (Fashion-MNIST) ---
+\numrange{5}{122} rather than three.
+
+We also changed the inferential frame, because more seeds without a decision
+rule is just a bigger table. Every accuracy comparison is now an
+\textbf{equivalence test} against a margin declared before the runs
+($\pm\num{0.25}$~pp), with \num{10000}-sample paired bootstrap confidence
+intervals. Of \num{28} contrasts, \textbf{eleven are equivalent, sixteen are
+different, and one is inconclusive}; we report the inconclusive one as
+inconclusive rather than as evidence of parity. All \num{28} appear with their
+intervals in Figure~3.
+
+We additionally report the achieved resolution so a reader can judge what the
+design can and cannot detect: pooled seed-level SD of test accuracy is
+\num{0.284}~pp (up to \num{0.43}~pp on the 3$\times$2000 MLPs), giving a
+bootstrap CI half-width near $\pm\num{0.35}$~pp at $n=5$ and
+$\pm\num{0.26}$~pp at $n=7$.
+
+\where{\S3 protocol~5; \S4.4, \emph{Intervals, not verdicts.}; Figure~3;
+\S5.1, limitation~4; seed counts in every table and caption.}
+
+% ============================================================
+\section*{Reviewer 5}
+% ============================================================
+
+\subsection*{R5a --- ``The contribution is mainly evaluative rather than
+algorithmic.''}
+
+A fair characterisation of the accepted version, and we have both sharpened
+what the evaluative contribution is and identified the one place where the
+work is genuinely structural rather than descriptive.
+
+\S4.4 now presents the \textbf{time--memory frontier as a consequence of
+gradient locality, not as an implementation note}. \BP{}, \BPDS{} and
+\MF{}-Joint \emph{cannot} cache activations at all: joint gradients make any
+cached activation stale within one optimiser step. \MF{} can, because
+detachment plus layer-sequential training freeze every preceding layer for the
+duration of a stage. The trade-off axis --- spend memory to avoid recomputation
+--- therefore \emph{exists only for the local method}. That it turns out to be
+a bad trade on this hardware is the empirical part; that it is available at all
+is the algorithmic part, and it is a property of the objective structure rather
+than of our code.
+
+We have also stated the scope of the contribution plainly in \S5.1 rather than
+leaving it implied: the framework, the fairness protocols, the ablation ladder
+and the hardware-level measurements are ours; the three algorithms are not.
+
+\where{\S4.4, \emph{The time--memory frontier is a structural property.};
+\S5, third paragraph; \S5.1, limitation~7.}
+
+\subsection*{R5b --- ``Small datasets, shallow architectures, and the use of
+flattened CIFAR inputs for MLP experiments.''}
+
+Accepted and retained as an explicit limitation rather than softened. \S5.1
+now states that results apply to \numrange{2}{4}-layer MLPs and a 3-block CNN,
+that deeper CNNs, residual networks and transformers are untested, and --- the
+part we think matters most --- that flattening CIFAR to 1-D vectors destroys
+spatial structure and caps absolute accuracy far below CNN state of the art,
+so \emph{the comparisons are internally valid but say nothing about either
+algorithm in a competitive vision pipeline}. We flatten because the \MF{}
+source protocol does; we say so, and we do not claim more.
+
+\where{\S5.1, limitations~1 and~2; \S3 protocol~1.}
+
+\subsection*{R5c --- ``Results are based on only three runs, and some of the
+reported accuracy differences are modest.''}
+
+The first half is answered under R4b. The second half is the sharper point and
+we have acted on it directly: modest differences are now \emph{adjudicated}
+instead of being reported and left to the reader.
+
+Several differences we previously reported as findings do not survive that
+treatment. On MNIST 3$\times$1000 with SGD the \FF{}--\BP{} accuracy gap is
+$-\num{0.014}$~pp $[-\num{0.193}, +\num{0.144}]$ and on MNIST 4$\times$2000 it
+is $-\num{0.064}$~pp $[-\num{0.219}, +\num{0.070}]$; both are underpowered and
+are labelled as such. \CaFoDFA{} versus \BP{} on the Fashion-MNIST CNN spans
+$[-\num{0.03}, +\num{0.61}]$~pp at five seeds and is reported
+\textbf{inconclusive}, not as parity. Conversely, the differences that do
+matter are now unambiguous: \MF{} over \BP{} by \num{3.90} and \num{5.04}~pp
+on CIFAR-10 and CIFAR-100, with intervals nowhere near zero.
+
+\where{\S4.1; \S4.2; \S4.4, \emph{Intervals, not verdicts.}; Figure~3;
+\S5.1, limitation~4.}
+
+\subsection*{R5d --- ``A stronger comparison would include additional
+baselines, such as deep-supervision or local-loss backpropagation variants, to
+better isolate whether the gains come from the forward-only training mechanism
+or from local auxiliary objectives.''}
+
+Done --- this and R3c are the same request and are answered by the same
+experiment. Beyond the \BPDS{} control described under R3c, the ladder adds
+\textbf{\MF{}-Joint} (the \MF{} architecture, including its projection
+readout, trained with end-to-end gradients), which isolates the readout from
+the detachment, plus two activation-caching variants. Five rungs in total, so
+that no single rung conflates two changes.
+
+The isolation the comment asked for is therefore complete: auxiliary
+objectives, the projection readout, gradient detachment and the caching
+strategy are each varied alone. The answer, again, is that detachment is what
+costs and --- on CIFAR only --- what pays.
+
+\where{\S4.4; Figure~2(b), which shows the per-step contribution of all five
+rungs on all four configurations.}
+
+\subsection*{R5e --- ``The energy measurements are useful, although specific to
+one GPU platform.''}
+
+Accepted, and we have strengthened the caveat rather than merely repeating it,
+because our own mechanism explanation makes it sharper than the reviewer's
+phrasing. Since the central diagnosis is that these workloads are
+launch-latency-bound rather than compute-bound, the results are
+\emph{especially} likely to move on hardware with different kernel-launch and
+memory-bandwidth characteristics. \S5.1 now states that we regard the
+\textbf{direction} of the energy result, not merely its magnitude, as
+platform-conditional, and the conclusion says the same.
+
+We also disclose a second instrument boundary in the same limitation: NVML
+reports GPU package power only. Host CPU, DRAM and PCIe energy are not
+instrumented, so any variant that moves work off the accelerator is flattered
+by the measurement. This matters most for the host-cache \MF{} strategy, whose
+true total cost is understated by an unknown amount; we still report it as
+dominated, since it already loses on the instrumented axis.
+
+\where{\S5.1, limitations~3 and~5; \S5, third paragraph; \S6.}
+
+\subsection*{R5f --- ``Clarify the limitations, and strengthen the discussion
+of baselines and statistical robustness.''}
+
+All three parts are addressed above --- limitations under R5b and R5e,
+baselines under R5d, statistics under R4b and R5c. One structural change is
+worth noting here: \S5.1 was rewritten from scratch. The item claiming that
+three runs were a limitation is gone because it is resolved; in its place are
+the achieved equivalence margin and minimum detectable effect, the GPU-only
+energy accounting gap, and an explicit hyperparameter-search confound (each
+algorithm was tuned independently under an equal trial budget, so differences
+may partly reflect better hyperparameter discovery, and the search cost --- 
+substantial for \FF{} --- is excluded from all reported figures).
+
+\where{\S5.1 in full.}
+
+% ============================================================
+\section*{Voluntary disclosures: defects found by our own audit}
+\label{sec:disclosures}
+% ============================================================
+
+\noindent
+No reviewer raised any of the following. We audited our own configuration
+files, logs and figures while preparing the revision, and found five defects
+in the accepted version. The repository is public and cited in the paper, so
+all five are discoverable by any reader after publication. We would rather
+state them.
+
+\subsection*{D1 --- Figure~3 subfloat labels were swapped (factual error in the
+accepted PDF)}
+
+In the \CaFo{} convergence float of the accepted version, the subcaption
+``Validation Accuracy'' pointed at the image plotting mean validation
+\emph{loss}, and ``Validation Loss'' pointed at the accuracy image. A reader
+following the captions would have read both panels backwards.
+
+The float has been removed entirely (it was one of the illegible dashboard
+exports of R1b) and \CaFo{}'s results are now in Table~2, generated from the
+measurement archive. Every remaining caption was checked against the image it
+labels.
+
+\subsection*{D2 --- The stopping rule was not consistent across algorithms}
+
+\textbf{This is the single largest correction in the revision.} Protocol~4 of
+the accepted version claimed ``consistent early stopping''. The configuration
+files say otherwise: \BP{} stopped on validation \emph{loss}; \FF{} on
+validation \emph{accuracy} with a \num{0.01} minimum improvement; \CaFo{} and
+\MF{} on per-predictor and per-layer \emph{local} losses, with
+per-configuration patiences and epoch caps. Worse, those caps apply per
+\emph{stage}, not per run, so a nominal cap of \num{15} epochs on a four-stage
+\MF{} network permits \num{60} epochs of training against \BP{}'s \num{100},
+while \BP{}'s patience was in places as low as \num{5}.
+
+Training time and energy are integrals over training duration. An inconsistent
+stopping rule therefore does not perturb an efficiency comparison --- it
+determines it, and it is why the \num{41}\% energy saving reverses sign once
+the rule is harmonised. Table~1 gives the submitted settings against the
+harmonised ones, transcribed from the configuration files, which are preserved
+in the repository.
+
+\subsection*{D3 --- Optuna pruning was asymmetric, in our own favour}
+
+\BP{}'s Optuna studies used a median pruner; \FF{}, \CaFo{} and \MF{} ran
+unpruned. \BP{}'s nominal \num{50} trials therefore included truncated ones,
+and its effective search was the weaker of the two. We stress the direction:
+\textbf{the asymmetry disfavoured \BP{}, i.e.\ it worked in the direction of
+the accepted paper's conclusion.} Pruning is now disabled for every algorithm,
+paid for by a uniform \num{20}-epoch trial cap.
+
+\subsection*{D4 --- Three configurations were not independently searched}
+
+The Optuna sampler was seeded from the global experiment seed, so two studies
+over the same space returned byte-identical hyperparameters. The \BP{} MNIST
+4$\times$2000 baseline shared its values with \BP{} MNIST 3$\times$1000, and
+both \CaFo{} CIFAR-100 variants with their CIFAR-10 counterparts --- three
+configurations whose hyperparameters were in effect transplanted rather than
+searched. The sampler seed is now derived from the study name; all three were
+re-searched, and the replacements differ by \num{2.9}$\times$,
+\num{2.2}$\times$ and \num{15.3}$\times$ in at least one value. A regression
+test now fails the build if any two configurations share a tuned value.
+
+\subsection*{D5 --- Instrument misattribution, and two claims withdrawn}
+
+Several efficiency figures in the accepted version were read off
+Weights~\&~Biases dashboard exports rather than from the measurement archive,
+and the captions did not name the instrument behind each quantity. Two
+substantive consequences:
+
+\begin{itemize}[nosep,leftmargin=1.4em]
+  \item \textbf{Memory was reported from the wrong counter.} The
+        ${\approx}\num{5}\%$ \MF{} memory saving came from the device-wide NVML
+        counter, in which a fixed ${\approx}\SI{800}{\mebibyte}$ CUDA context
+        --- which no algorithm controls --- dilutes every difference. Measured
+        per process with \tmma{}, the
+        saving is \num{27}\% on CIFAR-10 and \num{25}\% on CIFAR-100. The
+        correction runs in our favour, which is not a reason to leave it
+        unstated.
+  \item \textbf{Two claims are withdrawn.} The accepted version attributed
+        \FF{}'s slowdown in part to ``volatile GPU clock speeds \dots\
+        indicating inefficient hardware saturation''. Both \BP{} and \FF{}
+        hold the SM clock near \SI{1280}{\mega\hertz}; throttling is ruled
+        out, not demonstrated, and the claim is gone. Likewise \MF{}'s
+        ``reduced thermal profile'' --- a \SI{3}{\celsius} spread on a
+        \SIrange{23}{30}{\celsius} axis --- was never evidence, and that panel
+        has been removed.
+\end{itemize}
+
+\noindent
+Two further corrections of the same kind: the accepted version's \FF{}
+slowdown of ``up to \num{13}$\times$'' is \num{7.41}$\times$ when re-measured
+under the harmonised rule, and the statement that \MF{} ``converges to a lower
+final validation loss'' has been deleted because \textbf{no such series was
+ever recorded} --- \MF{} logs only its layer-local objective, which is not the
+network's validation loss.
+
+Every efficiency figure in the revision is now traced to a named instrument in
+\S3 and regenerated from the committed measurement archive by a committed
+script.
+
+% ============================================================
+\section*{Where the revision contradicts the accepted version}
+% ============================================================
+
+For the record, and so that nothing here has to be inferred from the text:
+
+\begin{enumerate}[nosep,leftmargin=1.6em]
+  \item \textbf{Energy and time.} Accepted: \MF{} uses \num{41}\% less energy
+        and trains \num{34}\% faster than \BP{}. Revised: under a harmonised
+        stopping rule \MF{} is \num{4.0}$\times$ slower and uses
+        \num{3.2}$\times$ the energy. The published figures reproduce under
+        the published protocol; the sign reverses under a fair one.
+  \item \textbf{Memory.} Accepted: ${\approx}\num{5}\%$ saving. Revised:
+        \num{27}\% saving, measured per process.
+  \item \textbf{\FF{} slowdown.} Accepted: up to \num{13}$\times$. Revised:
+        \num{7.41}$\times$.
+  \item \textbf{\FF{} clock volatility and \MF{} thermal profile.} Withdrawn.
+  \item \textbf{\MF{} validation loss curve.} Withdrawn; the series does not
+        exist.
+  \item \textbf{\MF{} accuracy edge on CIFAR-10 under the legacy protocol.}
+        Accepted: $+\num{1.21}$~pp. Re-measured at three seeds:
+        $-\num{0.07}$~pp $[-\num{0.27}, +\num{0.24}]$ --- the three-seed design
+        could not resolve it. Under the harmonised protocol at twenty seeds
+        the edge is real and larger ($+\num{3.90}$~pp).
+\end{enumerate}
+
+\noindent
+The accuracy result and the memory result stand, and the memory result is
+stronger than we claimed. The efficiency result does not stand, and we say so
+in the abstract, in \S4.3 and in the conclusion.
+
+\bigskip
+\noindent
+We thank the reviewers again. The paper is a materially different and, we
+believe, a more useful one than the version they read.
+
+\end{document}

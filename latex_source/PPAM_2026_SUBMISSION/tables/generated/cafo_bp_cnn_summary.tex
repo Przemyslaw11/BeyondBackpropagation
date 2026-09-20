@@ -2,7 +2,7 @@
 % Do not edit by hand; edit the generator and re-run it.
 \begin{table}[tb]
   \centering
-  \caption{Performance and efficiency: \CaFo{} variants vs.\ \BP{} on the CIFAR-10 3-block CNN\@. Mean~$\pm$~SD over \num{5} seeds. Better result in each column is shown in \textbf{bold}. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure; the device-wide NVML reading includes the fixed CUDA context and so separates the algorithms only weakly (Section~\ref{sec:discussion_memory}). Time and Energy include the \CaFoDFA{} block-pretraining stage. These values supersede the back-ported figures of the submitted version, which were measured on an earlier cluster software stack.}
+  \caption{Performance and efficiency: \CaFo{} variants vs.\ \BP{} on the CIFAR-10 3-block CNN\@. Mean~$\pm$~SD over \num{5} seeds. Better result in each column is shown in \textbf{bold}. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure. Time and Energy include the \CaFoDFA{} block-pretraining stage. These values supersede the back-ported figures of the submitted version, which were measured on an earlier cluster software stack.}
   \label{tab:cafo_bp_cnn_summary}
   \setlength{\tabcolsep}{4pt}%
   \small

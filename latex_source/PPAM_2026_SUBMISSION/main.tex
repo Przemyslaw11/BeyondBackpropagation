@@ -88,28 +88,27 @@ Witold Dzwinel\inst{1}\orcidID{0000-0001-8321-5928}}
 
 \begin{abstract}
 Backpropagation (\BP{}) remains the dominant algorithm for training deep
-neural networks, yet its high memory and energy costs motivate the
-search for practical alternatives. We present a rigorous,
-hardware-validated benchmarking study of three forward-only,
-BP-free training algorithms, namely Forward-Forward (\FF{}), Cascaded Forward
-(\CaFo{}), and Mono-Forward (\MF{}), evaluated against a fairly tuned \BP{}
-baseline on MLP and 3-block CNN architectures across four standard
-vision benchmarks (MNIST, Fashion-MNIST, CIFAR-10, CIFAR-100). Using a
-principled comparison framework with identical architectures, universal
-hyperparameter optimisation via Optuna, and direct hardware-level
-efficiency measurement via the NVIDIA Management Library (NVML), we
-find that \MF{} consistently matches
-or surpasses \BP{} in classification accuracy on its native MLP
-architectures, achieving up to 41\% lower energy consumption
-and up to 34\% faster training on these configurations. We
-further conduct an empirical re-evaluation of memory efficiency,
-demonstrating that practical overhead can offset theoretical savings
-from eliminating the backward pass. These findings are specific to MLP
-architectures on standard benchmarks; performance on CNNs, transformers,
-or larger-scale settings remains an open question. Our primary
-contribution is the benchmarking framework itself and, to our knowledge,
-the first hardware-validated comparison of \MF{} against a fairly tuned \BP{}
-baseline under controlled conditions.
+neural networks, yet its memory and energy costs motivate the search for
+practical alternatives. We present a hardware-validated benchmarking
+study of three forward-only, BP-free training algorithms --- Forward-Forward
+(\FF{}), Cascaded Forward (\CaFo{}) and Mono-Forward (\MF{}) --- against
+tuned \BP{} baselines on MLP and 3-block CNN architectures across four
+standard vision benchmarks, with energy, time and memory read directly from
+the device through the NVIDIA Management Library (NVML). Two results follow
+from enforcing a single stopping rule across algorithms. First, \MF{} matches
+or surpasses \BP{} in accuracy on its native MLP architectures, by
+\numrange{0.01}{5.04}~pp, and holds up to \SI{27}{\percent} less per-process
+device memory; but it is not cheaper to train. An earlier reading of these
+experiments reported \SI{41}{\percent} less energy and \SI{34}{\percent} less
+time for \MF{}; that comparison charged the two algorithms different amounts
+of training before either could stop, and equalising the rule reverses its
+sign. Second, an ablation ladder that interpolates between \BP{} and \MF{}
+one change at a time --- adding a deep-supervision \BP{} baseline, a learned
+readout, gradient locality and activation caching --- attributes essentially
+the entire cost increase to gradient locality (\numrange{228}{272}~pp of
+\BP{}'s energy) and shows that deep supervision alone reproduces \MF{}'s
+accuracy on the MNIST-scale tasks but not on CIFAR, where \MF{} leads it by
+over \num{5}~pp. All measurements, code and per-run traces are public.
 \end{abstract}
 
 \begin{keywords}
@@ -121,333 +120,249 @@ efficiency \and hardware benchmarking \and deep neural networks
 \section{Introduction}
 % ============================================================
 
-Deep neural networks (DNNs) have achieved transformative success across
-AI~\cite{krizhevsky2012imagenet,he2016deep,devlin2019bert}, yet this
-progress rests on an escalating and unsustainable energy budget. As
-models scale, their operational requirements are projected to consume
-between 3\% and 4\% of global electricity by
-2030~\cite{wef2025paradox}.
+Deep neural networks have achieved transformative success across
+AI~\cite{krizhevsky2012imagenet}, yet this
+progress rests on an escalating energy budget; by 2030 the operational
+requirements of such models are projected to consume between 3\% and 4\% of
+global electricity~\cite{wef2025paradox}. Individual training runs are already
+substantial: \cite{strubell2019energy} estimated roughly
+\SI{284}{\tonne} of CO$_2$e for a single large Transformer trained with
+neural architecture search, and \cite{patterson2021carbon} reported
+approximately \SI{552}{\tonne} for GPT-3.
 
-Training costs can be substantial: \cite{strubell2019energy} estimated
-that training a single large Transformer with neural architecture search
-produces roughly \SI{284}{\tonne} of CO$_2$e, comparable
-to the lifetime emissions of five average American cars, while
-\cite{patterson2021carbon} reported that training GPT-3 produced
-approximately \SI{552}{\tonne} of CO$_2$e.
+Among the algorithmic contributors to that cost,
+backpropagation (\BP{})~\cite{rumelhart1986learning} is central. Its
+dependence on a full backward pass requires storing all intermediate
+activations, giving memory costs proportional to network depth, and its
+layer-locked structure imposes a ``backward locking'' bottleneck that
+constrains parallelisation~\cite{jaderberg2017decoupled}. This motivates
+alternatives built on local learning rules and layer-by-layer credit
+assignment. None of the algorithms studied here claims full biological
+plausibility~\cite{lillicrap2020backpropagation}; we treat that lineage as
+motivating context rather than as a validated claim. We study three such
+algorithms: \textbf{Forward-Forward}
+(\FF{})~\cite{hinton2022forward}, which learns from a contrastive
+``goodness'' objective over positive and negative forward passes;
+\textbf{Cascaded Forward} (\CaFo{})~\cite{zhao2023cafo}, which attaches a
+local classifier to each of a cascade of neural blocks; and
+\textbf{Mono-Forward} (\MF{})~\cite{gong2025mono}, which gives every hidden
+layer a learnable projection matrix and a local cross-entropy loss.
 
-Among the algorithmic contributors to training energy costs,
-backpropagation (\BP{})~\cite{rumelhart1986learning} plays a central
-role. \BP{}'s dependence on a full backward pass necessitates storing all
-intermediate activations, leading to memory costs proportional to
-network depth. Its sequential, layer-locked nature imposes a
-``backward locking'' bottleneck that constrains parallelisation and
-prolongs training~\cite{jaderberg2017decoupled}.
-
-These limitations motivate a search for alternatives drawing partial
-inspiration from biological neural systems: local learning rules, the
-absence of a global backward error signal, and layer-by-layer credit
-assignment. None of the algorithms studied here claim full biological
-plausibility~\cite{lillicrap2020backpropagation}; the \FF{}
-algorithm~\cite{hinton2022forward} was explicitly motivated by these
-considerations, and \MF{}'s local projection mechanism shares structural
-similarities with local learning rules. We note these connections as
-motivating context rather than as validated claims.
-
-This paper investigates three forward-only algorithms that partially
-instantiate such local principles:
-\begin{itemize}
-  \item \textbf{Forward-Forward (\FF{})}~\cite{hinton2022forward}, a
-        foundational proof of concept demonstrating the viability of
-        local, forward-only learning via a contrastive ``goodness''
-        objective.
-  \item \textbf{Cascaded Forward (\CaFo{})}~\cite{zhao2023cafo}, a
-        structured evolution employing block-wise local classifiers to
-        provide more direct supervisory signals.
-  \item \textbf{Mono-Forward (\MF{})}~\cite{gong2025mono}, a refinement
-        using per-layer projection matrices and local cross-entropy
-        losses to improve accuracy and training efficiency.
-\end{itemize}
-
-While the potential of these algorithms is recognised in the literature,
-a comprehensive and fair evaluation based on direct hardware-level
-energy metrics has been insufficiently explored. Existing comparisons
-often overlook architectural differences or inconsistent tuning
-practices, which can confound algorithmic
-comparisons~\cite{desislavov2024energy}. This paper addresses this gap
-by conducting a systematic, hardware-validated benchmarking comparison
-of \FF{}, \CaFo{}, and \MF{} against fairly tuned \BP{} baselines on their
-respective native architectures. This benchmarking and hardware
-characterisation contribution is directly relevant to the PPAM focus on
-parallel and applied computing.
+A fair evaluation of these methods against \BP{} on direct hardware-level
+metrics remains largely unexplored; existing comparisons often differ in
+architecture or tuning effort, which confounds the
+algorithm~\cite{desislavov2024energy}. This paper closes that gap, and in
+doing so reaches a conclusion the earlier literature --- including an
+earlier reading of our own experiments --- did not: once the stopping rule
+is the same for every algorithm, none of the three forward-only methods is
+cheaper to train than \BP{}. The interesting question is then \emph{why},
+which we answer by ablation rather than by attribution to the algorithm as
+a whole.
 
 \paragraph{Contributions.}
-The main contributions of this work are:
-\begin{itemize}
-  \item \textbf{A Rigorous Comparative Benchmarking Framework:} We
-        establish a transparent, reproducible framework mandating
-        identical native architectures, universal hyperparameter tuning
-        applied equally to all methods, and direct hardware-level
-        efficiency measurement via NVML\@. This framework is itself a
-        transferable contribution for future BP-free evaluations.
-  \item \textbf{Hardware-Validated Benchmarking of \MF{}:} To our
-        knowledge, the first hardware-validated comparison of the
-        Mono-Forward algorithm against a fairly tuned \BP{} baseline under
-        controlled conditions, finding that \MF{} matches or surpasses \BP{}
-        in accuracy on MLP architectures while achieving up to 41\%
-        lower energy consumption on certain configurations.
-  \item \textbf{Empirical Re-evaluation of Memory Efficiency:} We
-        demonstrate that practical implementation overhead can offset
-        the theoretical memory savings from eliminating the backward
-        pass, correcting a common assumption in the BP-free literature.
-\end{itemize}
+We contribute \emph{(i)}~a comparative benchmarking framework mandating
+identical native architectures, an equal tuning budget for every method, a
+single stopping rule and direct hardware-level measurement via NVML, with
+every protocol asymmetry we found in our own earlier configuration disclosed
+and corrected (Section~\ref{sec:framework}); \emph{(ii)}~a hardware-validated
+benchmark of \MF{} against a tuned \BP{} baseline, which matches or surpasses
+\BP{} in accuracy on every tested MLP and holds materially less per-process
+device memory, but costs more time and energy under an equal stopping rule;
+\emph{(iii)}~an ablation ladder from \BP{} to \MF{} --- deep supervision,
+learned readout, gradient locality, activation caching --- that attributes the
+cost to gradient locality alone and separates \MF{}'s accuracy advantage from
+the effect of localised objectives (Section~\ref{sec:ladder}); and
+\emph{(iv)}~an empirical re-evaluation of memory efficiency, showing that
+algorithm-specific overhead can offset the theoretical saving from omitting
+the backward pass, and that the device-wide memory reading commonly quoted is
+dominated by the CUDA context.
 
 % ============================================================
-\section{BP-Free Training Algorithms}
+\section{Background and Related Work}
 \label{sec:algorithms}
 % ============================================================
 
-The high memory cost, sequential backward locking, and lack of
-biological plausibility of backpropagation have motivated a search for
-alternative training
-paradigms~\cite{lillicrap2020backpropagation,jaderberg2017decoupled}.
-This section describes the three algorithms evaluated in this work.
+We state each algorithm's update mechanism, because that mechanism --- not the
+parameter count --- determines the shape of the resulting GPU workload.
+\textbf{Forward-Forward} (\FF{})~\cite{hinton2022forward} replaces the
+forward--backward pair with two forward passes, on ``positive'' (real) and
+``negative'' (contrastive) data; each layer locally maximises a ``goodness''
+score on the former and minimises it on the latter, so credit assignment never
+leaves the layer. This doubles the data volume per step and supervises only
+indirectly, the usual explanation for its slow
+convergence~\cite{hinton2022forward,zhao2023cafo}. \textbf{Cascaded Forward}
+(\CaFo{})~\cite{zhao2023cafo} follows each of a cascade of blocks with a local
+auxiliary classifier, giving direct cross-entropy supervision at several
+depths and removing the need for negative samples; blocks are either randomly
+initialised and frozen (\CaFoRand{}) or pretrained with Direct Feedback
+Alignment (\CaFoDFA{}), which pays an extra pretraining stage before any
+predictor is useful. \textbf{Mono-Forward} (\MF{})~\cite{gong2025mono} equips
+each hidden layer with a learnable projection matrix $M_i$ mapping activations
+to class-wise goodness scores, on which a local cross-entropy loss is
+computed; layer $i$ and $M_i$ are updated from that loss alone with the
+incoming activation \emph{detached}, so no gradient crosses a layer boundary
+and the layers train in sequence. That detachment is the property
+Section~\ref{sec:ladder} isolates: it is what permits activation caching, and
+it is also what costs.
 
-\paragraph{Forward-Forward (FF).}
-Proposed by Geoffrey Hinton, the \FF{} algorithm~\cite{hinton2022forward}
-replaces the forward and backward passes of \BP{} with two forward passes:
-one using ``positive'' (real) data and another using ``negative''
-(contrastive) data. Each layer learns locally to maximise a
-layer-specific ``goodness'' metric on positive data while minimising it
-on negative data, enabling purely local credit assignment. By
-eliminating the global backward pass, \FF{} demonstrated that effective
-representation learning is possible with local objectives. Its
-contrastive design partially instantiates the biological principle of
-Hebbian-like, local synaptic
-modification~\cite{journe2023hebbian}. However, generating meaningful
-negative samples and the indirect goodness signal were identified as
-practical limitations, often leading to slow convergence and inefficient
-hardware utilisation~\cite{hinton2022forward,zhao2023cafo}.
+\paragraph{Forward-only and local-loss methods.}
+\FF{} has been extended with convolutional channel-wise competitive
+learning~\cite{papachristodoulou2024convolutional} and with collaborative
+layer objectives~\cite{lorberbom2024layer}; both report accuracy gains over
+baseline \FF{} but no hardware-level efficiency comparison of the kind
+conducted here. \cite{ren2023scaling} showed that forward-gradient methods
+augmented with local auxiliary losses scale favourably, grounding \MF{}'s
+local projections, and \cite{ishikawa2025local} analysed local loss
+optimisation in the infinite-width limit, showing that greedy layer-wise
+training can reduce the effective complexity of the learned representation ---
+the basis of the regularisation hypothesis of
+Section~\ref{sec:discussion_why_mf}.
 
-\paragraph{Cascaded Forward (CaFo).}
-The \CaFo{} algorithm~\cite{zhao2023cafo} introduces a block-wise
-framework of cascaded neural blocks, each followed by a local auxiliary
-classifier. This provides direct cross-entropy supervision at multiple
-network depths, eliminating the need for negative samples. Neural
-blocks can be randomly initialised and fixed (\CaFoRand{}) or
-pretrained with Direct Feedback Alignment (\CaFoDFA{}). While
-\CaFo{} improves upon \FF{}'s indirect supervision, \CaFoRand{}
-suffers from poor feature quality on complex tasks, while
-\CaFoDFA{} improves accuracy at a significant computational cost
-for block pretraining.
+\paragraph{Deep supervision.}
+Attaching auxiliary classifiers to intermediate layers and training end-to-end
+is the deep-supervision construction of~\cite{lee2015deeply}. \MF{} resembles
+it closely, differing only in that \MF{} detaches the incoming activation and
+reads out through $M_L$. We exploit that near-identity in
+Section~\ref{sec:ladder}: a deep-supervision \BP{} baseline is the control
+that separates the effect of localised objectives from the effect of
+forward-only training.
 
-\paragraph{Mono-Forward (MF).}
-\MF{}~\cite{gong2025mono} simplifies and enhances the local learning
-mechanism by equipping each hidden layer with a dedicated, learnable
-projection matrix. This matrix maps the layer's activations directly to
-class-specific goodness scores, upon which a standard cross-entropy loss
-is computed locally. Both the layer's primary weights and its projection
-matrix are updated using only this local loss signal, enabling a single,
-clean forward pass during training. This mechanism is structurally
-similar to the local losses framework of \cite{ren2023scaling}, which
-demonstrated that forward-gradient methods augmented with local
-auxiliary losses scale favourably. \MF{} reportedly achieves accuracy
-matching or surpassing \BP{} on MLP architectures, which motivated the
-rigorous validation in this work.
-
-% ============================================================
-\section{Related Work}
-\label{sec:related_work}
-% ============================================================
-
-\paragraph{Forward-Only and Local-Loss Methods.}
-The foundational \FF{} algorithm~\cite{hinton2022forward} has inspired
-multiple improvements. \cite{papachristodoulou2024convolutional}
-introduced convolutional channel-wise competitive learning for \FF{},
-extending it to CNN architectures with improved feature quality, a
-limitation our experiments confirm for the base \FF{} method.
-\cite{lorberbom2024layer} proposed collaborative layer objectives that
-allow layers to share information during \FF{} training, reducing the
-isolation inherent in purely local objectives. Both works report
-improved accuracy over baseline \FF{} on standard benchmarks but do not
-provide hardware-level efficiency comparisons of the kind conducted
-here.
-
-\cite{ren2023scaling} demonstrated that forward gradient methods
-augmented with local auxiliary losses scale well, providing theoretical
-and empirical grounding for \MF{}'s local projection approach; their work
-focuses on scalability to larger models, whereas we focus on
-hardware-level efficiency under fair experimental conditions.
-\cite{journe2023hebbian} proposed Hebbian learning as a biologically
-motivated alternative to \BP{}, while \cite{malladi2023fine} demonstrated
-forward-only fine-tuning of large language models via memory-efficient
-zeroth-order optimisation (\texttt{MeZO}) — a different regime (large
-pretrained models, gradient estimation) than ours (training from
-scratch, local deterministic losses), but one that contextualises the
-broader hardware implications of BP-free training.
-
-\paragraph{Predictive Coding.}
-Predictive coding offers another biologically motivated alternative to
-\BP{}\@. \cite{salvatori2022associative} demonstrated that predictive
-coding networks can serve as associative memory solvers, and
-\cite{salvatori2022brain} contextualise where local learning methods
-fit within the broader landscape of brain-inspired learning.
-\cite{pinchetti2022predictive} extended predictive coding beyond
-Gaussian assumptions, while \cite{salvatori2024stable} introduced a
-stable, fully automatic variant achieving competitive performance across
-diverse tasks. Unlike the methods we evaluate, predictive coding
-networks maintain explicit generative models of their inputs, incurring
-different computational trade-offs.
-
-\needspace{4\baselineskip}
-\paragraph{Local Loss Optimisation Theory.}
-\cite{ishikawa2025local} analysed local loss optimisation in the
-infinite-width limit, providing theoretical grounding for why greedy
-layer-wise training can generalise well. Their analysis supports the
-hypothesis (Section~\ref{sec:discussion_why_mf}) that \MF{}'s layer-wise
-training may act as a form of regularisation, though we treat this as a
-hypothesis requiring further empirical investigation rather than a
-confirmed result.
-
-\paragraph{Hardware and Energy Considerations.}
-BP-optimised hardware accelerators, including GPUs and
-TPUs~\cite{jouppi2017datacenter}, are designed around the
-forward--backward pass structure of \BP{}\@. \cite{strubell2019energy}
-and \cite{patterson2021carbon} provide empirical grounding for the
-energy costs of current BP-based training, situating our efficiency
-comparisons within a broader sustainability context.
-
-\paragraph{Positioning This Work.}
-The present study complements the above by providing what is, to our
-knowledge, the first hardware-validated benchmarking comparison of \FF{},
-\CaFo{}, and \MF{} under a strictly controlled fairness framework: identical
-architectures, universal hyperparameter tuning, and direct NVML energy
-measurement. We do not introduce new algorithms; our contribution is
-evaluative.
+\paragraph{Hardware and energy.}
+GPUs and TPUs~\cite{jouppi2017datacenter} are designed around \BP{}'s
+forward--backward structure, and \cite{strubell2019energy}
+and~\cite{patterson2021carbon} give the empirical grounding for its energy
+cost. Our contribution is evaluative rather than algorithmic: to our knowledge
+this is the first hardware-validated comparison of \FF{}, \CaFo{} and \MF{}
+under one fairness framework, with a deep-supervision control.
 
 % ============================================================
 \section{Framework for Fair and Rigorous Comparison}
 \label{sec:framework}
 % ============================================================
 
-As a key contribution, we propose a rigorous benchmarking framework
-designed to isolate the impact of the training algorithm from
-confounding variables. Throughout, a \emph{hardware-validated
-comparison} is one in which every efficiency claim is backed by a
-physical quantity read from the GPU itself while the workload runs —
-energy, elapsed time and memory occupancy — rather than by an
-analytical proxy such as a FLOP or parameter count.
+Throughout, a \emph{hardware-validated comparison} is one in which every
+efficiency claim is backed by a physical quantity read from the GPU itself
+while the workload runs --- energy, elapsed time and memory occupancy ---
+rather than by an analytical proxy such as a FLOP or parameter count.
 
 \paragraph{Fairness Protocols.}
-A strict set of protocols was adhered to for all experiments:
 \begin{enumerate}
-  \item \textbf{Native Architecture Replication:} Each algorithm was
-        implemented on its native architecture as described in its
-        source publication. \FF{} and \MF{} were evaluated on their designated
-        MLP structures; \CaFo{} on its defined 3-block CNN\@. CIFAR inputs
-        are flattened to 1-D vectors for MLP experiments, following the
-        original \MF{} protocol.
-  \item \textbf{Identical Architectures for \BP{} Baselines:} For each
-        experiment, a \BP{} baseline was constructed using an \emph{identical}
-        network architecture, omitting only algorithm-specific components
-        (e.g., goodness heads, projection matrices).
-  \item \textbf{Systematic and Universal Hyperparameter Tuning:}
-        Optuna~\cite{akiba2019optuna} was applied to \emph{all}
-        algorithms, namely \FF{}, \CaFo{}, \MF{}, and their \BP{} baselines, for every
-        configuration, maximising validation set accuracy. Full Optuna
-        search spaces are in the supplementary material.
-  \item \textbf{Consistent Early Stopping:} Training was governed by a
-        consistent early stopping protocol based on validation
-        performance~\cite{prechelt1998early}.
-  \item \textbf{Fixed Random Seeds:} All sources of randomness were
-        fixed. The submitted version used three seeds (42, 123, 7); every
-        result reported here has been re-measured over at least five, and
-        the \BP{}$\to$\MF{} ladder over twenty or more. Per-table seed
-        counts are given in the captions. Full seeding and augmentation
-        details are in the supplementary material.
+  \item \textbf{Native architectures.} Each algorithm runs on the
+        architecture of its source publication: \FF{} and \MF{} on their
+        MLPs, \CaFo{} on its 3-block CNN\@. CIFAR inputs are flattened to
+        1-D vectors for MLP experiments, following the \MF{}
+        protocol~\cite{gong2025mono}.
+  \item \textbf{Identical \BP{} baselines.} Each \BP{} baseline is built
+        from the same module list as its forward-only counterpart with the
+        algorithm-specific components removed --- goodness heads for \FF{},
+        projection matrices for \MF{}, block predictors for \CaFo{}. A
+        reviewer observed that this removal could itself account for the
+        differences we report. It can, and Section~\ref{sec:ladder} measures
+        how much, by putting those components back one at a time on top of
+        \BP{}.
+  \item \textbf{Equal trial budget, algorithm-appropriate search spaces.}
+        Optuna~\cite{akiba2019optuna} tuned every algorithm and every \BP{}
+        baseline for every configuration under an identical trial budget and
+        trial epoch cap, maximising validation accuracy. The spaces are not
+        identical, because the algorithms do not share a parameter set, but
+        each covers at least three decades of learning rate and weight decay.
+        The spaces and selected values are in the repository.
+  \item \textbf{One stopping rule.} All algorithms stop on validation
+        loss~\cite{prechelt1998early} with the same minimum improvement,
+        patience and epoch cap (Table~\ref{tab:early_stopping}).
+  \item \textbf{Fixed random seeds.} The submitted version used three seeds
+        (42, 123, 7). Every result here is re-measured over at least five,
+        and the \BP{}$\to$\MF{} ladder over twenty or more; seed counts are
+        stated per row and per caption.
 \end{enumerate}
 
-\paragraph{Note on Baseline Completeness.}
-The absence of a \BP{} baseline augmented with per-layer auxiliary
-classification heads (\texttt{BP-DS}) is a key limitation of the
-current design; the full discussion and implications are given in
-%
-% FIX #1: Corrected from "Limitation~7" to "Limitation~6".
-% The missing BP-DS baseline is the sixth enumerated item in §6.4;
-% Limitation~7 is the inconsistent Fashion-MNIST MF result.
-%
-Limitation~6 (Section~\ref{sec:limitations}).
+\paragraph{Disclosure: what the submitted version actually did.}
+An audit of our own configuration files against the protocols above found
+three asymmetries, none of which any reviewer raised and all of which we
+correct here.
+\emph{(i)~The stopping rule was not consistent}
+(Table~\ref{tab:early_stopping}). \BP{} stopped on validation loss, \FF{} on
+validation \emph{accuracy} with a \num{0.01} minimum improvement, and \CaFo{}
+and \MF{} on per-predictor and per-layer local losses with per-configuration
+patiences and caps. Because those caps apply per stage rather than per run, a
+nominal cap of 15 epochs on a four-stage \MF{} network permits 60 epochs of
+training. Time and energy are integrals over training duration, so an
+inconsistent stopping rule does not perturb the efficiency comparison --- it
+determines it. This is the single largest correction in this revision.
+\emph{(ii)~Pruning was asymmetric.} \BP{}'s Optuna studies used a median
+pruner while the others ran unpruned, so \BP{}'s nominal 50 trials included
+truncated ones and its effective search was the weaker. The asymmetry
+therefore \emph{disfavoured} \BP{}, i.e.\ it worked in the direction of the
+submitted paper's conclusion. Pruning is now disabled for every algorithm,
+paid for by a uniform \num{20}-epoch trial cap.
+\emph{(iii)~Three configurations were not independently searched.} The Optuna
+sampler was seeded from the global experiment seed, so two studies over the
+same space returned byte-identical values: the \BP{} MNIST 4$\times$2000
+baseline shared its hyperparameters with \BP{} MNIST 3$\times$1000, and both
+\CaFo{} CIFAR-100 variants with their CIFAR-10 counterparts. The sampler seed
+is now derived from the study name, and all three were re-searched; the
+replacements differ by \num{2.9}$\times$, \num{2.2}$\times$ and
+\num{15.3}$\times$ in at least one value.
 
-\paragraph{Architecture and Optimiser Configuration.}
-All layer weights and projection matrices were initialised with Kaiming
-uniform initialisation. \BP{} baselines were trained with AdamW, while
-\CaFo{} predictors and \MF{} layers used Adam on a local cross-entropy
-loss. Each \CaFo{} block comprises a $3{\times}3$ convolution, ReLU,
-$2{\times}2$ max-pooling and batch normalisation, with 32, 128 and 512
-output channels respectively; the three block-wise predictors are
-aggregated by summation to form the final prediction. \FF{} used a fixed
-goodness threshold $\theta=2.0$ with peer normalisation (factor 0.03,
-momentum 0.9). \MF{} used a weight decay fixed at 0.0, leaving the
-learning rate and the number of epochs per layer as the tuned
-quantities. Optuna searched the remaining learning rates and weight
-decays for every algorithm and every \BP{} baseline; the search spaces
-and selected values are in the supplementary material.
+\input{tables/early_stopping}
+
+\paragraph{Architecture, optimiser and implementation.}
+All weights and projection matrices use Kaiming uniform initialisation.
+\BP{} and \texttt{BP-DS} use AdamW; \CaFo{} predictors and \MF{} layers use
+Adam on a local cross-entropy loss. The MLPs are fully connected with ReLU,
+2--4 hidden layers of 1000 or 2000 units. Each \CaFo{} block is a
+$3{\times}3$ convolution, ReLU, $2{\times}2$ max-pooling and batch
+normalisation with 32, 128 and 512 output channels; the three block
+predictors are summed to form the prediction. \FF{} uses a fixed goodness
+threshold $\theta=2.0$ with peer normalisation (factor 0.03, momentum 0.9).
+Every algorithm is implemented in the same PyTorch codebase on the same
+\texttt{nn.Linear} and \texttt{nn.Conv2d} primitives, differing only in the
+loss construction and in where \texttt{detach()} is called, so no method
+benefits from a fused or hand-written kernel the others lack.
 
 \paragraph{Experimental Setup.}
-Experiments were conducted on MNIST~\cite{lecun1998gradient},
-Fashion-MNIST~\cite{xiao2017fashion}, CIFAR-10, and
-CIFAR-100~\cite{krizhevsky2009learning}. All experiments ran on
-NVIDIA A100-SXM4-40GB GPUs (Athena cluster, ACK Cyfronet AGH), hosted on
-AMD EPYC 7742 nodes running Rocky Linux~9.8 with NVIDIA driver
-595.71.05, Python~3.10.4 and PyTorch~v2.4.0. The system CUDA toolkit
-version was 12.4.0; the PyTorch wheel (\texttt{torch==2.4.0+cu121})
-bundles a CUDA~12.1 runtime. The driver version is stated because it
-governs NVML power-reading semantics; NVML energy readings are obtained
-via the system driver and are not affected by the runtime version
-difference.
-Full environment details are in the supplementary material.
+Experiments used MNIST~\cite{lecun1998gradient},
+Fashion-MNIST~\cite{xiao2017fashion}, CIFAR-10 and
+CIFAR-100~\cite{krizhevsky2009learning} on NVIDIA A100-SXM4-40GB GPUs
+(Athena cluster, ACK Cyfronet AGH) hosted on AMD EPYC 7742 nodes, with
+driver 595.71.05, Python~3.10.4 and PyTorch~2.4.0+cu121. The driver version
+is stated because it governs NVML power-reading semantics. For CIFAR-10 and
+CIFAR-100, random horizontal flips ($p{=}0.5$) and random $32{\times}32$
+crops with 4-pixel padding were applied identically to every algorithm
+\emph{and} its \BP{} baseline, before flattening; MNIST and Fashion-MNIST
+were not augmented. The full environment listing, the Optuna search spaces
+and the exact NVML API calls are in the repository
+(Section~\ref{sec:repository}).
 
-For CIFAR-10 and CIFAR-100, standard training augmentation was applied
-consistently to all algorithms \emph{and} their \BP{} baselines: random
-horizontal flips ($p{=}0.5$) and random $32{\times}32$ crops with
-4-pixel padding. CIFAR inputs for MLP architectures were flattened to
-1-D vectors following the \MF{} protocol~\cite{gong2025mono}, with
-augmentation applied before flattening. No augmentation was applied to
-MNIST or Fashion-MNIST (see the supplementary material for full details).
-
-\paragraph{Evaluation Metrics.}
-Energy and memory were captured with NVML, the vendor-supplied library
-that exposes the GPU's own power, clock and memory telemetry to a host
-process; it was chosen because it reports what the device actually drew
-and occupied, so no modelling assumption about the workload enters the
-efficiency figures. The full metric suite is:
-\begin{itemize}
-  \item \textbf{Performance:} Test-set classification accuracy
-        (mean~$\pm$~SD across the seeds listed in each caption).
-  \item \textbf{Efficiency (Direct Measurement):} Training time
-        (\si{\second}), energy consumption (\si{\watt\hour}, via NVML),
-        and peak GPU memory (\si{\mebibyte}). Memory is reported both
-        device-wide via NVML and per-process via the \texttt{torch}
-        allocator; the two differ by the fixed CUDA context and the
-        tables state which is used. Exact NVML API
-        usage is in the supplementary material.
-  \item \textbf{Estimated CO$_2$e and GFLOPs
-        (Repository Only):} Available at the public
-        repository;
-        omitted from the main paper due to methodological dependencies
-        that would require separate treatment.
-\end{itemize}
+\paragraph{Evaluation metrics and instruments.}
+Accuracy is measured on the held-out test split. Efficiency is measured
+directly, and we name the instrument for every quantity because they are not
+interchangeable. A monitor thread queries the NVIDIA Management Library
+(NVML) --- the driver's own telemetry interface, chosen because it reports
+physical device state rather than an analytical proxy --- at \SI{5}{\hertz}:
+power
+from \texttt{nvmlDeviceGetPowerUsage}, from which energy (\si{\watt\hour}) is
+the trapezoidal integral over the run; utilisation from
+\texttt{nvmlDeviceGetUtilizationRates}; SM clock from
+\texttt{nvmlDeviceGetClockInfo}; device memory from
+\texttt{nvmlDeviceGetMemoryInfo}; and wall-clock time from the host monotonic
+clock. Two memory figures exist and must not be conflated: the NVML reading is
+\emph{device-wide} and includes a fixed ${\approx}\SI{800}{\mebibyte}$ CUDA
+context that no algorithm controls, whereas
+\texttt{torch.cuda.max\_memory\_allocated} is the per-process allocator
+high-water mark. We report the per-process figure and say so. Host resident set
+size, where quoted, comes from \texttt{psutil} and is a CPU-side quantity.
+Estimated CO$_2$e and GFLOPs are collected but reported only in the repository.
 
 % ============================================================
 \section{Experiments and Results}
 \label{sec:experiments}
 % ============================================================
 
-The experiments reveal a progression among BP-free algorithms with
-distinct accuracy--efficiency trade-offs. Under a stopping rule applied
-uniformly to every algorithm, none of the three is cheaper than \BP{};
-what separates them is how they spend the extra cost and what they buy
-with it. Results are reported as mean~$\pm$~SD over the seed counts
-given in each caption.
+Under a stopping rule applied uniformly to every algorithm, none of the three
+forward-only methods is cheaper than \BP{}; what separates them is how they
+spend the extra cost and what they buy with it. Results are mean~$\pm$~SD over
+the seed counts stated per row.
 
 % ---- 5.1 ---------------------------------------------------
 \needspace{3\baselineskip}
@@ -457,7 +372,7 @@ Starting Point}
 {\looseness=-1
 \FF{} trains to accuracy comparable with \BP{} on its native MLP
 architectures, which validates its core premise, but it does so at a
-prohibitive efficiency cost (Table~\ref{tab:ff_bp_mlp_summary}). On the
+prohibitive efficiency cost (Table~\ref{tab:headline_summary}). On the
 Fashion-MNIST 4$\times$2000 MLP it takes \num{7.4}$\times$ longer and
 draws \num{6.3}$\times$ the energy of the \BP{} baseline; on MNIST
 4$\times$2000 the corresponding factors are \num{6.5}$\times$ and
@@ -473,108 +388,57 @@ penalty is therefore not purchased by an accuracy margin; there is no
 margin.
 \par}
 
-\input{tables/generated/ff_bp_mlp_summary}
+\input{tables/generated/headline_summary}
 
-The cost is not a matter of power draw
-(Figure~\ref{fig:ff_convergence_dynamics}): \FF{} and \BP{} sit at comparable
-wattage, and \FF{}'s energy bill is run up almost entirely by how long it takes
-to reach its stopping criterion. The hardware-level reading of the
-Fashion-MNIST configuration in Figure~\ref{fig:ff_resource_utilization} rules
-out the obvious alternative explanations. Both algorithms hold the SM clock
-near its ceiling throughout, so the penalty is not throttling. And on both
-instruments---NVML device-wide and the \texttt{torch} allocator---\FF{}
-consumed slightly \emph{more} peak memory than \BP{}, refuting a key presumed
-advantage.
+The cost is not a matter of power draw: \FF{} and \BP{} sit at comparable
+wattage, and \FF{}'s energy bill is run up almost entirely by how long it
+takes to reach its stopping criterion. Decomposing the end-to-end gap into
+epochs and cost per epoch makes this exact. \FF{} needs
+\numrange{2.7}{3.8}$\times$ more epochs than \BP{} but spends only
+\numrange{1.5}{2.0}$\times$ as much time and
+\numrange{1.5}{1.8}$\times$ as much energy \emph{per epoch}. Its disadvantage
+is convergence speed, not per-step inefficiency. The NVML traces rule out the
+obvious alternative explanations. Both algorithms hold the SM clock near its
+ceiling throughout (\SI{1323}{\mega\hertz} for \BP{},
+\SI{1274}{\mega\hertz} for \FF{}), so the penalty is not throttling; \FF{}'s
+within-run clock variability is larger (SD \SI{114}{\mega\hertz} against
+\SI{67}{\mega\hertz}) but far too small to account for a \num{7.4}$\times$
+gap. And on both instruments---NVML device-wide
+(\SI{296}{\mebibyte} against \SI{287}{\mebibyte}) and the \texttt{torch}
+allocator---\FF{} consumed slightly \emph{more} peak memory than \BP{},
+refuting a key presumed advantage.
 
-\begin{figure}[tb]
-  \centering
-  \includegraphics{plots/generated/fig_ff_cost.pdf}
-  \vspace{-4pt}
-  \caption{The measured cost of \FF{} against \BP{}. (a) Final test accuracy,
-    bootstrap 95\% CIs over $n=7$ seeds. (b) Cumulative GPU energy against
-    wall-clock time for the median-duration run of each method on the
-    Fashion-MNIST 4$\times$2000 MLP, integrated from the NVML power trace
-    (\SI{5}{\hertz}, \texttt{nvmlDeviceGetPowerUsage}). \FF{} draws comparable
-    power but runs roughly \num{7} times longer, so it ends at several times
-    \BP{}'s energy while finishing \num{0.70}~pp below it on accuracy.
-    Per-epoch convergence curves are not shown: every \FF{} run with per-epoch
-    history in the run archive predates the evaluation fix of commit
-    \texttt{9a14332} and therefore reports an epoch-2 network, and the corrected
-    runs were archived without history.}
-  \label{fig:ff_convergence_dynamics}
-\end{figure}
-
-\begin{figure}[tb]
-  \centering
-  \includegraphics{plots/generated/fig_ff_resource.pdf}
-  \vspace{-4pt}
-  \caption{Hardware-level comparison of \FF{} against \BP{} on the
-    Fashion-MNIST 4$\times$2000 MLP\@. (a) Peak memory read by two instruments:
-    NVML reports the whole device including a CUDA context neither algorithm
-    controls, while \texttt{torch.cuda.max\_memory\_allocated} reports this
-    process. On both, \FF{} uses slightly \emph{more} memory than \BP{},
-    refuting the presumed advantage of eliminating the backward pass.
-    (b) SM clock (NVML, \SI{5}{\hertz}, rolling mean over \SI{10}{\second}) for
-    the median-duration run of each method; both stay pinned near
-    \SI{1300}{\mega\hertz}, so neither result is a throttling artefact.}
-  \label{fig:ff_resource_utilization}
-\end{figure}
-
-\FloatBarrier
 
 % ---- 5.2 ---------------------------------------------------
 \needspace{3\baselineskip}
 \subsection{\CaFo{}: A Structured Alternative with Acute Trade-offs}
 
-The \CaFo{} algorithm, evaluated on its native 3-block CNN, shows a stark
-accuracy--efficiency trade-off contingent on its feature-learning
-strategy---but neither variant is efficient. Re-measured on the current
-cluster with five seeds, \CaFoRand{} is \num{3.7}$\times$ slower and draws
-\num{3.2}$\times$ the energy of \BP{} on CIFAR-10 while losing
-\num{18.8}~pp of accuracy, and \CaFoDFA{} recovers much of that accuracy
-only by spending \num{7.9}$\times$ the time and \num{8.3}$\times$ the
-energy. Across all four datasets the time penalty ranges from
-\num{3.6}$\times$ to \num{10.5}$\times$ and the energy penalty from
-\num{2.9}$\times$ to \num{10.9}$\times$. The one genuine win is memory:
-\CaFoRand{} holds \num{16}\% less peak per-process device memory than
-\BP{} on CIFAR-10, because its fixed random extractors need no backward
-pass. Table~\ref{tab:cafo_bp_cnn_summary} quantifies the trade-off on
-that configuration. These figures replace the back-ported values of the
+\CaFo{}, on its native 3-block CNN, shows a stark accuracy--efficiency
+trade-off contingent on its feature-learning strategy---but neither variant is
+efficient. Re-measured with five seeds, \CaFoRand{} is \num{3.7}$\times$
+slower and draws \num{3.2}$\times$ the energy of \BP{} on CIFAR-10 while
+losing \num{18.8}~pp of accuracy, and \CaFoDFA{} recovers much of that
+accuracy only by spending \num{7.9}$\times$ the time and \num{8.3}$\times$ the
+energy (Table~\ref{tab:headline_summary}). Across all four datasets the
+time penalty ranges from \num{3.6}$\times$ to \num{10.5}$\times$ and the
+energy penalty from \num{2.9}$\times$ to \num{10.9}$\times$. The one genuine
+win is memory: \CaFoRand{} holds \num{16}\% less peak per-process device
+memory than \BP{} on CIFAR-10, because its fixed random extractors need no
+backward pass. As with \FF{}, the per-epoch decomposition is more flattering
+than the total: \CaFoRand{} is \emph{cheaper} than \BP{} per data pass
+(\numrange{0.76}{0.90}$\times$ the energy per epoch) and pays for it with
+\numrange{3.6}{7.8}$\times$ more passes, whereas \CaFoDFA{} on CIFAR is
+expensive on both axes. These figures replace the back-ported values of the
 submitted version, which were measured on an earlier software stack and
 overstated \CaFo{}'s standing considerably.
 
-\input{tables/generated/cafo_bp_cnn_summary}
 
-Figure~\ref{fig:cafo_convergence} illustrates these distinct convergence
-patterns on Fashion-MNIST. The flat initial segment in the
-\CaFoDFA{} validation accuracy curve corresponds to the DFA
-block-pretraining stage, during which the local predictors are not yet
-active for the downstream task. This pretraining cost is included in
-all reported \CaFoDFA{} time and energy figures, consistently
-across all datasets.
-
-\begin{figure}[tb]
-  \centering
-  \includegraphics{plots/generated/fig_cafo_profile.pdf}
-  \vspace{-4pt}
-  \caption{\CaFo{} variants against \BP{}. (a) Final test accuracy across four
-    datasets on the 3-block CNN, bootstrap 95\% CIs over $n=5$ seeds;
-    \CaFoRand{} loses ground as the task hardens, exposing the limits of random
-    fixed features. (b) GPU power (NVML, \SI{5}{\hertz}, rolling mean over
-    \SI{5}{\second}) for the median-duration run on Fashion-MNIST. The upfront
-    DFA block-pretraining stage is the elevated ${\approx}\SI{125}{\watt}$ regime
-    over the first ${\approx}\SI{40}{\second}$; it is included in every reported
-    energy and time figure. Per-epoch convergence curves are omitted because
-    \CaFo{} trains each block's predictor independently and logs no global
-    validation curve.}
-  \label{fig:cafo_convergence}
-\end{figure}
-
-This highlights a critical design insight: while high-quality feature
-representations are essential for accuracy, the DFA mechanism used by
-\CaFoDFA{} to learn them is computationally prohibitive.
-The supplementary material provides full comparative results
-across all datasets.
+The \CaFoDFA{} power trace opens with an elevated
+${\approx}\SI{125}{\watt}$ plateau: the DFA block-pretraining stage, during
+which no predictor is yet useful for the downstream task. That cost is
+included in every reported \CaFoDFA{} time and energy figure. The design
+insight is that high-quality features are necessary for accuracy but that DFA
+is not an affordable way to obtain them.
 
 % ---- 5.3 ---------------------------------------------------
 \needspace{3\baselineskip}
@@ -585,7 +449,7 @@ Mono-Forward matches or surpasses \BP{} accuracy on every tested MLP
 architecture, and the margin widens with task difficulty: $+\num{0.19}$~pp
 on MNIST, $+\num{0.01}$~pp on Fashion-MNIST, $+\num{3.90}$~pp on CIFAR-10
 and $+\num{5.04}$~pp on CIFAR-100, each over twenty seeds
-(Table~\ref{tab:mf_bp_perf_eff_summary}). It also holds materially less
+(Table~\ref{tab:headline_summary}). It also holds materially less
 per-process device memory on the wider models---\num{27}\% less on
 CIFAR-10 and \num{25}\% less on CIFAR-100---which is the structural
 consequence of never storing a global activation graph.
@@ -594,40 +458,28 @@ than CNN-based state-of-the-art owing to the elimination of spatial
 structure via flattening; the comparison here is strictly between an
 MLP-based \MF{} and an MLP-based \BP{} baseline on identical architectures.
 
-What does not hold is the efficiency claim. Under a stopping rule applied
-per stage to \MF{} and per epoch to \BP{}---the submitted protocol---\MF{}
-appeared \num{33.8}\% faster. Under the harmonised rule it is
-\num{4.0}$\times$ slower and draws \num{3.2}$\times$ the energy on
-CIFAR-10, with the same pattern on all four configurations.
-Section~\ref{sec:ladder} isolates which architectural choice is
-responsible.
+What does not hold is the efficiency claim. Under the harmonised rule \MF{} is
+\num{4.0}$\times$ slower than \BP{} and draws \num{3.2}$\times$ the energy on
+CIFAR-10, with the same pattern on all four configurations. The submitted
+version reported the opposite --- \MF{} \num{33.81}\% faster and \num{40.78}\%
+less energy-hungry --- and that result is reproducible, but only under the
+legacy protocol, in which \MF{}'s patience is spent once per layer while
+\BP{}'s is spent once for the whole network. Re-running it on the current
+cluster over three seeds recovers \num{33.6}\% $[\num{30.2},\num{36.0}]$ and
+\num{42.4}\% $[\num{38.9},\num{44.8}]$, so the discrepancy is not a
+measurement error; it is that the comparison charged the two algorithms
+different amounts of training before either was allowed to stop. Equalising
+the rule reverses the sign. Section~\ref{sec:ladder} isolates which
+architectural choice is responsible.
 
-\input{tables/generated/mf_bp_perf_eff_summary}
-
-{\looseness=-1
-The submitted version reported the opposite conclusion---\MF{}
-\num{33.81}\% faster and \num{40.78}\% less energy-hungry on
-CIFAR-10---and that figure is reproducible, but only under the legacy
-protocol, in which \MF{}'s per-stage patience is spent once per layer
-while \BP{}'s is spent once for the whole network. That comparison
-charges the two algorithms different amounts of training before either
-is allowed to stop, so the efficiency it reports is an artefact of the
-stopping rule rather than a property of the update. Equalising the rule
-reverses the sign.
-\par}
-
-{\looseness=-1
 Hardware monitoring on the CIFAR-10 task shows what \MF{}'s local training
 regime actually does to the device
 (Figure~\ref{fig:mf_hardware_and_memory}). \MF{} draws less power and keeps
-the GPU roughly half as busy as \BP{}, but it stays on the device almost four
-times as long, so the lower instantaneous draw does not translate into lower
-energy. Its per-layer stages are visible as steps in both the utilisation and
-the memory trace. The device-wide memory reading separates the two algorithms
-by little because it includes the fixed CUDA context that neither of them
-controls; Figure~\ref{fig:time_memory_frontier} reports the per-process figure
-instead.
-\par}
+the GPU less than half as busy as \BP{} (\SI{7.3}{\percent} against
+\SI{16.2}{\percent} mean utilisation), but it stays resident almost four times
+as long, so the lower instantaneous draw does not translate into lower energy.
+Its per-layer stages are visible as steps in both the utilisation and the
+memory trace.
 
 \begin{figure}[tb]
   \centering
@@ -636,47 +488,23 @@ instead.
   \caption{Hardware monitoring of the \BP{}$\to$\MF{} ladder on the CIFAR-10
     3$\times$2000 MLP, median-duration run per rung. All three traces are NVML
     at \SI{5}{\hertz} (rolling mean over \SI{5}{\second}); none is a
-    Weights~\&~Biases system panel. (a) \MF{} draws roughly
-    \SI{61}{\watt} against \BP{}'s \SI{78}{\watt}, but for almost four times as
-    long, so the area under the curve---the energy---is far larger.
-    (b)~Utilisation and (c)~device memory expose \MF{}'s per-layer stages as
-    visible steps. The device-memory reading includes the fixed CUDA context,
-    which is why the rungs separate by so little; see
-    Figure~\ref{fig:time_memory_frontier} for the per-process figure.}
+    Weights~\&~Biases system panel. (a)~\MF{} draws roughly \SI{61}{\watt}
+    against \BP{}'s \SI{78}{\watt}, but for almost four times as long, so the
+    area under the curve---the energy---is far larger. (b)~Utilisation and
+    (c)~device memory expose \MF{}'s per-layer stages as steps. The device
+    memory reading includes the fixed CUDA context, which is why the rungs
+    separate by so little; per-process figures are given in
+    Table~\ref{tab:headline_summary}.}
   \label{fig:mf_hardware_and_memory}
 \end{figure}
 
-\needspace{3\baselineskip}
-Figure~\ref{fig:mf_bp_cifar10_mlp_conv_curves} shows where that cost is
-actually spent. Every rung of the ladder draws close to the same power, so
-energy tracks wall-clock time almost exactly and the ranking of the rungs by
-energy is the ranking by duration. \MF{} nonetheless reaches higher accuracy
-than \BP{} on identical architectures; we discuss a possible regularisation
-hypothesis in Section~\ref{sec:discussion_why_mf}.
-
-\begin{figure}[tb]
-  \centering
-  \includegraphics{plots/generated/fig_mf_bp_cost_curves.pdf}
-  \vspace{-4pt}
-  \caption{What a training run costs, on the CIFAR-10 3$\times$2000 MLP\@.
-    (a) Cumulative GPU energy against wall-clock time, integrated from the
-    NVML power trace of all \num{20} seeds per rung; the line is the seed mean
-    and the band its bootstrap 95\% CI\@. A seed that has finished is held at
-    its own total, so each curve flattens at its completion time and the marker
-    is the mean of those times. (b) Every seed, total energy against
-    training time, with iso-power guides. All four rungs sit near the same
-    power draw, so energy is set almost entirely by how long the run takes.
-    A validation-loss comparison is not shown: \MF{} optimises a separate local
-    objective per layer and logs no global validation curve, so no such series
-    exists for it in the run archive.}
-  \label{fig:mf_bp_cifar10_mlp_conv_curves}
-\end{figure}
-
-{\looseness=-1
-A complete summary comparing the relative performance and efficiency of
-each algorithm against its fair \BP{} baseline across all tested
-configurations is presented in the supplementary material.
-\par}
+Across all \num{20} seeds of every rung, total energy and training time are
+collinear along a single iso-power band: the rungs differ in how long they
+run, not in how hard they drive the device. \MF{} nonetheless reaches higher
+accuracy than \BP{} on identical architectures; Section~\ref{sec:discussion_why_mf}
+discusses a regularisation hypothesis. We do not compare validation-loss
+curves, because \MF{} optimises a separate local objective per layer and logs
+no global validation series.
 
 % ---- 5.4 ---------------------------------------------------
 \needspace{3\baselineskip}
@@ -694,20 +522,65 @@ the readout together move it by at most \num{40}~pp and on the two CIFAR tasks
 partly cancel. The overhead is not an implementation detail that tuning will
 remove: it is the price of locality itself.
 
-Caching activations is the obvious remedy, and it does not work
-(Figure~\ref{fig:time_memory_frontier}). Caching on the device buys no time and
-costs several times the per-process memory; caching on the host adds
-\num{261}~pp of \BP{}'s energy on MNIST and \num{441}~pp on Fashion-MNIST on
-top of \MF{}'s own overhead. Neither strategy reaches a point that \MF{}
-without caching does not already dominate.
+\paragraph{Does locality buy anything deep supervision does not?}
+Rung~1 of the ladder, \texttt{BP-DS}, is \BP{} with \MF{}'s auxiliary
+classifiers attached and nothing detached; comparing it with \MF{} isolates
+the effect of forward-only training with everything else held fixed. The
+answer splits by task scale. On the two MNIST-scale 2$\times$1000 MLPs the two
+are statistically equivalent within the $\pm\num{0.25}$~pp margin: \MF{}
+leads by \num{0.11}~pp $[\num{-0.01},\num{+0.23}]$ on MNIST ($n=20$) and
+trails by \num{0.06}~pp $[\num{-0.17},\num{+0.06}]$ on Fashion-MNIST ($n=48$).
+On the two CIFAR 3$\times$2000 MLPs it is not close: \MF{} leads
+\texttt{BP-DS} by \num{5.56}~pp $[\num{+5.37},\num{+5.74}]$ on CIFAR-10 and
+\num{6.10}~pp $[\num{+5.88},\num{+6.31}]$ on CIFAR-100, both over \num{20}
+seeds. Deep supervision alone is \emph{worse} than plain \BP{} on those two
+tasks ($-\num{1.65}$ and $-\num{1.06}$~pp), whereas \MF{} is better, so the
+detachment is contributing accuracy rather than merely being tolerated. We
+report both halves: on small tasks \MF{}'s accuracy is attributable to
+auxiliary supervision, and on harder ones it is not.
 
-Finally, we report accuracy differences as intervals rather than as verdicts
-(Figure~\ref{fig:equivalence_forest}). Of \num{28} contrasts, eleven are
-equivalent within the preregistered margin, sixteen are different, and one is
-inconclusive: \CaFoDFA{} against \BP{} on the Fashion-MNIST CNN, whose interval
-spans $[\num{-0.03},\num{+0.61}]$~pp at five seeds---wide enough to contain
-both the margin and values well outside it. We mark such a contrast
-inconclusive rather than reading it as evidence of parity.
+\paragraph{The time--memory frontier is a structural property.}
+Caching activations is the obvious remedy for the recomputation that locality
+forces, and it does not work. Caching on the device buys no time
+(\numrange{1.00}{1.02}$\times$) and costs about \num{40}\% more per-process
+memory; caching on the host is slower still (\num{0.97}$\times$) and adds
+\num{261}~pp of \BP{}'s energy on MNIST and \num{441}~pp on Fashion-MNIST on
+top of \MF{}'s own overhead. Neither strategy reaches a time--memory point
+that \MF{} without caching does not already dominate. The frontier is not
+merely an evaluation artefact, because which methods may appear on it at all
+is decided by the algorithm: \BP{}, \texttt{BP-DS} and \texttt{MF-Joint}
+cannot cache, since a joint gradient makes any cached activation stale within
+one optimiser step, whereas \MF{} can, because detachment plus
+layer-sequential training freeze every preceding layer for the whole of a
+stage. The trade-off axis exists only for the local method. That it turns out
+to be a bad trade is the empirical part; that it is available at all is the
+algorithmic part.
+
+\paragraph{Is this simply an unoptimised implementation?}
+The natural objection is that \BP{} looks good because a decade of kernel
+engineering has gone into it. We tested that rather than arguing it. \MF{}'s
+layer-sequential schedule recomputes the activations of every preceding layer
+at each stage, an $O(L^2)$ cost a mature implementation would remove by
+caching, so we implemented the cache and checked it against the recomputing
+path: over \num{1200} and \num{3600} optimiser steps the maximum absolute
+difference in both loss and weights was exactly \num{0}, so the optimisation is
+bit-exact. It bought no speedup (\numrange{1.00}{1.02}$\times$ on device,
+\num{0.97}$\times$ on host). The missing optimisation was not missing; it
+simply does not pay, because at these layer widths the device never exceeds
+${\approx}\SI{38}{\percent}$ mean utilisation and the runs are bound by kernel
+launch latency rather than arithmetic. The same reading covers the other two
+algorithms: per data pass \CaFoRand{} is \emph{cheaper} than \BP{} and \FF{}
+only \numrange{1.5}{2.0}$\times$ more expensive, so the end-to-end gaps are
+made almost entirely of extra epochs. Library maturity is not what separates
+these methods from \BP{}; convergence rate is.
+
+\paragraph{Intervals, not verdicts.}
+Of \num{28} accuracy contrasts, eleven are equivalent within the preregistered
+margin, sixteen are different, and one is inconclusive
+(Figure~\ref{fig:equivalence_forest}): \CaFoDFA{} against \BP{} on the
+Fashion-MNIST CNN, whose interval spans $[\num{-0.03},\num{+0.61}]$~pp at five
+seeds --- wide enough to contain both the margin and values well outside it.
+We mark such a contrast inconclusive rather than as evidence of parity.
 
 \begin{figure}[tb]
   \centering
@@ -725,24 +598,6 @@ inconclusive rather than reading it as evidence of parity.
 
 \begin{figure}[tb]
   \centering
-  \includegraphics{plots/generated/fig_time_memory_frontier.pdf}
-  \vspace{-4pt}
-  \caption{Time against memory for \BP{} and the three \MF{} caching
-    strategies. Only the two MNIST-scale configurations appear: random crop
-    and horizontal flip make a cached activation stale by construction, so
-    caching is not defined on the CIFAR tasks and those rungs were never run.
-    Top row: peak memory allocated by this process
-    (\texttt{torch.cuda.max\_memory\_allocated}), which excludes the fixed CUDA
-    context. Bottom row: peak host resident set size (psutil). The shaded
-    quadrant is the region dominated by \MF{} without caching---worse on both
-    axes. Both caching strategies fall inside it, so neither is on the frontier.
-    Markers are seed means with bootstrap 95\% CIs, \numrange{20}{122} seeds
-    per point.}
-  \label{fig:time_memory_frontier}
-\end{figure}
-
-\begin{figure}[tb]
-  \centering
   \includegraphics{plots/generated/fig_equivalence_forest.pdf}
   \vspace{-4pt}
   \caption{Paired differences in final test accuracy, bootstrap 95\% CIs
@@ -755,7 +610,6 @@ inconclusive rather than reading it as evidence of parity.
   \label{fig:equivalence_forest}
 \end{figure}
 
-\FloatBarrier
 
 % ============================================================
 \section{Discussion}
@@ -766,161 +620,111 @@ We interpret the empirical results, discuss methodological limitations,
 and draw implications for future work. Where interpretations go beyond
 the data, we label them explicitly as hypotheses.
 
-% ---- 6.1 ---------------------------------------------------
-\needspace{3\baselineskip}
-\subsection{Why \MF{} Succeeds: A Regularisation Hypothesis}
+\paragraph{Why \MF{} is accurate: a regularisation hypothesis.}
 \label{sec:discussion_why_mf}
-
-{\looseness=-1
 \FF{}'s inefficiency traces to its indirect goodness signal and contrastive
-data generation, resulting in slow convergence and poor GPU utilisation
-(Section~\ref{sec:experiments}). \CaFo{}'s DFA block-pretraining resolves
-the feature quality problem but at unacceptable energy cost, suggesting
-that a direct supervisory signal is necessary but that DFA is not the
-right mechanism. \MF{}'s local projection matrices provide exactly such a
-direct signal — a local cross-entropy loss at each layer — with minimal
-overhead. The mechanism is closely related to the local auxiliary losses
-studied by \cite{ren2023scaling} and \cite{ishikawa2025local}. Of particular
-relevance, \cite{ishikawa2025local} analyse local loss optimisation in the infinite-width limit and show
-that greedy layer-wise training can reduce the effective complexity of the learned
-representation in ways that support generalisation.
-\par}
+data generation, which cost it \numrange{2.7}{3.8}$\times$ more epochs than
+\BP{}; \CaFo{}'s DFA pretraining fixes the feature-quality problem at an
+unaffordable price. A direct supervisory signal appears necessary, and \MF{}'s
+local projections supply one with minimal overhead --- a mechanism close to
+the local auxiliary losses of \cite{ren2023scaling} and
+\cite{ishikawa2025local}, the latter showing in the infinite-width limit that
+greedy layer-wise training can reduce the effective complexity of the learned
+representation. This motivates the \emph{regularisation hypothesis}: that
+greedy layer-wise optimisation implicitly constrains each layer's
+representational capacity and so generalises better than joint optimisation.
+The ladder sharpens it. Auxiliary supervision alone reproduces \MF{}'s
+accuracy on the MNIST-scale tasks but \emph{loses} \numrange{1.06}{1.65}~pp
+against plain \BP{} on the CIFAR tasks, exactly where \MF{} gains
+\numrange{3.90}{5.04}~pp, so the credit belongs to the detachment rather than
+to the heads, and only once the task is hard enough. It remains a hypothesis;
+testing it needs diagnostics we have not run, such as the train--validation
+gap over training or sharpness measures.
 
-{\looseness=-1
-This theoretical result motivates the \emph{regularisation hypothesis}
-for \MF{}'s accuracy advantage: that the layer-wise, greedy nature of
-\MF{}'s optimisation implicitly constrains the representational complexity
-of each layer, guiding the model toward a solution with better
-generalisation properties than \BP{}'s global, joint optimisation. The
-lower final validation loss observed for \MF{} in
-Figure~\ref{fig:mf_bp_cifar10_mlp_conv_curves} is consistent with this
-hypothesis. We emphasise that this remains a hypothesis: confirming it
-would require diagnostic experiments such as measuring the
-train--validation accuracy gap across training, computing sharpness
-metrics (e.g., $\lambda_{\max}$ of the loss Hessian), or comparing
-generalisation bounds under the two optimisation regimes. We leave such
-analysis to future work.
-\par}
-
-% ---- 6.2 ---------------------------------------------------
-\needspace{3\baselineskip}
-\subsection{Rethinking Memory Efficiency in BP-Free Learning}
+\paragraph{Memory efficiency depends on which instrument you read.}
 \label{sec:discussion_memory}
+Measured per process with \texttt{torch.cuda.max\_memory\_allocated}, \MF{}
+holds \num{27}\% less than \BP{} on the CIFAR-10 3$\times$2000 MLP and
+\num{25}\% less on CIFAR-100 --- far more than the ${\approx}\num{5}\%$ the
+submitted version reported, which came from the device-wide NVML counter in
+which a fixed ${\approx}\SI{800}{\mebibyte}$ CUDA context dilutes every
+difference. \CaFoRand{} saves \numrange{6}{7}\% on the same basis, while
+\FF{} and \CaFoDFA{} consume \emph{more} memory than their \BP{} baselines:
+dual data streams, feedback tensors and projection matrices are real
+allocations that offset the activation graph one avoids storing. Report the
+per-process figure, and do not treat ``no backward pass'' as a memory argument
+without measuring it.
 
-A critical finding is that eliminating the backward pass does not
-automatically guarantee superior memory efficiency. While
-\CaFoRand{} showed modest memory savings (approximately 6--9\%
-across datasets), both \FF{} and \CaFoDFA{} consumed \emph{more}
-memory than their \BP{} baselines. Even \MF{}'s memory advantage on larger
-MLPs was modest at approximately 5\%.
-
-This occurs because the practical overhead of algorithm-specific
-components, specifically \FF{}'s dual data streams, \MF{}'s per-layer projection
-matrices, and \CaFoDFA{}'s DFA feedback tensors, can counteract the
-theoretical savings from not storing activations for the backward pass.
-Peak memory as reported by NVML captures GPU-resident tensor
-allocations; note that PyTorch's memory allocator may retain freed
-blocks in a pool, so peak allocation can differ from the maximum
-simultaneously-live tensor memory. These findings underscore the
-necessity of direct hardware measurement rather than theoretical
-analysis alone.
-
-% ---- 6.3 ---------------------------------------------------
-\needspace{3\baselineskip}
-\subsection{Implications for Efficient Training and Hardware Co-Design}
+\paragraph{Implications for efficient training and hardware co-design.}
 \label{sec:discussion_hardware_codesign}
-
-{\looseness=-1
-\MF{}'s energy reduction on CIFAR-10 (approximately 41\%) and training
-time reduction (approximately 34\%) relative to a fairly tuned \BP{}
-baseline are meaningful results for the specific setting studied: MLP
-architectures on standard vision benchmarks on an
-NVIDIA A100-SXM4-40GB GPU\@. Whether these advantages persist on
-larger networks, different hardware platforms (consumer GPUs, TPUs,
-edge devices), or other data domains is unknown and represents an
-important open question.
-\par}
-
-{\looseness=-1
-If forward-only algorithms like \MF{} prove effective at larger scales,
-they could motivate hardware designs with simpler memory subsystems
-without activation checkpointing and compute pipelines optimised for
-sequential, layer-local operations, a speculative but well-motivated
-direction. Extrapolating the present savings to a broader sustainability
-claim would require demonstrating similar advantages at the scale where
-energy costs are societally
+The efficiency case for forward-only training does not survive a harmonised
+stopping rule on this platform, and the traces say why. No configuration we
+measured exceeds ${\approx}\SI{38}{\percent}$ mean GPU utilisation, and \MF{}
+reaches only \SI{7.3}{\percent} against \BP{}'s \SI{16.2}{\percent} on
+CIFAR-10: the layer-sequential schedule issues many small kernels and waits,
+so the device idles while the run stays resident and the fixed power floor is
+integrated over four times the duration. This is a launch-latency problem
+rather than an arithmetic one, which is also why a bit-exact activation cache
+removed the $O(L^2)$ recomputation without saving any time. That diagnosis is
+what makes the result more than negative: layer-local updates are exactly the
+work that a pipelined or memory-local execution model need not serialise, and
+the per-process memory reduction is structural. \MF{} is thus an accuracy and
+memory result on current hardware and a conditional energy result on hardware
+that does not yet exist; extrapolating to a sustainability claim would require
+the advantage at the scale where training energy is societally
 significant~\cite{strubell2019energy,patterson2021carbon}.
-\par}
 
 % ---- 6.4 ---------------------------------------------------
 \needspace{5\baselineskip}
 \subsection{Limitations}
 \label{sec:limitations}
 
-We provide an explicit, comprehensive account of this study's
-limitations:
 \begin{enumerate}
-  \item \textbf{Architecture and scale.} Results apply to 2--4-layer MLP
-        architectures (\FF{} and \MF{}) and a 3-block CNN (\CaFo{});
-        performance on deeper CNNs, residual networks, transformers, or
-        attention-based architectures is entirely untested. Networks are
-        moderately sized (up to 4 layers of 2000 units); the behaviour
-        of \MF{} and \FF{} under increasing depth, width, or dataset
-        complexity is unknown, though prior work on local-loss
+  \item \textbf{Architecture and scale.} Results apply to 2--4-layer MLPs
+        (\FF{}, \MF{}) and a 3-block CNN (\CaFo{}). Deeper CNNs, residual
+        networks and transformers are untested, as is behaviour under
+        increasing depth and width, though prior work on local-loss
         methods~\cite{ren2023scaling} suggests scalability.
-  \item \textbf{Datasets.} MNIST, Fashion-MNIST, CIFAR-10, and
-        CIFAR-100 are well-established but small-scale benchmarks.
-        CIFAR-10 and CIFAR-100 inputs are flattened to 1-D vectors for
-        MLP experiments, which eliminates spatial structure. Findings
-        may not reflect behaviour on larger or more complex datasets.
-  \item \textbf{Hardware specificity.} All hardware results are specific
-        to the NVIDIA A100-SXM4-40GB on the Athena cluster. Results may
-        differ significantly on consumer GPUs (e.g., RTX~4090), TPUs,
-        or edge hardware.
-  \item \textbf{Statistical robustness.} Three runs are insufficient to
-        establish statistical significance at conventional thresholds,
-        especially for small accuracy margins (e.g., +0.09~pp on MNIST);
-        the \MF{} MNIST advantage in particular should be interpreted with
-        considerable caution.
-  \item \textbf{Hyperparameter search confound.} Each algorithm
-        underwent independent Optuna tuning. Differences in performance
-        may partly reflect better hyperparameter discovery rather than
-        intrinsic algorithmic superiority. The hyperparameter search
-        cost itself was not included in the reported training time and
-        energy figures; for slow algorithms like \FF{}, the 50-trial Optuna
-        search overhead is substantial and should be considered in any
-        total-cost assessment.
-  \item \textbf{Missing deep-supervision baseline.} \MF{} introduces
-        per-layer projection matrices and local cross-entropy losses,
-        which both enable the BP-free training signal \emph{and} add
-        additional parameter capacity and supervision depth relative to
-        the standard \BP{} baseline. A \BP{} network with equivalent
-        per-layer auxiliary heads (\texttt{BP-DS};
-        ``deep supervision''~\cite{lee2015deeply}) — adding projection
-        heads of identical dimension with auxiliary cross-entropy losses
-        at each layer and training end-to-end — would allow attribution
-        of \MF{}'s accuracy advantage specifically to the forward-only
-        training regime. We were unable to complete this comparison
-        within the present submission and include it as a priority item
-        for future work. All efficiency comparisons (energy, time,
-        memory) remain interpretable regardless.
-  \item \textbf{Inconsistent Fashion-MNIST \MF{} result.} On
-        Fashion-MNIST, \MF{} incurred a 9.90\% increase in energy relative
-        to \BP{}\@. This is inconsistent with the efficiency gains observed
-        on CIFAR-10 and CIFAR-100. The cause is not fully understood; it
-        may reflect dataset-specific convergence behaviour or
-        hyperparameter interactions on the smaller network
-        (2$\times$1000 MLP). This result qualifies any claim of
-        consistent efficiency superiority across all configurations.
-  \item \textbf{Scope of contribution.} This paper's primary
-        contribution is evaluative, not algorithmic; the benchmarking
-        framework, fair comparison conditions, and hardware-level
-        measurements are our contribution. The algorithms (\FF{}, \CaFo{},
-        \MF{}) are previously
+  \item \textbf{Datasets.} The four benchmarks are well established but
+        small, and the MLP experiments flatten CIFAR inputs to 1-D vectors
+        following the \MF{} protocol, which destroys spatial structure and
+        caps absolute accuracy far below CNN state-of-the-art. The
+        comparisons are internally valid but say nothing about either
+        algorithm in a competitive vision pipeline.
+  \item \textbf{Hardware specificity.} Every efficiency figure comes from one
+        NVIDIA A100-SXM4-40GB. Since our central diagnosis is that these
+        workloads are launch-latency-bound rather than compute-bound, the
+        results are especially likely to move on hardware with different
+        kernel-launch and memory-bandwidth characteristics, so we regard the
+        direction of the energy result as platform-conditional.
+  \item \textbf{Statistical resolution.} Seed counts are now
+        \numrange{5}{122} per contrast rather than three, but resolution is
+        still bounded. The pooled seed-level SD of test accuracy is
+        \num{0.284}~pp, rising to \num{0.43}~pp on the 3$\times$2000 MLPs,
+        giving a bootstrap CI half-width near $\pm\num{0.35}$~pp at $n=5$
+        and $\pm\num{0.26}$~pp at $n=7$. Against a $\pm\num{0.25}$~pp
+        margin, a contrast below about \num{0.3}~pp cannot be resolved
+        either way at those counts, which is why one is reported
+        inconclusive. The ladder contrasts use \num{20} seeds or more.
+  \item \textbf{Energy accounting is GPU-only.} NVML reports GPU package
+        power; host CPU, DRAM and PCIe energy are not instrumented, so any
+        variant that moves work off the accelerator is flattered. This
+        matters most for the host-cache \MF{} strategy, whose true total
+        cost is understated by an unknown amount --- we still report it as
+        dominated, since it already loses on the instrumented axis. CO$_2$e
+        estimates rest on a grid-intensity model we do not treat as a
+        measurement and are reported only in the repository.
+  \item \textbf{Hyperparameter search confound.} Each algorithm was tuned
+        independently under an equal trial budget, so differences may partly
+        reflect better hyperparameter discovery. The search cost is excluded
+        from all reported figures; for a slow algorithm such as \FF{} it is
+        substantial and belongs in any total-cost assessment.
+  \item \textbf{Scope.} The contribution is evaluative --- the framework,
+        the protocols, the ladder and the measurements. The algorithms are
+        previously
         published~\cite{hinton2022forward,zhao2023cafo,gong2025mono}.
 \end{enumerate}
 
-\FloatBarrier
 
 % ============================================================
 \needspace{4\baselineskip}
@@ -928,75 +732,51 @@ limitations:
 \label{sec:conclusion}
 % ============================================================
 
-We presented a rigorous, hardware-validated benchmarking study of three
-forward-only, BP-free training algorithms, namely \FF{}, \CaFo{}, and
-\MF{}, evaluated against fairly tuned \BP{} baselines under a principled
-fairness framework on MLP and CNN architectures across four standard
-vision benchmarks.
+We presented a hardware-validated benchmarking study of three forward-only,
+BP-free training algorithms --- \FF{}, \CaFo{} and \MF{} --- against fairly
+tuned \BP{} baselines, under one fairness framework, on MLP and CNN
+architectures across four vision benchmarks.
 
-{\looseness=1
-On its native MLP architectures, \MF{} consistently matched or surpassed
-\BP{} in classification accuracy across all tested configurations,
-achieving up to 41\% lower energy consumption and up to 34\% faster
-training on CIFAR-10. These findings challenge the assumption that
-global end-to-end optimisation is necessary for competitive accuracy on
-these architectures and establish \MF{} as a practically viable training
-algorithm for this setting. By contrast, \FF{} incurred prohibitive
-efficiency costs despite moderate accuracy gains, and \CaFo{} faced an
-acute accuracy--efficiency trade-off that limited its practical utility
-without the expensive DFA pretraining stage.
-\par}
+On its native MLP architectures \MF{} matched or surpassed \BP{} accuracy in
+every configuration, by \numrange{0.01}{5.04}~pp, and held up to \num{27}\%
+less per-process device memory. It was not cheaper to train. Under a stopping
+rule harmonised across algorithms, \MF{} is \num{4.0}$\times$ slower and draws
+\num{3.2}$\times$ the energy of \BP{} on CIFAR-10; the \num{41}\% energy
+saving reported in the accepted version is reproducible only under the
+submitted protocol, in which each algorithm was allowed a different amount of
+training before it could stop, and its sign reverses once that is equalised.
+\FF{} and \CaFo{} are more expensive still on every axis but memory. An
+ablation ladder attributes the increase almost entirely to gradient locality,
+worth \numrange{228}{272}~pp of \BP{}'s energy, and shows that a
+deep-supervision \BP{} control reproduces \MF{}'s accuracy on the MNIST-scale
+tasks but falls more than \num{5}~pp short of it on CIFAR.
 
-{\looseness=-1
-Importantly, these results are specific to MLP architectures on
-standard, small-scale benchmarks on a single GPU platform. The finding
-that BP-free training can match or exceed \BP{}'s accuracy and efficiency
-cannot be extrapolated to larger models, other architectures, or other
-hardware without further investigation. The absence of a
-deep-supervision \BP{} baseline (\texttt{BP-DS}) is a notable gap that
-future work should address to isolate the algorithmic contribution of
-forward-only training.
-\par}
-
-{\looseness=-1
-Within its established scope, this work provides a reproducible
-benchmarking framework, hardware-level efficiency profiles, and an
-empirical re-evaluation of memory efficiency that together offer a more
-rigorous empirical foundation for evaluating BP-free methods than was
-previously available.
-\par}
+These results are specific to small architectures and benchmarks on a single
+GPU, and their efficiency half is conditional on a platform where nothing we
+measured exceeded ${\approx}\SI{38}{\percent}$ mean GPU utilisation. Within
+that scope the work provides a reproducible framework, an attribution of cost
+to a specific architectural property rather than to an algorithm as a whole,
+and a corrected empirical basis --- including corrections to our own earlier
+claims --- for evaluating BP-free methods.
 
 \subsubsection{\ackname}
 This work was supported by the Ministry of Science and Higher Education of
 Poland and by the National Science Centre (NCN), Poland, under grant OPUS-29,
-DEC-2025/57/B/ST6/04377. The authors wish to thank the PLGrid Infrastructure
-and ACK Cyfronet AGH for providing the computational resources on the Athena
-cluster, which were indispensable for this work. The research was conducted as
-part of a~master's thesis by \mbox{Przemys{\l}aw} Spyra, under the supervision
-of Witold Dzwinel. \mbox{Przemys{\l}aw} Spyra was responsible for the
-development and implementation of the methodology, experiments, and analysis.
-Witold Dzwinel provided conceptual guidance, critical feedback, and helped shape
-the direction and presentation of the work. We gratefully acknowledge the AGH
-University of Krakow for providing the institutional support and academic
-environment that made this research possible.
+DEC-2025/57/B/ST6/04377. We thank the PLGrid Infrastructure and ACK Cyfronet
+AGH for the computational resources on the Athena cluster, and AGH University
+of Krakow for institutional support. The research was conducted as part of
+a~master's thesis by \mbox{Przemys{\l}aw} Spyra under the supervision of
+Witold Dzwinel: \mbox{Przemys{\l}aw} Spyra developed and implemented the
+methodology, experiments and analysis; Witold Dzwinel provided conceptual
+guidance, critical feedback and direction.
 
-\subsection{Code Repository}
-% FIX #5: Renamed label from \label{app:repository} to \label{sec:repository}.
-% The subsection now lives in the main paper body, not in an appendix;
-% the "app:" prefix was semantically misleading. No \ref{} calls in
-% main.tex pointed to this label, so no further updates are required here.
+\subsubsection{Code and data.}
 \label{sec:repository}
-
-To ensure full reproducibility, we provide the complete research
-artifacts associated with this work. This includes the full source code,
-all configuration files, selected hyperparameter YAML specifications,
-and per-run experimental logs. In addition, all appendix material
-previously included in the manuscript has been moved to the repository
-as an online appendix.
-
-\begin{center}
-  \url{https://github.com/Przemyslaw11/BeyondBackpropagation}
-\end{center}
+The source code, every configuration file including the preserved
+pre-revision settings, the Optuna search spaces and selected values, the full
+environment listing, the NVML instrumentation, the tidy table behind every
+number in this paper, and the per-run logs are available at
+\url{https://github.com/Przemyslaw11/BeyondBackpropagation}.
 
 % ============================================================
 %  Bibliography
