@@ -2,7 +2,7 @@
 % Do not edit by hand; edit the generator and re-run it.
 \begin{table}[tb]
   \centering
-  \caption{Performance and efficiency: \FF{} vs.\ \BP{} on the Fashion-MNIST 4$\times$2000 MLP\@. Mean~$\pm$~SD over \num{7} seeds. Better result in each column is shown in \textbf{bold}. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure.}
+  \caption{Performance and efficiency: \FF{} vs.\ \BP{} on the Fashion-MNIST 4$\times$2000 MLP\@. Mean~$\pm$~SD over \num{7} seeds. Better result in each column is shown in \textbf{bold}. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure; allocation is deterministic, hence the zero SD.}
   \label{tab:ff_bp_mlp_summary}
   \setlength{\tabcolsep}{4pt}%
   \small

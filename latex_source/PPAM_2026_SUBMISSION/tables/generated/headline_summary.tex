@@ -2,7 +2,7 @@
 % Do not edit by hand; edit the generator and re-run it.
 \begin{table}[tb]
   \centering
-  \caption{Each algorithm on its native architecture against an identically configured, independently tuned \BP{} baseline, under the harmonised stopping rule of Table~\ref{tab:early_stopping}. Mean~$\pm$~SD over the stated seeds; the better result within each block is shown in \textbf{bold}. CIFAR-10 inputs are flattened to 3072-dimensional vectors for the MLP rows, following the \MF{} protocol, and \CaFo{} times include the \CaFoDFA{} block-pretraining stage. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure.}
+  \caption{Each algorithm on its native architecture against an identically configured, independently tuned \BP{} baseline, under the harmonised stopping rule of Table~\ref{tab:early_stopping}. Mean~$\pm$~SD over the stated seeds; the better result within each block is shown in \textbf{bold}. CIFAR-10 inputs are flattened to 3072-dimensional vectors for the MLP rows, following the \MF{} protocol, and \CaFo{} times include the \CaFoDFA{} block-pretraining stage. Time and Energy cover full training to early stopping; energy is the NVML power trace integrated over the run. Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process figure; allocation is deterministic, hence the zero SD.}
   \label{tab:headline_summary}
   \setlength{\tabcolsep}{4pt}%
   \small

@@ -47,7 +47,7 @@ COLUMNS: Tuple[Column, ...] = (
 
 MEMORY_NOTE = (
     r"Peak Mem is \texttt{torch.cuda.max\_memory\_allocated}, the per-process "
-    r"figure."
+    r"figure; allocation is deterministic, hence the zero SD."
 )
 ENERGY_NOTE = (
     r"Time and Energy cover full training to early stopping; energy is the NVML "

@@ -390,6 +390,9 @@ def ladder_waterfall(table: Table, out_dir: Path) -> Path:
     # Panel (b): the same decomposition for every configuration.
     positions = np.arange(len(RUNG_TRANSITIONS))
     width = 0.2
+    # Hatches keep the four series separable when the paper is printed in
+    # greyscale, where the palette's orange and blue map to similar lightness.
+    hatches = ("", "///", "...", "\\\\\\")
     for offset, config in enumerate(LADDER_CONFIGS):
         values = rung_values(table, config, "total_gpu_energy_wh")
         shared = common_seeds(values)
@@ -408,7 +411,9 @@ def ladder_waterfall(table: Table, out_dir: Path) -> Path:
             contributions,
             width=width,
             label=config.replace("x", "$\\times$"),
-            edgecolor="none",
+            edgecolor="white",
+            linewidth=0.3,
+            hatch=hatches[offset % len(hatches)],
             zorder=2,
         )
     right.axhline(0.0, color="0.3", linewidth=0.6, zorder=3)
