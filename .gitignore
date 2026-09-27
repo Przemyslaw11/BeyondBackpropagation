@@ -214,3 +214,10 @@ master_thesis/*.fdb_latexmk
 
 # Rasterised figure previews, for inspection only
 artifacts/preview/
+
+# Signed Springer licence and archives that contain it (private, never public)
+*COPYRIGHT*
+License-to-Publish*
+latex_source/CP025.zip
+latex_source/CP025_submission/
+latex_source/PPAM_2026_Attachment_XXX_25/
