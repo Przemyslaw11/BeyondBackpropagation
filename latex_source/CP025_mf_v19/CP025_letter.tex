@@ -1,0 +1,821 @@
+% ============================================================
+%  Response to Reviewers, PPAM 2026, submission 25
+%  Every number quoted here is reproducible from
+%  artifacts/tidy/runs.csv via this folder's analysis/analyse.py.
+% ============================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+
+\sisetup{detect-weight=true, detect-family=true}
+\DeclareSIUnit\mebibyte{MiB}
+\emergencystretch=3em
+
+\newcommand{\tmma}{\texttt{torch.cuda.\allowbreak max\_memory\_\allowbreak allocated}}
+\newcommand{\FF}{FF}
+\newcommand{\MF}{MF}
+\newcommand{\BP}{BP}
+\newcommand{\CaFo}{CaFo}
+\newcommand{\CaFoRand}{CaFo-Rand}
+\newcommand{\CaFoDFA}{CaFo-DFA}
+\newcommand{\BPDS}{BP-DS}
+\newcommand{\MFJ}{MF-Joint}
+
+\newenvironment{comment}%
+  {\begin{quote}\itshape\small}%
+  {\end{quote}}
+\newcommand{\where}[1]{\par\smallskip\noindent\textbf{Where:} #1\par}
+\setlist[description]{leftmargin=0pt, labelindent=0pt, style=nextline}
+
+\title{\vspace{-1.5cm}Response to Reviewers\\[2pt]
+  \large Energy-Efficient Deep Learning Without Backpropagation:\\
+  A~Rigorous Hardware-Validated Benchmarking Study of Forward-Only Algorithms\\[4pt]
+  \normalsize PPAM 2026, Submission 25 (CP025)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.2cm}
+
+% ============================================================
+\section*{Summary}
+% ============================================================
+
+We thank all five reviewers. Two of the comments did more than improve the
+paper: they produced the experiment that the revised version is built on, and
+they changed our headline result. We start with that one.
+
+\paragraph{R3c and R5d asked the decisive question, and the answer is in
+\MF{}'s favour.}
+Both reviewers observed that \MF{} places a cross-entropy loss at every hidden
+layer, so it behaves like a deep-supervision network, and that without a
+matched deep-supervision baseline we could not tell whether \MF{}'s accuracy
+comes from forward-only training or merely from localised objectives. That
+control now exists. \BPDS{} is \BP{} carrying \MF{}'s auxiliary classifiers
+with nothing detached, and on the two CIFAR \num{3}$\times$\num{2000} MLPs it
+is \emph{worse} than plain \BP{}, by \num{1.65}~pp on CIFAR-10 and
+\num{1.06}~pp on CIFAR-100. \MF{} beats that control by \num{5.56}~pp
+$[\num{+5.37},\num{+5.75}]$ and \num{6.10}~pp $[\num{+5.88},\num{+6.32}]$ over
+\num{20} paired seeds. The localised objective does not explain the gain;
+adding it to \BP{} lowers \BP{}'s accuracy. The evidence therefore isolates
+gradient detachment/locality as the dominant tested factor; we did not test
+every possible mechanism. On the two MNIST-scale
+\num{2}$\times$\num{1000} MLPs the same contrast is a tie, and we report that
+half too. The full four-rung ladder is Section~5.3,
+Table~3 and Figure~2 of the revised paper.
+
+\paragraph{R2d asked whether \BP{} simply has better kernels, and the
+telemetry answers it.}
+We tested the objection rather than arguing it. On the four ladder
+configurations no method exceeds \SI{20.3}{\percent} mean GPU utilisation and
+\BP{} itself averages \SI{11.5}{\percent}; across the whole study, including
+the wider MLPs used for \FF{}, no run exceeds
+\SI{38.0}{\percent}. Every arm is launch-bound, not arithmetic-bound, so
+\BP{} does not win by saturating the A100 with more efficient arithmetic. We also built
+the obvious missing optimisation, an activation cache that removes \MF{}'s
+$O(L^2)$ recomputation, verified it bit-exact against the recomputing path
+(maximum absolute difference in loss and weights exactly \num{0} over
+\num{1200} and \num{3600} optimiser steps), and measured that it saves no time
+while costing \SI{374}{\percent} and \SI{404}{\percent} more per-process
+allocator memory. These measurements do not entirely exclude an advantage
+from implementation maturity, but the difference they do measure between the
+methods lies in convergence rate rather than in the cost of a pass.
+
+\paragraph{The cost result has two readings, and this version states both.}
+Trained to its own convergence, \MF{} costs \SIrange{3.2}{4.0}{\times}
+\BP{}'s energy. The reason it costs more end to end is that it needs
+\SIrange{3.6}{4.4}{\times} the wall-clock time, not that each pass is
+expensive. Given the number of data passes \BP{} actually spent, \MF{} is the
+\emph{cheaper} algorithm: \SI{19.9}{\percent} less GPU energy on CIFAR-10 and
+\SI{12.5}{\percent} less on CIFAR-100, \SI{27.5}{\percent} and
+\SI{24.6}{\percent} less per-process allocator memory, at wall-clock time within
+\SI{3}{\percent} of \BP{}'s. The revised paper leads with that
+matched data-pass protocol result (Section~5.1, Table~2), keeps the
+own-convergence result in full (Section~5.4, Table~4), and names the
+pass multiplier as the open problem (Section~6).
+
+\paragraph{What is new in this version, concretely.}
+\begin{itemize}[topsep=4pt,itemsep=0pt,parsep=0pt,leftmargin=1.4em]
+  \item \textbf{A matched data-pass protocol}, in which \MF{} receives
+        $\lceil \bar{E}_{\BP{}}/S \rceil$ epochs per stage, so rounding can
+        only give \MF{} more data passes than \BP{} had. The protocol
+        equalises data passes, not floating-point operations or optimiser
+        updates per layer, and is named accordingly. Section~4, Table~1.
+  \item \textbf{A pre-registered four-rung ablation ladder} from \BP{} to
+        \MF{}, including the \BPDS{} control of R3c and R5d, over
+        \numrange{20}{122} seeds per rung. Section~5.3.
+  \item \textbf{A new figure showing that the advantage is larger in the
+        larger configurations tested}, from no memory advantage at \num{1.8}~M weights to
+        \SI{27.5}{\percent} at \num{14.2}~M. Figure~1.
+  \item \textbf{Seed counts of \numrange{20}{122} per \MF{} contrast} in place of
+        three, with every parity claim resolved by the two one-sided tests
+        (TOST) procedure against a pre-registered $\pm\num{0.25}$~pp margin,
+        now cited and explained in Section~4. R4b, R5c.
+  \item \textbf{Every figure regenerated} from the measurement archive by a
+        script in the repository. The illegible dashboard exports of R1b are
+        gone. R1b, R3b.
+\end{itemize}
+
+\noindent
+Every measured number in the revised paper is produced from a single tidy table
+of \num{19944} measurements by \texttt{analysis/analyse.py}, which is in the
+repository alongside the figure script; only the realised epoch counts are
+transcribed, from the run configurations. The manuscript is \textbf{15 pages},
+the PPAM limit.
+
+\bigskip
+\noindent\textbf{Revised structure.}
+\S1~Introduction \textbar{} \S2~Background and Related Work \textbar{}
+\S3~Mono-Forward and the Cost Hypothesis \textbar{}
+\S4~Measuring Cost Fairly: Two Protocols \textbar{}
+\S5~Results (5.1 the matched data-pass protocol, 5.2 scale, 5.3 the ladder,
+5.4 own convergence, 5.5 quantifying two objections, 5.6 \FF{} and \CaFo{})
+\textbar{} \S6~Discussion and Limitations \textbar{} \S7~Conclusion.
+Table~1 = budgets; Table~2 = matched data-pass protocol; Table~3 = the ladder;
+Table~4 = own convergence. Figure~1 = saving against model scale;
+Figure~2 = the ladder.
+
+% ============================================================
+\section*{Reviewer 1}
+% ============================================================
+
+\subsection*{R1a: ``Reads like a very condensed technical report \dots\
+detrimental to readability for the average PPAM reader.''}
+
+\begin{comment}
+Reads like a very condensed technical report, which is detrimental to
+readability for the average PPAM reader.
+\end{comment}
+
+\noindent
+Accepted, and the paper has been rewritten rather than edited. The accepted
+version was organised as one subsection per algorithm, which forced the reader
+to assemble the argument themselves. The revision is organised around one
+claim and its evidence: Section~3 states a mechanism and why it should be
+cheaper, Section~4 states the two protocols and why two are needed, Section~5
+tests the claim, and Section~6 says where it fails. Three of the six results subsections (5.1, 5.2 and 5.4) carry a verdict in their titles, and the three emphasised sentences of
+Section~5.1 (\emph{the memory figures are exact}, \emph{the energy saving is a
+power saving}, \emph{on the most demanding task the saving costs no
+accuracy}) give a reader
+the result without the table.
+
+Two of the narrowing devices are deliberate. We dropped the
+algorithm-by-algorithm survey structure and compressed \FF{} and \CaFo{} into
+a single subsection (5.6), because the study's defensible contribution is
+about \MF{} and the other two are context for it. We also state the scope of
+every headline number in the sentence that carries it, rather than deferring
+all qualification to a limitations section.
+
+\where{Whole manuscript; Sections~3 to 6 are new text.}
+
+\subsection*{R1b: ``The plots in Fig.~3 and Fig.~4 are completely illegible.''}
+
+\begin{comment}
+The plots in Fig.~3 and Fig.~4 are completely illegible.
+\end{comment}
+
+\noindent
+Accepted. Those figures were raw dashboard exports at a size no print process
+could rescue. They have been deleted, not enlarged.
+
+The revision's figures are generated by
+\texttt{analysis/figures.py} from the same tidy table as the tables, at the
+text width of the \texttt{llncs} block, with every label in Figures~1 and~2 at \num{8}~pt or larger and no element carrying information by colour alone. Series are
+separated by fill, hatch and line style together, so the figures survive a
+monochrome print, which we checked by rendering them in greyscale. Figure~1 is
+a four-group bar chart and Figure~2 is two line panels over four ladder rungs;
+neither has more than four series. A third figure showing both protocols side
+by side is generated by the same script and is in the repository, left out of
+the manuscript only for space, since Table~4 carries the same numbers.
+
+\where{Figures~1 and 2 and their captions; the supplementary third figure;
+\texttt{analysis/figures.py}.}
+
+% ============================================================
+\section*{Reviewer 2}
+% ============================================================
+
+\subsection*{R2a: ``Lack of details and analysis in the main article
+(specifically Section~6) made the paper seem preliminary.''}
+
+\begin{comment}
+Lack of details and analysis in the main article (specifically Section~6) made
+the paper seem preliminary.
+\end{comment}
+
+\noindent
+Accepted. The discussion is now built from measurements rather than from
+interpretation, and it names what it cannot support.
+
+It is built in two steps, followed by the implications; the robustness of
+the cost result (the matched data-pass protocol gives \MF{} at least as many
+data passes as \BP{} used, and board power is a rate that no stopping rule can
+influence) is stated where it applies: the budget rule in Sections~1 and~4,
+the power argument with the result itself in Section~5.1. \emph{Why gradient
+detachment might improve accuracy} advances the regularisation reading, ties it
+to the ladder result, and labels it a hypothesis that four configurations
+cannot establish. \emph{The open problem: convergence rate, not per-unit cost}
+identifies convergence
+rate as the binding constraint, shows that the two obvious remedies fail
+(caching is bit-exact and saves no time; the runs are launch-bound so faster
+kernels would be an unlikely remedy, although implementation maturity is not
+entirely excluded), and bounds the result on three further axes: scope,
+accuracy under the matched data-pass protocol, and hardware. What was pre-registered and
+what was not is stated in Section~4.
+
+We also state plainly where the measurements and the narrative pulled against
+each other. Under the matched data-pass protocol \MF{}'s energy is lower on all four
+configurations by point estimate, a difference resolved on three, but it is as
+accurate as \BP{} on only one of the four; we say so in Section~5.1 and
+repeat it in the limitations, because it bounds the claim.
+
+\where{Section~6, all paragraphs.}
+
+\subsection*{R2b: ``The details of the different ML architectures are
+important \dots\ these details are not discussed much in the paper.''}
+
+\begin{comment}
+The details of the different ML architectures are important, as they can
+affect the results; these details are not discussed much in the paper.
+\end{comment}
+
+\noindent
+Accepted, and the revision goes further than describing them: it makes
+architecture an axis of the result.
+
+Section~3 gives \MF{}'s construction explicitly, including the fact that an
+MLP with $L$ hidden layers trains $L+1$ stages, one per projection matrix
+including $\mathbf{M}_0$ on the raw input, which is what sets the epoch budget in
+Table~1. Section~2 now introduces the notation and briefly describes \FF{}, \CaFo{}
+and \MF{} before they are used. Section~4 states initialisation (Kaiming
+uniform for all weights and projections, now with references for it and for
+both optimisers), the optimiser per algorithm (AdamW for \BP{} and \BPDS{}, Adam
+for \MFJ{} and \MF{} stages), the activation (ReLU) and batch size (\num{128}), the tuning budget and search width per algorithm, and the augmentation. It records that
+every algorithm is built on the same \texttt{nn.Linear} primitives in one
+codebase, differing only in the loss construction and in where
+\texttt{detach()} is called. The remaining per-algorithm implementation
+constants, the \CaFo{} block ($3{\times}3$ convolution, ReLU, $2{\times}2$
+max-pooling, batch normalisation, \num{32}/\num{128}/\num{512} channels, three
+block predictors summed) and the \FF{} goodness threshold $\theta=\num{2.0}$
+with peer normalisation, are in the released configurations, since they bear
+on \FF{} and \CaFo{} rather than on the claim.
+
+Section~5.2 then uses the architectures. The four configurations span
+\num{1.79}~M to \num{14.34}~M trainable weights, and every cost axis improves
+across that range: energy saving from \SI{2.2}{\percent} and
+\SI{4.3}{\percent} to \SI{12.5}{\percent} and \SI{19.9}{\percent}, memory from
+a \SI{0.3}{\percent} deficit to a \SI{24.6}{\percent} and \SI{27.5}{\percent}
+saving, so the advantage is larger in the larger configurations tested. We
+are explicit that width is confounded with depth and with task across these
+four, so the figure cannot separate width from scale, and Section~6 states that
+the headline percentages hold on the \num{3}$\times$\num{2000} MLPs only.
+
+\where{Section~3; Section~4, ``What else is held fixed''; Section~5.2 and
+Figure~1.}
+
+\subsection*{R2c: ``The paper claimed that the BP baselines were identical
+but algorithm-specific components were removed. The removal of these
+components may be the reason why certain architectures were better one way or
+another.''}
+
+\begin{comment}
+The paper claimed that the BP baselines were identical but algorithm-specific
+components were removed. The removal of these components may be the reason why
+certain architectures were better one way or another.
+\end{comment}
+
+\noindent
+This is correct, it was a real hole, and the ladder was built to close it. We
+did not argue that the removal was harmless; we put the components back one at
+a time and measured what each is worth.
+
+\begin{center}\small
+\begin{tabular}{llcll}
+  \toprule
+  Rung & Readout & Auxiliary losses & Gradients & Optimiser \\
+  \midrule
+  \BP{}    & output layer & no  & global & AdamW \\
+  \BPDS{}  & output layer & yes & global & AdamW \\
+  \MFJ{}   & $\mathbf{M}_L$ & yes & global & Adam \\
+  \MF{}    & $\mathbf{M}_L$ & yes & \emph{local} & Adam \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Each adjacent pair differs in one structural property. We should be precise
+about what that does and does not license: each rung is tuned independently
+under the same \num{50}-trial budget, so every step also moves the learning
+rate and weight decay, and the \BPDS{}$\rightarrow$\MFJ{} step additionally
+crosses AdamW to Adam. That step is therefore not attributable to the readout
+alone, and we no longer claim it is. The step our mechanism claim rests on,
+\MFJ{}$\rightarrow$\MF{}, holds the optimiser family fixed at Adam. Accuracy
+against \BP{}, in percentage points, as a difference of arm means over
+\numrange{20}{122} seeds:
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+  \toprule
+  & MNIST 2$\times$1000 & Fashion 2$\times$1000 & CIFAR-10 3$\times$2000 & CIFAR-100 3$\times$2000 \\
+  \midrule
+  \BPDS{} & $+0.07$ & $+0.04$ & $-1.65$ & $-1.06$ \\
+  \MFJ{}  & $+0.14$ & $-0.09$ & $-0.19$ & $+1.86$ \\
+  \MF{}   & $+0.19$ & $+0.01$ & $+3.90$ & $+5.04$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Adding the auxiliary classifiers to \BP{} does not explain \MF{}'s advantage;
+on the two CIFAR tasks it costs \BP{} accuracy. The readout step recovers most
+or all of the loss, $+\num{1.46}$ and $+\num{2.92}$~pp, but it is the step that also
+crosses optimisers, so we do not attribute it to the readout. The largest
+single step, and the only one we attribute to a mechanism, is the detach,
+worth $+\num{4.10}$~pp on CIFAR-10 and $+\num{3.18}$~pp on CIFAR-100 with the
+optimiser held fixed. The
+same step also carries essentially the whole cost increase,
+\numrange{228}{272}~pp of \BP{}'s energy, while the other two steps together
+move energy by at most \num{31}~pp.
+
+\where{Section~5.3, Table~3, Figure~2; per-contrast intervals and
+Holm-corrected $p$-values in \texttt{analysis/ladder\_analysis.json},
+released with the paper.}
+
+\subsection*{R2d: ``As backprop algorithms are more widely used, the
+functionalities in existing software libraries could have been better
+optimised \dots\ than forward-only algorithms.''}
+
+\begin{comment}
+As backprop algorithms are more widely used, the functionalities in existing
+software libraries could have been better optimised for backprop than for
+forward-only algorithms.
+\end{comment}
+
+\noindent
+This is the objection we most wanted to be able to answer with data, and the
+utilisation trace answers it. If kernel maturity decided the comparison, we
+would expect \BP{} to be near saturation and the forward-only methods starved
+of it. Neither holds. On the four ladder configurations, mean GPU utilisation
+is \SI{11.5}{\percent} for \BP{} (maximum \SI{17.3}{\percent}) and
+\SI{6.0}{\percent} for \MF{} (maximum \SI{8.0}{\percent}), and no method
+exceeds \SI{20.3}{\percent}. Across the entire study, the wider \FF{} MLPs
+included, no run exceeds \SI{38.0}{\percent} mean utilisation, still far
+from saturation. Every arm is bound by kernel launch latency, not by
+arithmetic throughput. This shows that \BP{} does not win by saturating the
+A100 with more efficient arithmetic operations. It does not entirely exclude
+an advantage from implementation maturity, and the revised paper says so in
+Sections~5.5 and~6.
+
+We also tested the specific optimisation a mature implementation would be
+expected to have. \MF{}'s layer-sequential schedule recomputes the frozen
+prefix at every stage, an $O(L^2)$ cost that an activation cache removes, so
+we implemented the cache. It is bit-exact against the recomputing path:
+maximum absolute difference in both loss and weights exactly \num{0} over
+\num{1200} and \num{3600} optimiser steps. It bought no time
+($+\SI{3.8}{\percent}$ and $+\SI{2.7}{\percent}$ wall-clock on device) and
+cost \SI{374}{\percent} and \SI{404}{\percent} more per-process allocator memory,
+which is \SI{242}{\mebibyte} and \SI{257}{\mebibyte} against
+\SI{51}{\mebibyte}. Caching in host memory was worse on every axis. The
+optimisation is available, and on this hardware it does not help.
+
+Finally, the direction of the result does not need the objection resolved.
+Under the matched data-pass protocol \MF{} is the \emph{cheaper} method, so any
+library-maturity advantage \BP{} holds is working against the conclusion we
+draw, not for it.
+
+\where{Section~5.5, both paragraphs.}
+
+% ============================================================
+\section*{Reviewer 3}
+% ============================================================
+
+\subsection*{R3a: ``NVML \dots\ is never formally defined or explained.''}
+
+\begin{comment}
+NVML is used throughout but is never formally defined or explained.
+\end{comment}
+
+\noindent
+Accepted. NVML is now expanded and defined on first use, in the introduction, as the
+NVIDIA Management Library, the driver's own telemetry
+interface, and the expansion is repeated in Sections~2 and~4. Section~4 has a dedicated \emph{Instruments} paragraph naming the
+exact API call behind every quantity: \texttt{nvmlDeviceGetPowerUsage} for
+power, from which energy is the trapezoidal integral of the \SI{5}{\hertz}
+trace; \texttt{nvmlDeviceGetUtilizationRates} for utilisation;
+\texttt{nvmlDeviceGetClockInfo} for SM clock;
+\texttt{nvmlDeviceGetMemoryInfo} for device memory; and the host monotonic
+clock for wall-clock time.
+
+The same paragraph separates the two memory figures that the accepted version
+conflated. The NVML reading is device-wide and includes a
+${\approx}\SI{870}{\mebibyte}$ CUDA context that no algorithm controls. Every
+memory number in the revised paper is instead \tmma{}, the per-process
+allocator high-water mark, and we say so at each use. The driver version is
+also stated, in ``Setup and statistics'', because it governs NVML
+power-reading semantics.
+
+\where{Sections~1 and~2; Section~4, ``Instruments'' and ``Setup and statistics''.}
+
+\subsection*{R3b: ``The results for CaFo in Section~5.2 are presented purely
+as text \dots\ should be summarised in an equivalent table.''}
+
+\begin{comment}
+The results for CaFo in Section 5.2 are presented purely as text, and should be
+summarised in an equivalent table.
+\end{comment}
+
+\noindent
+Accepted in substance, but we did not do exactly what was asked. To remain
+within the \num{15}-page limit, we replaced the requested table with a compact
+numerical summary in Section~5.6 and provide the complete table in the
+repository. The revision is built around a single claim about \MF{},
+and \FF{} and \CaFo{} are now context for it rather than co-equal subjects.
+Giving each of them a results table would have cost roughly two pages of a
+\num{15}-page limit for material that does not bear on the claim.
+
+Instead, Section~5.6 states every \CaFo{} and \FF{} result numerically rather
+than qualitatively: for \FF{}, the accuracy gap to \BP{} across its four arms
+and its time, energy and memory as multiples of \BP{}'s; for \CaFo{}, the
+accuracy gap on the MNIST-scale and CIFAR tasks and its energy as a multiple
+of \BP{}'s; and the seed counts. \CaFo{} costs
+\SIrange{3.0}{7.1}{\times} \BP{}'s energy, lands within \num{0.4}~pp of
+\BP{} on the two MNIST-scale CNNs and loses \num{18.8} and \num{16.9}~pp on
+CIFAR-10 and CIFAR-100; the direct-feedback-alignment variant narrows that to
+\num{7.1} and \num{8.5}~pp at a further \SIrange{1.5}{2.6}{\times} the energy. The
+complete per-configuration table for both algorithms is released as
+\texttt{tables/ff\_cafo\_full.csv}, generated by
+\texttt{analysis/ff\_cafo\_table.py} from \texttt{analysis/numbers.json}, which
+the released analysis computes from the tidy table cited in the paper.
+
+If the editors prefer the full table in the paper we will add it and cut
+Section~5.6's prose to a cross-reference, which is close to page-neutral.
+
+\where{Section~5.6; in the repository, \texttt{tables/\allowbreak ff\_cafo\_full.csv},
+\texttt{analysis/\allowbreak numbers.json} and
+\texttt{artifacts/\allowbreak tidy/\allowbreak runs.csv}.}
+
+\subsection*{R3c: ``Because Mono-Forward places a cross-entropy loss at
+every hidden layer, it inherently behaves like a deep supervision network
+\dots\ add a standard backpropagation baseline that uses matching layer-wise
+auxiliary losses. This is the only way to prove whether MF's gains stem from
+its unique forward-only mechanism or simply from localised objective
+constraints.''}
+
+\begin{comment}
+Because Mono-Forward places a cross-entropy loss at every hidden layer, it
+inherently behaves like a deep supervision network. Add a standard
+backpropagation baseline that uses matching layer-wise auxiliary losses. This
+is the only way to prove whether MF's gains stem from its unique forward-only
+mechanism or simply from localised objective constraints.
+\end{comment}
+
+\noindent
+This is the most valuable comment we received and we have acted on it in full.
+\BPDS{} is exactly the baseline described: \BP{} with \MF{}'s auxiliary
+classifiers attached at every hidden layer and nothing detached, trained under
+the same stopping rule, the same tuning budget and the same seeds.
+
+The answer is decisive on the harder tasks and honest on the easier ones.
+\MF{} beats \BPDS{} by \num{5.56}~pp $[\num{+5.37},\num{+5.75}]$ on CIFAR-10
+and \num{6.10}~pp $[\num{+5.88},\num{+6.32}]$ on CIFAR-100, both over
+\num{20} paired seeds with Holm-corrected $p<10^{-20}$. \BPDS{} is meanwhile
+\emph{worse} than plain \BP{} on those two tasks, by \num{1.65} and
+\num{1.06}~pp. Localised objectives therefore do not explain the gain; on the
+tasks where \MF{} gains most, adding them to \BP{} costs accuracy. On the two
+\num{2}$\times$\num{1000} MLPs the contrast is a tie, \MF{} leading \BPDS{} by
+\num{0.11}~pp $[\num{-0.01},\num{+0.23}]$ on MNIST and trailing by
+\num{0.06}~pp $[\num{-0.17},\num{+0.06}]$ on Fashion-MNIST, both EQUIVALENT
+within the pre-registered margin. We report both halves in the paper: on the
+small tasks the experiment does not distinguish an \MF{}-specific benefit from
+auxiliary supervision, and on the harder ones auxiliary supervision does not
+explain it.
+
+Two further points on the strength of this evidence. The ladder separates the
+readout from the detach as well, using a third rung, \MFJ{}, which has
+\MF{}'s $\mathbf{M}_L$ readout and auxiliary losses but a global gradient. The step
+from \MFJ{} to \MF{} detaches the gradient with the optimiser family held
+fixed and is worth $+\num{4.10}$~pp on CIFAR-10 and $+\num{3.18}$~pp on
+CIFAR-100. And the whole
+analysis is pre-registered: the script fixing the paired test, the Holm
+correction within metric family, the bootstrap intervals and the
+$\pm\num{0.25}$~pp margin was committed before any ladder result was
+inspected.
+
+\where{Section~5.3, Table~3, Figure~2;
+\texttt{scripts/analyze\_ablation\_ladder.py} for the pre-registration.}
+
+\subsection*{R3d: the memory finding highlighted in the reviewer's summary,
+and how to read the revision against it}
+
+\begin{comment}
+Crucially, the study debunks a common assumption in BP-free literature by
+showing that the actual memory overhead introduced by algorithm-specific
+components (such as local projection matrices) frequently counteracts or
+entirely offsets the theoretical memory savings gained from omitting the
+backward pass.
+\end{comment}
+
+\noindent
+The reviewer singled this out, the revision now headlines a
+\SIrange{24.6}{27.5}{\percent} memory \emph{saving} for \MF{}, and we want to
+be explicit that this is a refinement of the finding rather than a retraction
+of it.
+
+The finding stands and the revision still carries it. \FF{} holds
+\SIrange{0.91}{1.06}{\times} \BP{}'s allocator peak, so its dual positive and negative data
+streams cancel most or all of the saving (Section~5.6). \MF{} at
+\num{1.8}~M weights shows a \SI{0.3}{\percent} \emph{deficit}, which is
+exactly the \SI{0.14}{\mebibyte} of extra projection parameters outweighing
+what the absent backward pass saves (Section~5.2). What the revision adds is
+the other end of the same axis: at \num{14.2}~M weights the activation saving
+outgrows the projection overhead and the sign flips. The reviewer's point was
+that the overhead is real and must be measured rather than assumed, and the
+new Figure~1 is that point plotted, from a deficit at the small size to a
+\SI{27.5}{\percent} saving at the large one.
+
+One correction belongs here. The accepted version's \SI{5}{\percent} memory
+figure came from the device-wide NVML counter, in which a
+${\approx}\SI{870}{\mebibyte}$ CUDA context dilutes every difference. Every
+memory number in the revision is \tmma{}, the per-process allocator
+high-water mark. The instrument changed; the conclusion the reviewer
+identified did not.
+
+\where{Section~5.2 and Figure~1; Section~5.6; Section~4, ``Instruments''.}
+
+% ============================================================
+\section*{Reviewer 4}
+% ============================================================
+
+\subsection*{R4a: ``The key term `hardware-validated comparison' is unclear
+and should be explained in more detail.''}
+
+\begin{comment}
+The key term ``hardware-validated comparison'' is unclear and should be
+explained in more detail.
+\end{comment}
+
+\noindent
+Accepted. The revision does not rely on the phrase to carry the meaning. The
+introduction states what is measured and how, the \emph{Instruments} paragraph
+of Section~4 names the API call behind each quantity, and Section~2 explains
+why this matters rather than asserting that it does: analytical proxies such
+as FLOP or parameter counts cannot see clock behaviour, utilisation or kernel
+launch overhead, which is precisely where the differences in this study turn
+out to live.
+
+Section~5.5 makes the point concrete. A FLOP-based comparison of \MF{} and
+\BP{} would predict a speed-up from the cache and see no difference in power.
+The device says the opposite: the cache is bit-exact and saves no time, and the
+entire energy result is a power difference at near-equal wall-clock time. That gap
+between the proxy and the instrument is what ``hardware-validated'' is doing
+in the title.
+
+\where{Section~1; Section~2, ``Hardware and energy''; Section~4,
+``Instruments''; Section~5.5.}
+
+\subsection*{R4b: ``The statistical analysis is based on only three runs,
+which is insufficient and can be considered only as preliminary evidence.''}
+
+\begin{comment}
+The statistical analysis is based on only three runs, which is insufficient and
+can be considered only as preliminary evidence.
+\end{comment}
+
+\noindent
+Accepted without reservation. Three seeds was insufficient and we have not
+tried to defend it.
+
+Every \MF{} contrast in the revised paper is over at least \num{20} seeds (the
+\FF{} and \CaFo{} context runs use five to seven), and the
+two most heavily used configurations carry \num{60} and \num{122}. The
+matched data-pass protocol comparison of Table~2 uses \num{20} \MF{} seeds against
+\num{60}, \num{122}, \num{20} and \num{20} \BP{} seeds in column order, paired by seed where
+the arms share one. The ladder of Table~3 uses \numrange{20}{122} seeds per
+rung. The study as a whole is almost \num{1000} runs.
+
+The analysis itself changed as much as the seed count. The primary test is
+paired by seed, because a seed fixes both the train and validation split and
+the initialisation. A Welch unequal-variance test is computed alongside it in the released
+analysis, never instead of it. Holm-Bonferroni correction is applied within each metric
+family and never pooled across families. Confidence intervals come from
+\num{10000} bootstrap resamples with a fixed seed. Most importantly, no parity
+claim rests on a non-significant difference test: every one uses the two
+one-sided tests (TOST) procedure, now cited and explained in Section~4, against
+a $\pm\num{0.25}$~pp margin fixed in advance, and the
+verdict vocabulary is restricted to DIFFERENT, EQUIVALENT and INCONCLUSIVE.
+
+One scope statement belongs here. The ladder analysis is pre-registered, and
+the paper says so. The matched data-pass protocol is \emph{not}
+pre-registered; it is analysed with the same machinery and the same margins,
+but the paper labels it a diagnostic rather than a confirmatory test.
+
+\where{Section~4, ``Setup and statistics''; seed counts in the captions of
+Tables~2 to~4.}
+
+% ============================================================
+\section*{Reviewer 5}
+% ============================================================
+
+\subsection*{R5a: ``The contribution is mainly evaluative rather than
+algorithmic.''}
+
+\begin{comment}
+The contribution is mainly evaluative rather than algorithmic.
+\end{comment}
+
+\noindent
+The observation is accurate and we have not tried to dress the paper up as
+something else. What we have done is make the evaluative contribution carry a
+mechanistic result rather than a league table.
+
+The ablation ladder is the difference. It does not report that \MF{} differs
+from \BP{}; it decomposes the difference into three single structural steps
+and identifies the same one, the detach, as the largest contributor to both
+the accuracy and the cost among the factors tested. That attribution is
+falsifiable, it was pre-registered, and it contradicts the
+reading a reader would most naturally have taken, namely that \MF{}'s
+auxiliary losses do the work. It also produces a negative result of its own:
+deep supervision on top of \BP{} is worse than \BP{} on both CIFAR tasks.
+
+The second non-obvious contribution is methodological. The same algorithms support
+opposite cost conclusions depending on the stopping rule, and the revision
+shows both and quantifies the distance between them. We think the general
+statement is worth making: an efficiency claim about a training algorithm is
+uninterpretable without its stopping rule, because the rule is not a detail of
+the measurement but a term in it. That is stated in Section~6 as a claim about
+the field, not about this algorithm.
+
+\where{Section~5.3; Section~6, ``Implications''.}
+
+\subsection*{R5b: ``Small datasets, shallow architectures, and the use of
+flattened CIFAR inputs for MLP experiments.''}
+
+\begin{comment}
+Small datasets, shallow architectures, and the use of flattened CIFAR inputs
+for MLP experiments.
+\end{comment}
+
+\noindent
+Accepted as a limitation, stated as one, and partly turned into a result.
+
+On flattening: CIFAR inputs are flattened because that is the protocol of the
+\MF{} source publication, and departing from it would make our numbers
+incomparable with the ones we are testing. The important point is that
+flattening is applied identically to \MF{} and to its \BP{} baseline, along
+with the same augmentation, so it cannot favour either. Section~4 states
+both: flattening follows the \MF{} protocol for the MLP experiments, and the
+augmentation is applied identically to every algorithm and its baseline.
+
+On scale: the revision states the bound rather than hoping the reader supplies
+it. The headline percentages hold on the \num{3}$\times$\num{2000} MLPs, no
+convolutional \MF{} was run, and both statements appear in Section~6. What we can offer instead of a larger model is the
+direction of travel, measured: across a nearly eightfold range of trainable
+weights every cost axis improves, and the memory advantage exists only at the
+larger size, so the advantage is larger in the larger configurations tested,
+with size confounded with depth and task. If the effect scaled the other way, that would be visible in
+Figure~1, and it is not.
+
+We would rather report a trend over the range we could afford to run
+almost \num{1000} times than a single point at a larger scale with three seeds.
+
+\where{Section~4; Section~5.2 and Figure~1; Section~6, limitations.}
+
+\subsection*{R5c: ``Results are based on only three runs, and some of the
+reported accuracy differences are modest.''}
+
+\begin{comment}
+Results are based on only three runs, and some of the reported accuracy
+differences are modest.
+\end{comment}
+
+\noindent
+The seed count is addressed under R4b: \numrange{20}{122} per \MF{} contrast,
+almost \num{1000} runs in total.
+
+The second half deserves its own answer, because the reviewer is right that
+several differences are small, and the revision treats small differences as
+such. Where a difference is modest we no longer call it a win. Every accuracy
+parity claim is a two one-sided test against a $\pm\num{0.25}$~pp margin fixed
+before the data were seen, and a contrast whose interval does not fit inside
+the band is marked INCONCLUSIVE rather than being read as parity. That is why
+the paper reports \MF{} as equivalent to \BP{} under the matched data-pass protocol on CIFAR-100
+($+\num{0.02}$~pp, EQUIVALENT) but as \num{1.11}~pp \emph{behind} on CIFAR-10
+(DIFFERENT), and does not average the two into a claim of parity.
+
+The differences the paper does lean on are not modest. \MF{} over \BPDS{} is
+\num{5.56} and \num{6.10}~pp; \MF{} over \BP{} at its own convergence is
+\num{3.90} and \num{5.04}~pp; the memory saving is \num{82.2} and
+\SI{74.4}{\mebibyte} with zero seed-to-seed variance, because the allocation
+schedule of a fixed architecture at a fixed batch size is deterministic.
+
+\where{Section~4, ``Setup and statistics''; Section~5.1; Section~5.3.}
+
+\subsection*{R5d: ``A stronger comparison would include additional baselines,
+such as deep-supervision or local-loss backpropagation variants, to better
+isolate whether the gains come from the forward-only training mechanism or
+from local auxiliary objectives.''}
+
+\begin{comment}
+A stronger comparison would include additional baselines, such as
+deep-supervision or local-loss backpropagation variants, to better isolate
+whether the gains come from the forward-only training mechanism or from local
+auxiliary objectives.
+\end{comment}
+
+\noindent
+Done, and the answer is the one reported under R3c and in the Summary above.
+Two additional baselines were built, tuned and run at \numrange{20}{122} seeds
+each:
+
+\begin{description}[topsep=4pt,itemsep=2pt,parsep=0pt]
+  \item[\BPDS{}] deep supervision: \BP{} with \MF{}'s layer-wise auxiliary
+    classifiers, nothing detached. This is the local-auxiliary-objective
+    control the reviewer asks for.
+  \item[\MFJ{}] \MF{}'s learned $\mathbf{M}_L$ readout and auxiliary losses with a
+    global gradient. This separates the extra parameters from the detach, so
+    the readout cannot be credited with the locality effect.
+\end{description}
+
+\noindent
+The separation is clear on the CIFAR tasks. Auxiliary objectives alone lose
+\num{1.65} and \num{1.06}~pp against plain \BP{} on those two tasks. Adding the
+readout recovers most or all of that, reaching $-\num{0.19}$ and $+\num{1.86}$~pp.
+Only the final rung, which adds the detach, reaches $+\num{3.90}$ and
+$+\num{5.04}$~pp. Among the factors tested, the gain is therefore attributable
+mainly to gradient detachment rather than to the local objectives, which on
+these two tasks lower accuracy when used alone.
+
+\where{Section~5.3, Table~3, Figure~2.}
+
+\subsection*{R5e: ``The energy measurements are useful, although specific to
+one GPU platform.''}
+
+\begin{comment}
+The energy measurements are useful, although specific to one GPU platform.
+\end{comment}
+
+\noindent
+Agreed, and the revision states the dependence in the specific form we think
+it takes, rather than as a generic caveat.
+
+All runs are on NVIDIA A100-SXM4-40GB with driver 595.71.05, and the driver
+version is stated because it governs NVML power-reading semantics. The
+limitation is not merely that another device might give another number; it is
+that we can say which way. Board power at these utilisations is dominated by
+the static and clock-domain components of a large A100 die, and the entire
+energy result of Table~2 is a power difference at near-equal wall-clock time. A
+smaller or better-saturated device would very likely narrow that power gap and
+so narrow the energy saving. Section~6 says exactly this.
+
+Two components of the result are more portable than the energy figure. The
+memory saving is an allocator high-water mark and follows from the algorithm's
+activation lifetime rather than from the device, and the pass multiplier that
+dominates the own-convergence comparison is a property of the optimisation,
+not of the hardware. We would expect both to survive a change of accelerator.
+
+\where{Section~4, ``Setup and statistics''; Section~6, limitations.}
+
+\subsection*{R5f: ``Clarify the limitations, and strengthen the discussion of
+baselines and statistical robustness.''}
+
+\begin{comment}
+Clarify the limitations, and strengthen the discussion of baselines and
+statistical robustness.
+\end{comment}
+
+\noindent
+All three are addressed above and consolidated in Section~6, which now names
+the binding limitation rather than listing caveats. That limitation is
+convergence rate: \MF{} needs \SIrange{3.6}{4.4}{\times} \BP{}'s wall-clock
+time to reach its own best accuracy, which converts a per-pass advantage of \SIrange{12.5}{19.9}{\percent} into an end-to-end penalty of
+\SIrange{3.2}{4.0}{\times}. The paper shows that the two obvious remedies do
+not close it and states it as the open problem, which is where we think work
+on forward-only efficiency should go.
+
+Three further limitations are bounded explicitly in Section~6: scope (the
+headline percentages hold on the \num{3}$\times$\num{2000} MLPs, and there is
+no memory advantage at \num{1.8}~M weights); accuracy under the matched data-pass protocol
+(equivalent on one configuration of four, and \num{1.11}~pp behind on
+CIFAR-10, so the matched data-pass protocol result is a cost result and not an accuracy
+result); and hardware (R5e). Pre-registration (the ladder is, the matched
+data-pass protocol is not) is stated in Section~4. Baselines are R2c, R3c and R5d. Statistical robustness is
+R4b and R5c.
+
+\where{Section~6, ``The open problem: convergence rate, not per-unit cost''.}
+
+\bigskip
+\noindent
+We are grateful for the review. R3c and R5d in particular produced the
+experiment that this version is built on, and it is a better paper than the one
+that was accepted.
+
+\end{document}

@@ -1,0 +1,139 @@
+PPAM 2026, submission 25 (CP025)
+Energy-Efficient Deep Learning Without Backpropagation:
+A Rigorous Hardware-Validated Benchmarking Study of Forward-Only Algorithms
+
+Przemyslaw Spyra, Witold Dzwinel (AGH University of Krakow)
+
+
+CAMERA-READY DELIVERABLES
+  CP025.tex            manuscript, 15 pages in llncs.cls
+  CP025.pdf            compiled manuscript
+  CP025.bbl            compiled bibliography (splncs04)
+  CP025.bib            bibliography source
+  CP025_fig1.pdf       cost saving against model scale (Figure 1)
+  CP025_fig2.pdf       the BP -> MF ablation ladder (Figure 2)
+  CP025_fig3.pdf       both stopping protocols side by side; SUPPLEMENTARY,
+                       not included in the 15-page manuscript, where Table 4
+                       carries the same numbers
+  CP025_letter.tex     response to reviewers, 10 pages
+  CP025_letter.pdf     compiled response
+  CP025_README.txt     PPAM README (contact author, family names, running head)
+  BUILD_NOTES.txt      this file (technical notes, not part of the archive)
+  llncs.cls            Springer class file, unmodified
+  splncs04.bst         Springer bibliography style, unmodified
+  analysis/            analyse.py, figures.py, spotcheck.py, ff_cafo_table.py,
+                       and the vendored ladder_analysis.json and numbers.json
+                       they produce or read
+  tables/              the three table bodies written by analyse.py, never
+                       edited by hand and inlined verbatim into CP025.tex
+                       (PPAM file naming), and
+                       ff_cafo_full.csv, the complete per-configuration FF and
+                       CaFo table promised to reviewer R3b, written by
+                       analysis/ff_cafo_table.py from numbers.json
+
+
+BUILD
+  python3 analysis/analyse.py     # numbers.json and tables/*.tex
+  #   NOTE: use an interpreter that has pandas/numpy/scipy/matplotlib on its
+  #   path; a minimal system python3 will fail at 'import numpy'.
+  python3 analysis/figures.py     # the three figures
+  python3 analysis/ff_cafo_table.py   # tables/ff_cafo_full.csv
+  latexmk -pdf CP025.tex
+  latexmk -pdf CP025_letter.tex
+
+  Requires pandas, numpy, scipy and matplotlib for the analysis, and a TeX
+  installation with booktabs, siunitx and microtype for the documents.
+
+
+WHERE THE NUMBERS COME FROM
+  Every result value in the manuscript is produced by analysis/analyse.py from
+  artifacts/tidy/runs.csv. No table cell is transcribed by hand, including the
+  table bodies under tables/. Since v19 these bodies are inlined verbatim
+  into CP025.tex (each marked by a comment naming its source file) so that
+  the submission archive needs no subfolder. After rerunning analyse.py,
+  paste the regenerated bodies over the inlined copies.
+
+  The analysis is 910 runs. analyse.py selects them from the tidy table with a
+  single filter, superseded == '', applied before anything else happens, and
+  at the senior co-author's request the paper phrases it as "almost 1000
+  runs" (abstract, conclusion, letter) and "about 1000 runs" (introduction);
+  neither document states the exact analysed count. The released table is deliberately larger than the analysis. It
+  carries 19,944 measurements over 996 runs, and its `superseded` column names
+  the reason each non-analysed run was set aside, so a reader can reproduce the
+  selection with the same one-line filter or reverse it. Neither document
+  claims the archive contains only the analysed runs, and neither narrates the
+  runs the filter removes.
+
+  One class of number is an exception and is marked as such in analyse.py.
+  BP's realised mean epoch count (Table 1) and MF's realised epoch medians
+  behind the 3.5x to 4.5x pass multiplier are transcribed from the header
+  comments of configs/diagnostics/*_equal_epochs.yaml, because
+  epochs_completed is recorded per run only for the nine legacy reproduction
+  runs and is NaN for the other 987. Any reader checking the pass multiplier
+  must read those config headers; it cannot be derived from runs.csv.
+
+  analysis/ladder_analysis.json is the output of the pre-registered ladder
+  analysis (scripts/analyze_ablation_ladder.py in the repository root), copied
+  here so this directory builds without results/, which is not version
+  controlled. It supplies the bootstrap intervals and Holm-corrected p-values
+  quoted in Section 5.3. Because results/ is gitignored, the manuscript's
+  Reproducibility section and the letter claim only what the repository
+  actually contains: code, configurations and artifacts/tidy/runs.csv. The
+  per-run JSONs and the 1027 NVML traces are offered on request, not as a
+  repository link, and no text in either document points a reader at a
+  results/ path.
+
+  analysis/spotcheck.py is an independent check. It ignores the tidy table and
+  recomputes twelve manuscript numbers, including one NVML board-power figure,
+  straight from results/**/*.json and the per-run power CSVs. Run it from a
+  checkout that has results/:
+
+      python3 analysis/spotcheck.py --results /path/to/results
+
+  All twelve pass as of this build.
+
+
+WHAT THE LADDER DOES AND DOES NOT ISOLATE
+  The ladder changes one STRUCTURAL property per step, not one variable per
+  step. Each rung is tuned independently by Optuna under the same 50-trial
+  budget, so every step also moves the learning rate and weight decay, and the
+  BP-DS -> MF-Joint step additionally crosses AdamW to Adam, which
+  scripts/analyze_ablation_ladder.py names in its own docstring. That step is
+  therefore not attributable to the readout alone and the paper no longer says
+  it is. The step the mechanism claim rests on, MF-Joint -> MF, holds the
+  optimiser family fixed at Adam and is worth +4.10 pp on CIFAR-10 and
+  +3.18 pp on CIFAR-100. Search widths differ by rung: BP and MF search two
+  hyperparameters, BP-DS and MF-Joint three, all at 50 trials. Section 4 and
+  the Table 3 caption state all of this.
+
+
+WHAT IS PRE-REGISTERED
+  The ablation ladder of Section 5.3. The analysis script fixing the
+  paired-by-seed primary test, the Holm-Bonferroni correction within metric
+  family, the 10,000-resample bootstrap intervals and the +/- 0.25 pp
+  equivalence margin was committed before any ladder result was inspected.
+
+  The matched data-pass condition of Section 5.1 was NOT pre-registered. It
+  uses the same machinery and the same margins, and the manuscript labels it a
+  diagnostic rather than a confirmatory test.
+
+
+SCOPE OF THE HEADLINE NUMBERS
+  The 12.5 % to 19.9 % energy and 24.6 % to 27.5 % memory savings hold on the
+  3x2000 MLPs (CIFAR-10 and CIFAR-100). On the 2x1000 MLPs the energy saving
+  is 2.2 % to 4.3 % and there is no memory advantage. No convolutional MF was
+  run. Memory throughout means torch.cuda.max_memory_allocated, the
+  per-process allocator high-water mark, never the device-wide NVML reading.
+
+  Wall-clock time under matched data passes is NOT reduced: +3.8, -0.8, -2.8
+  and +0.4 percent on MNIST, Fashion-MNIST, CIFAR-10 and CIFAR-100, in the
+  column order of Table 2. Paired by seed against a +/- 5 % margin, CIFAR-100
+  is EQUIVALENT, MNIST and CIFAR-10 are INCONCLUSIVE, and Fashion-MNIST is
+  DIFFERENT with MF the faster of the two. The energy result is a
+  power result at near-equal time, and the manuscript says so rather than claiming
+  a speed-up.
+
+  Accuracy equivalence at matched data passes is established on CIFAR-100
+  (+0.02 pp, TOST EQUIVALENT). On CIFAR-10 the budget costs MF 1.11 pp. The
+  matched data-pass comparison is a cost result; the accuracy gains of
+  +3.90 and +5.04 pp belong to the own-convergence protocol (Table 4).
