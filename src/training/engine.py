@@ -397,6 +397,9 @@ def _write_run_summary(config: Dict[str, Any], results: Dict[str, Any]) -> None:
         "experiment_name": experiment_name,
         "algorithm": config.get("algorithm", {}).get("name", ""),
         "dataset": config.get("data", {}).get("name", ""),
+        "protocol": config.get(
+            "protocol", "diagnostic" if config.get("diagnostic_of") else "main"
+        ),
         "architecture": model_params.get("hidden_dims")
         or model_params.get("block_channels"),
         "activation_cache": config.get("algorithm_params", {}).get(
