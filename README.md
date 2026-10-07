@@ -173,7 +173,7 @@ python scripts/run_local_array.py --config-dir configs/mf_joint/
 # Matched data-pass diagnostics
 python scripts/run_local_array.py --config-dir configs/diagnostics/
 # Build the tidy measurements and analyze the ladder
-python scripts/build_tidy_table.py --results-dir results/phase4 --output results/tidy.csv
+python scripts/build_tidy_table.py --out results/tidy
 python scripts/analyze_ablation_ladder.py --results-dir results/runs --json results/ablation_ladder.json
 ```
 

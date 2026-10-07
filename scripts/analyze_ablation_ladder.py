@@ -107,7 +107,7 @@ ADJACENT_CONTRASTS: Tuple[Tuple[str, str], ...] = (
     ("mf_cache_device", "mf_cache_host"),
 )
 
-#: Contrasts that answer a reviewer question directly.
+#: Contrasts that answer a study question directly.
 HEADLINE_CONTRASTS: Tuple[Tuple[str, str], ...] = (
     # Is MF just deep supervision by another name?
     ("bp_ds", "mf_recompute"),

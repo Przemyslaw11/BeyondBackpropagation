@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import argparse
 import collections
+import sys
 from pathlib import Path
+
+# Make the repository package importable when this file is run by path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.plotting import tidy
 
