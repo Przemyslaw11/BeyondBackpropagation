@@ -1,4 +1,4 @@
-"""Builds the tidy table every camera-ready figure and table reads from.
+"""Builds the tidy table every paper figure and table reads from.
 
     python scripts/build_tidy_table.py
     python scripts/build_tidy_table.py --out results/tidy --no-traces
@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import argparse
 import collections
+import sys
 from pathlib import Path
+
+# Make the repository package importable when this file is run by path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.plotting import tidy
 

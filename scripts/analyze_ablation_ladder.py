@@ -1,4 +1,4 @@
-"""Pre-registered statistical analysis for the Phase 3 ablation ladder.
+"""Pre-registered statistical analysis for the ablation ladder.
 
 This file is written and committed BEFORE any ladder result is inspected. Every
 test, every correction and every equivalence margin below is fixed in advance so
@@ -12,11 +12,12 @@ THE LADDER
     5 MF-cache-device  as rung 4, activations cached on the GPU
     6 MF-cache-host    as rung 4, activations cached in host memory
 
-Each adjacent step changes exactly one thing, so the difference between two
-neighbouring rungs is attributable to that one thing:
+The intended interpretation of adjacent steps is documented below. Step 2 -> 3
+changes the readout, parameter ownership, and optimizer family, so it is not a
+single-variable contrast:
 
     1 -> 2  auxiliary supervision
-    2 -> 3  readout and extra parameters (and the AdamW -> Adam crossing)
+    2 -> 3  readout, extra parameters, and AdamW -> Adam
     3 -> 4  locality: gradients stop at the detach
     4 -> 5  caching activations on device
     5 -> 6  moving that cache off the GPU
@@ -36,8 +37,8 @@ PRE-REGISTERED DECISIONS
 5.  EVERY PARITY CLAIM USES TOST. The equivalence margin for accuracy is fixed at
     0.25 PERCENTAGE POINTS, pre-specified, chosen before seeing the data. A
     non-significant difference test is NOT evidence of equivalence and is never
-    reported as such: the verdict vocabulary is deliberately restricted to
-    DIFFERENT, EQUIVALENT, and INCONCLUSIVE.
+reported as such: the verdict vocabulary is deliberately restricted to
+DIFFERENT, DIFFERENT-BUT-NEGLIGIBLE, EQUIVALENT, and INCONCLUSIVE.
 
 Usage:
     python scripts/analyze_ablation_ladder.py --results-dir results/runs
@@ -106,9 +107,9 @@ ADJACENT_CONTRASTS: Tuple[Tuple[str, str], ...] = (
     ("mf_cache_device", "mf_cache_host"),
 )
 
-#: Contrasts that answer a reviewer question directly.
+#: Contrasts that answer a study question directly.
 HEADLINE_CONTRASTS: Tuple[Tuple[str, str], ...] = (
-    # R3's question: is MF just deep supervision by another name?
+    # Is MF just deep supervision by another name?
     ("bp_ds", "mf_recompute"),
     # The paper's headline: what does the whole ladder buy over BP?
     ("bp", "mf_recompute"),
@@ -284,14 +285,22 @@ def _rung_key(record: Dict) -> Optional[str]:
 
 
 def _configuration_key(record: Dict) -> str:
-    """Groups runs that differ only by rung and seed."""
+    """Groups runs that differ only by rung and seed within one protocol."""
     dataset = str(record.get("dataset", "unknown")).lower()
     architecture = record.get("architecture")
-    return f"{dataset}_{architecture}"
+    protocol = str(record.get("protocol", record.get("phase", "main"))).lower()
+    return f"{protocol}:{dataset}_{architecture}"
 
 
 def load_runs(results_dir: Path) -> List[Dict]:
     """Loads every run summary JSON written by the training engine."""
+    required_keys = {
+        "algorithm",
+        "dataset",
+        "architecture",
+        "seed",
+        "test_accuracy",
+    }
     records = []
     for path in sorted(results_dir.rglob("*.json")):
         try:
@@ -302,6 +311,13 @@ def load_runs(results_dir: Path) -> List[Dict]:
             continue
         if record.get("error"):
             print(f"WARNING: skipping failed run {path}: {record['error']}")
+            continue
+        missing = required_keys - record.keys()
+        if missing:
+            print(
+                f"WARNING: skipping non-run JSON {path}; missing keys: "
+                f"{', '.join(sorted(missing))}"
+            )
             continue
         records.append(record)
     return records
@@ -352,6 +368,16 @@ def compare(
 ) -> Optional[ContrastResult]:
     """Runs the full pre-registered battery for one contrast on one metric."""
     a, b, _ = _paired_series(runs_by_rung, rung_a, rung_b, metric)
+    if a.size == 0:
+        return None
+
+    if metric == "test_accuracy":
+        accuracy_values = np.concatenate((a, b))
+        if not np.all((accuracy_values >= 0.0) & (accuracy_values <= 100.0)):
+            raise ValueError("test_accuracy must be expressed as percentages in [0, 100]")
+        if float(np.max(accuracy_values)) <= 1.0:
+            raise ValueError("test_accuracy appears to be a fraction, not a percentage")
+
     if a.size < 2:
         return None
 
@@ -424,8 +450,15 @@ def analyze_configuration(
         seed = record.get("seed")
         if seed is None:
             continue
-        runs_by_rung.setdefault(rung, {})[int(seed)] = record
-        seeds.add(int(seed))
+        seed = int(seed)
+        rung_runs = runs_by_rung.setdefault(rung, {})
+        if seed in rung_runs:
+            raise ValueError(
+                f"Duplicate run for configuration {configuration!r}, "
+                f"rung {rung!r}, seed {seed}"
+            )
+        rung_runs[seed] = record
+        seeds.add(seed)
 
     report = LadderReport(
         configuration=configuration,
@@ -523,7 +556,7 @@ def _format_report(report: LadderReport) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Pre-registered analysis of the Phase 3 ablation ladder. Written and "
+            "Pre-registered analysis of the ablation ladder. Written and "
             "committed before any result was inspected."
         )
     )

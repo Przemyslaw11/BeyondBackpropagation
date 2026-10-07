@@ -230,8 +230,8 @@ class TestContrastStatistics(unittest.TestCase):
         self.assertEqual(result.tost_margin, ACCURACY_EQUIVALENCE_MARGIN_PP)
 
     def test_wide_noise_yields_inconclusive_not_equivalent(self) -> None:
-        a = 98.0 + self.rng.normal(0, 2.0, len(SEEDS))
-        b = 98.0 + self.rng.normal(0, 2.0, len(SEEDS))
+        a = np.clip(98.0 + self.rng.normal(0, 2.0, len(SEEDS)), 0.0, 100.0)
+        b = np.clip(98.0 + self.rng.normal(0, 2.0, len(SEEDS)), 0.0, 100.0)
         result = compare(
             self._runs_by_rung(a, b),
             "bp_ds",
@@ -366,6 +366,26 @@ class TestEndToEnd(unittest.TestCase):
             (root / "a.json").write_text(json.dumps(good), encoding="utf-8")
             (root / "b.json").write_text(json.dumps(bad), encoding="utf-8")
             self.assertEqual(len(load_runs(root)), 1)
+
+    def test_duplicate_rung_and_seed_is_rejected(self) -> None:
+        record = _run("bp", "recompute", 42, 98.0)
+        with self.assertRaisesRegex(ValueError, "Duplicate run"):
+            analyze_configuration("main:mnist_[1000, 1000]", [record, record], np.random.default_rng(1))
+
+    def test_fractional_accuracy_is_rejected(self) -> None:
+        runs = {
+            "bp": {42: _run("bp", "recompute", 42, 0.98)},
+            "mf_recompute": {42: _run("mf", "recompute", 42, 0.97)},
+        }
+        with self.assertRaisesRegex(ValueError, "fraction"):
+            compare(
+                runs,
+                "bp",
+                "mf_recompute",
+                "test_accuracy",
+                "accuracy",
+                np.random.default_rng(1),
+            )
 
 
 if __name__ == "__main__":

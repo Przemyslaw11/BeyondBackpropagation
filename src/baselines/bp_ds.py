@@ -1,7 +1,7 @@
 # File: ./src/baselines/bp_ds.py
 """The joint-gradient rungs of the ablation ladder: BP-DS and MF-Joint.
 
-Reviewers asked whether Mono-Forward's gains come from its forward-only mechanism
+The control asks whether Mono-Forward's gains come from its forward-only mechanism
 or merely from placing a loss at every layer. Answering that needs two
 intermediate baselines, and both attach MF's local loss to every layer and
 propagate joint gradients. They differ only in which head makes the prediction,

@@ -2,16 +2,6 @@
 #
 # Identical to cifar10_mlp_3x2000_mf_published.yaml except that the M0 stage is off.
 #
-# The first arm missed the published totals by +33 % time and +26 % energy while
-# matching them per epoch to within 5 %, because it trains four stages where the
-# published runs trained three. The W&B archive settles it: run 0b8w3rdi
-# (2025-05-07, seed 42, 62.34 %, 175.15 s, 3.265 Wh) logs only Layer_W1_M1 at 15
-# epochs, Layer_W2_M2 at 15 and Layer_W3_M3 at 8 -- 38 in total, matching the
-# thesis's 38.00 +/- 0.00 -- and carries no Layer_M0 key at all. Run zop09eb3
-# (2025-05-31) is the first that does. M0 was therefore added to mf.py after the
-# runs behind Table 2, and the squashed import at 869d7b0 already contains it, so
-# the pre-M0 source is not recoverable from git.
-#
 # M0 is dead compute regardless of provenance: phase 2 trains W_i+1 against M_i+1
 # for i >= 0, and evaluate_mf_model reads M_L. Nothing downstream ever reads M0.
 # Skipping it still perturbs the dataloader RNG stream, so accuracy moves a little

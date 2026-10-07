@@ -1,15 +1,15 @@
 """The aggregator: one tidy long-format table behind every figure and table.
 
-Phase 2 made the training engine emit a per-run summary JSON and an NVML time
-series; Phases 3 and 4 filled ``results/`` with 916 of them. This module is the
+The training engine emits a per-run summary JSON and an NVML time
+series; the study phases filled ``results/`` with 916 of them. This module is the
 join. It carries, for every value it emits, the file it came from, the
 instrument that produced it and the unit it is in, so a figure can never
 silently mix a device-wide NVML reading with a host RSS one -- the exact defect
 that put a host-memory trace under an "NVML peak memory" caption in the
 submitted paper.
 
-Long format, one row per (run, metric). Identity columns let stale or
-superseded runs be filtered rather than silently absorbed.
+Long format, one row per (run, metric). Identity columns let known non-canonical
+protocol runs be filtered rather than silently absorbed.
 """
 
 from __future__ import annotations

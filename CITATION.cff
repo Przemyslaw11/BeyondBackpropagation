@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the PPAM 2026 paper."
+title: "Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Hardware-Validated Benchmarking Study of Forward-Only Algorithms"
+type: software
+version: "2.0"
+year: 2026
+authors:
+  - family-names: Spyra
+    given-names: Przemyslaw
+  - family-names: Dzwinel
+    given-names: Witold
+preferred-citation:
+  type: conference-paper
+  title: "Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Hardware-Validated Benchmarking Study of Forward-Only Algorithms"
+  authors:
+    - family-names: Spyra
+      given-names: Przemyslaw
+    - family-names: Dzwinel
+      given-names: Witold
+  collection-title: "Lecture Notes in Computer Science"
+  conference: "Parallel Processing and Applied Mathematics (PPAM 2026)"
+  venue: "To appear"
+  publisher: Springer
+  year: 2026

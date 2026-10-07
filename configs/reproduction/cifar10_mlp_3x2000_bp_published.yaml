@@ -1,9 +1,5 @@
 # Phase 4, task 1: the reproduction check (stop gate), BP half.
 #
-# The published comparator in Table 2 of the accepted paper: BP on the CIFAR-10
-# 3x2000 MLP at 61.13 +/- 0.35 %, 268.45 +/- 8.1 s, 5.35 +/- 0.19 Wh,
-# 1184 +/- 5 MiB over seeds 42, 123 and 7.
-#
 # Hyperparameters restored verbatim from commit 869d7b0; Phase 3 retuned the live
 # config in place (lr 8.1159e-5 -> 7.6741e-5). Early stopping carries the legacy
 # values through the shared Phase 2 block: 100 epochs, patience 20, min_delta 0.0
@@ -15,7 +11,7 @@
 # the forward pass, so they never received a gradient and AdamW skipped them
 # entirely, leaving the numerics untouched. Only the parameter count and a little
 # memory differ. Reintroducing the asymmetry purely to match a bug would put the
-# reviewers' own complaint back into the codebase.
+# historical asymmetry back into the canonical codebase.
 
 experiment_name: "repro_bp_cifar10_mlp_3x2000"
 run_summary_dir: "results/reproduction"
