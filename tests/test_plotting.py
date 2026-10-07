@@ -19,7 +19,7 @@ from scripts.analyze_ablation_ladder import RUNGS, _rung_key
 from src.plotting import tidy
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TIDY_CSV = REPO_ROOT / "artifacts" / "tidy" / "runs.csv"
+TIDY_CSV = REPO_ROOT / "results" / "tidy" / "runs.csv"
 LADDER_ANALYSIS = REPO_ROOT / "results" / "ladder_analysis.json"
 PHASE4_SUMMARIES = (
     REPO_ROOT / "results" / "phase4_ff_summary.json",

@@ -30,8 +30,8 @@
 #SBATCH --time=01:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-now
-#SBATCH --output=slurm_logs/phase3/%x-%j.out
-#SBATCH --error=slurm_logs/phase3/%x-%j.err
+#SBATCH --output=logs/phase3/%x-%j.out
+#SBATCH --error=logs/phase3/%x-%j.err
 
 # "config first_seed last_seed"; the ladder already holds seeds 42-61.
 TOPUP_SPEC=(

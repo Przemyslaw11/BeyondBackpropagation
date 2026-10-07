@@ -17,7 +17,7 @@ set -u
 REPO="$HOME/BeyondBackpropagation"
 cd "$REPO" || exit 1
 
-LOGDIR="$REPO/slurm_logs/phase3"
+LOGDIR="$REPO/logs/phase3"
 mkdir -p "$LOGDIR"
 LOG="$LOGDIR/hpo_now_driver.log"
 

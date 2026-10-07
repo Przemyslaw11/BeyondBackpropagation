@@ -18,7 +18,7 @@ cd "$REPO" || exit 1
 
 # Must match the runner's #SBATCH --output directory: the driver reads each pilot's
 # PILOT_SUMMARY out of that file to decide whether to submit another.
-LOGDIR=${LADDER_NOW_LOGDIR:-$REPO/slurm_logs/phase3}
+LOGDIR=${LADDER_NOW_LOGDIR:-$REPO/logs/phase3}
 mkdir -p "$LOGDIR"
 
 # Which pilot to drive. The top-up runner (task 11) has the same submit/wait/resubmit

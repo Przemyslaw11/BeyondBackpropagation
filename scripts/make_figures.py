@@ -1,4 +1,4 @@
-"""Regenerates every camera-ready figure from ``artifacts/tidy/runs.csv``.
+"""Regenerates every figure from ``results/tidy/runs.csv``.
 
 Nothing here reads Weights & Biases, and nothing reads ``results/`` except the
 NVML trace CSVs the tidy table points at. Run ``scripts/build_tidy_table.py``
@@ -39,11 +39,11 @@ def _sha256(path: Path) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--table", default="artifacts/tidy/runs.csv")
+    parser.add_argument("--table", default="results/tidy/runs.csv")
     parser.add_argument(
-        "--out", default="latex_source/PPAM_2026_SUBMISSION/plots/generated"
+        "--out", default="plots/generated"
     )
-    parser.add_argument("--diagnostics-out", default="artifacts/figures/diagnostics")
+    parser.add_argument("--diagnostics-out", default="results/figures/diagnostics")
     parser.add_argument(
         "--only",
         action="append",

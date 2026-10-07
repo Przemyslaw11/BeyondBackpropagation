@@ -1,7 +1,7 @@
 """Builds the tidy table every camera-ready figure and table reads from.
 
     python scripts/build_tidy_table.py
-    python scripts/build_tidy_table.py --out artifacts/tidy --no-traces
+    python scripts/build_tidy_table.py --out results/tidy --no-traces
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from src.plotting import tidy
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--out", type=Path, default=Path("artifacts/tidy"), help="output directory"
+        "--out", type=Path, default=Path("results/tidy"), help="output directory"
     )
     parser.add_argument(
         "--no-traces",

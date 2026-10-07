@@ -8,8 +8,8 @@
 #SBATCH --time=08:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-gpu-a100
-#SBATCH --output=slurm_logs/%x-%A_%a.out
-#SBATCH --error=slurm_logs/%x-%A_%a.err
+#SBATCH --output=logs/%x-%A_%a.out
+#SBATCH --error=logs/%x-%A_%a.err
 #SBATCH --array=1-81
 
 CONFIG_FILES=(

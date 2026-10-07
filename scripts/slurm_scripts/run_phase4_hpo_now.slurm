@@ -19,8 +19,8 @@
 #SBATCH --time=01:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-now
-#SBATCH --output=slurm_logs/phase4/%x-%j.out
-#SBATCH --error=slurm_logs/phase4/%x-%j.err
+#SBATCH --output=logs/phase4/%x-%j.out
+#SBATCH --error=logs/phase4/%x-%j.err
 
 SPEC_FILE=${PHASE4_HPO_SPEC:?set PHASE4_HPO_SPEC to a spec file listing tuning configs}
 BUDGET_SEC=${PHASE4_HPO_BUDGET:-2700}

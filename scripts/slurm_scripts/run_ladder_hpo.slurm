@@ -26,8 +26,8 @@
 #SBATCH --time=08:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-gpu-a100
-#SBATCH --output=slurm_logs/phase3/%x-%j.out
-#SBATCH --error=slurm_logs/phase3/%x-%j.err
+#SBATCH --output=logs/phase3/%x-%j.out
+#SBATCH --error=logs/phase3/%x-%j.err
 
 TUNE_CONFIGS=(
     # --- Rung 1: BP ---

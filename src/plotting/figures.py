@@ -4,7 +4,7 @@ Reviewer R1 found Figures 3 and 4 illegible. The cause was not taste but
 geometry: raster exports from the Weights & Biases UI, scaled down by
 ``\\includegraphics`` to a third of a 122 mm text block. Everything here is
 vector, generated at its exact final width, and reads only
-``artifacts/tidy/runs.csv``.
+``results/tidy/runs.csv``.
 
 Three data hazards are enforced structurally rather than remembered:
 

@@ -22,8 +22,8 @@
 #SBATCH --time=01:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-now
-#SBATCH --output=slurm_logs/phase4/%x-%j.out
-#SBATCH --error=slurm_logs/phase4/%x-%j.err
+#SBATCH --output=logs/phase4/%x-%j.out
+#SBATCH --error=logs/phase4/%x-%j.err
 
 cd "$SLURM_SUBMIT_DIR" || exit 1
 
