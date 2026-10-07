@@ -73,8 +73,7 @@ detachment, not MF's auxiliary losses, as the dominant factor tested.
 
 ## Key Results
 
-All numbers below are produced by the released analysis from
-[`artifacts/tidy/runs.csv`](artifacts/tidy/runs.csv); none is transcribed by hand.
+All numbers below are produced by the released analysis; none is transcribed by hand.
 Every run stops under one rule (validation loss, patience 20, cap 100 epochs per training unit),
 and the paper reports two protocols because no single one answers both questions a practitioner
 asks:
@@ -134,7 +133,7 @@ The code repository retains the tidy measurements and experiment-side analysis n
 
 | Artefact | Location |
 |---|---|
-| Tidy table of 19 944 measurements (one row per run and metric) | [`artifacts/tidy/runs.csv`](artifacts/tidy/runs.csv) |
+| Tidy table of 19 944 measurements | Generated locally from run records |
 | Builder of the tidy table from raw run records | [`scripts/build_tidy_table.py`](scripts/build_tidy_table.py) |
 | Pre-registered ladder analysis | [`scripts/analyze_ablation_ladder.py`](scripts/analyze_ablation_ladder.py) |
 | Bit-exactness check of the MF activation cache | [`scripts/check_mf_cache_equivalence.py`](scripts/check_mf_cache_equivalence.py) |
@@ -155,8 +154,6 @@ Experiment configurations for each arm of the study:
 
 ```text
 .
-|-- artifacts/
-|   `-- tidy/runs.csv                  # tidy table behind every number in the paper
 |-- configs/
 |   |-- base.yaml                      # shared defaults: device, data root, logging, monitoring, tuning
 |   |-- bp_baselines/                  # tuned BP baselines matching the FF, MF and CaFo architectures
@@ -170,7 +167,7 @@ Experiment configurations for each arm of the study:
 |   |-- run_experiment.py              # single train-and-test entry point
 |   |-- run_optuna_search.py           # Optuna search entry point
 |   |-- run_local_array.py             # local sequential batch runner
-|   |-- build_tidy_table.py            # run records -> artifacts/tidy/runs.csv
+|   |-- build_tidy_table.py            # run records -> generated tidy table
 |   |-- analyze_ablation_ladder.py     # pre-registered ladder statistics
 |   |-- check_mf_cache_equivalence.py  # MF activation-cache bit-exactness check
 |   |-- slurm_scripts/                 # SLURM job templates
