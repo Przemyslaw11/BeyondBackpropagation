@@ -172,7 +172,6 @@ Experiment configurations for each arm of the study:
 |   |-- check_mf_cache_equivalence.py  # MF activation-cache bit-exactness check
 |   |-- slurm_scripts/                 # SLURM job templates
 |   `-- tuning_utils/                  # write Optuna results back into YAML configs
-|-- slurm_logs/                        # recorded stdout/stderr of the experiment jobs
 `-- src/
     |-- algorithms/                    # FF, CaFo and MF training and evaluation loops
     |-- architectures/                 # FF_MLP, MF_MLP and CaFo_CNN modules
