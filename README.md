@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="latex_source/CP025_mf_v19/CP025.pdf">Paper (PPAM 2026)</a> ·
+  <a href="https://arxiv.org/abs/2511.01061">Paper</a> ·
   <a href="#key-results">Key Results</a> ·
   <a href="#reproducing-the-paper">Reproduce</a> ·
   <a href="#quickstart">Quickstart</a> ·
@@ -27,7 +27,7 @@
 
 > **Paper:** *Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Hardware-Validated
 > Benchmarking Study of Forward-Only Algorithms*, accepted at PPAM 2026 (Springer LNCS).
-> Camera-ready source and PDF: [`latex_source/CP025_mf_v19/`](latex_source/CP025_mf_v19/).
+> The camera-ready paper source and PDF are maintained separately from this code repository.
 > An earlier preprint is [arXiv:2511.01061](https://arxiv.org/abs/2511.01061).<br>
 > **Authors:** Przemysław Spyra, Witold Dzwinel · AGH University of Krakow, Faculty of Computer Science
 
@@ -104,12 +104,6 @@ a power saving at near-equal wall-clock time. Trained to convergence it is more 
 end, because it needs 3.5× to 4.5× as many passes. The pass multiplier, not the cost of a pass, is
 what stands between MF and an end-to-end energy advantage.
 
-<p align="center">
-  <img src="plots/cp025_fig1_matched_protocol.png" width="80%"
-       alt="Bar chart of MF's saving over BP under the matched data-pass protocol: energy, allocator memory and mean board power for MNIST, Fashion-MNIST, CIFAR-10 and CIFAR-100. Savings are largest on the 3x2000 MLPs, up to 19.9% energy and 27.5% memory.">
-</p>
-<p align="center"><em>Figure 1 of the paper. MF's saving over BP under the matched data-pass protocol, ordered by trainable weights.</em></p>
-
 ### Where the accuracy comes from: a pre-registered ablation ladder
 
 The ladder moves from BP to MF one structural change at a time:
@@ -124,12 +118,6 @@ were committed before any ladder result was inspected
   (+4.10 and +3.18 pp), and it also carries essentially the whole energy increase.
 - On the two 2×1000 MLPs, MF and the deep supervision control are equivalent within the margin.
 
-<p align="center">
-  <img src="plots/cp025_fig2_ablation_ladder.png" width="80%"
-       alt="Two-panel line chart of the ablation ladder BP, BP-DS, MF-Joint, MF: test accuracy against BP and GPU energy as a percentage of BP for the four datasets. The detach step gives the largest accuracy gain on the CIFAR tasks and the largest energy increase.">
-</p>
-<p align="center"><em>Figure 2 of the paper. Test accuracy (a) and GPU energy (b) along the ablation ladder.</em></p>
-
 ### Forward-Forward and Cascaded Forward
 
 - **FF** trails BP by 0.01 to 1.10 pp on its native MLPs while needing 4.1× to 7.4× BP's wall-clock
@@ -138,37 +126,19 @@ were committed before any ladder result was inspected
   but loses 18.8 and 16.9 pp on CIFAR-10 and CIFAR-100; its DFA variant narrows the gap to 7.1 and
   8.5 pp at a further 1.5× to 2.6× the energy.
 
-The complete per-configuration FF and CaFo table is
-[`tables/ff_cafo_full.csv`](latex_source/CP025_mf_v19/tables/ff_cafo_full.csv).
+The complete per-configuration FF and CaFo table belongs to the paper archive and is not included in this code-only checkout.
 
-## Reproducing the Paper
+## Reproducing the Experiments
 
-Everything needed to regenerate the paper's numbers, tables and figures is in the repository:
+The code repository retains the tidy measurements and experiment-side analysis needed to inspect the released results. The camera-ready LaTeX source, generated paper tables, and archived raw run traces are maintained separately.
 
 | Artefact | Location |
 |---|---|
 | Tidy table of 19 944 measurements (one row per run and metric) | [`artifacts/tidy/runs.csv`](artifacts/tidy/runs.csv) |
 | Builder of the tidy table from raw run records | [`scripts/build_tidy_table.py`](scripts/build_tidy_table.py) |
-| Analysis: every number, `numbers.json`, LaTeX table bodies | [`latex_source/CP025_mf_v19/analysis/analyse.py`](latex_source/CP025_mf_v19/analysis/analyse.py) |
-| Figures 1 and 2, plus a supplementary Figure 3 | [`latex_source/CP025_mf_v19/analysis/figures.py`](latex_source/CP025_mf_v19/analysis/figures.py) |
-| Full FF and CaFo table | [`latex_source/CP025_mf_v19/analysis/ff_cafo_table.py`](latex_source/CP025_mf_v19/analysis/ff_cafo_table.py) |
-| Pre-registered ladder analysis and its output | [`scripts/analyze_ablation_ladder.py`](scripts/analyze_ablation_ladder.py), [`ladder_analysis.json`](latex_source/CP025_mf_v19/analysis/ladder_analysis.json) |
+| Pre-registered ladder analysis | [`scripts/analyze_ablation_ladder.py`](scripts/analyze_ablation_ladder.py) |
 | Bit-exactness check of the MF activation cache | [`scripts/check_mf_cache_equivalence.py`](scripts/check_mf_cache_equivalence.py) |
-| Camera-ready LaTeX source, PDF and response to reviewers | [`latex_source/CP025_mf_v19/`](latex_source/CP025_mf_v19/) |
-
-From the repository root, with the [requirements](#installation) installed:
-
-```bash
-python latex_source/CP025_mf_v19/analysis/analyse.py        # numbers.json and tables/*.tex
-python latex_source/CP025_mf_v19/analysis/figures.py        # CP025_fig1.pdf, CP025_fig2.pdf, CP025_fig3.pdf
-python latex_source/CP025_mf_v19/analysis/ff_cafo_table.py  # tables/ff_cafo_full.csv
-cd latex_source/CP025_mf_v19 && latexmk -pdf CP025.tex
-```
-
-The camera-ready `CP025.tex` contains the three table bodies inline, as the PPAM file-naming rules
-require; after rerunning `analyse.py`, paste the regenerated `tables/*_body.tex` over the inlined
-copies (see [`BUILD_NOTES.txt`](latex_source/CP025_mf_v19/BUILD_NOTES.txt)). The per-run JSON
-records and the 1027 NVML power traces are archived and available from the authors on request.
+The per-run JSON records and the 1027 NVML power traces are archived and available from the authors on request.
 
 Experiment configurations for each arm of the study:
 
@@ -195,8 +165,6 @@ Experiment configurations for each arm of the study:
 |   |-- ff/, cafo/, mf/                # final experiment configs per algorithm
 |   |-- reproduction/                  # reproductions of the published MF setup
 |   `-- tuning/                        # Optuna search configs
-|-- latex_source/
-|   `-- CP025_mf_v19/                  # PPAM 2026 camera-ready: paper, letter, analysis, tables
 |-- plots/                             # figures shown in this README
 |-- scripts/
 |   |-- run_experiment.py              # single train-and-test entry point
