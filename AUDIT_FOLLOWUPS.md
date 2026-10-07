@@ -161,7 +161,7 @@ The removed tracked teaser showed four MLP rows with positive accuracy gains and
 
 ## Security follow-up
 
-The requested exact fallback scan was also run: `git log --all -p | grep -E "ghp_|AKIA|xox[bap]-|wandb|api[_-]?key" -i`. Matches were W&B code/config references and generic API-key vocabulary; no token-shaped `ghp_`, `AKIA`, or `xox...` secret was found. `gitleaks` and `trufflehog` were unavailable in the environment. Owner commands:
+The requested exact scan was also run: `git log --all -p | grep -E "ghp_|AKIA|xox[bap]-|wandb|api[_-]?key" -i`. Matches were W&B code/config references and generic API-key vocabulary; no token-shaped `ghp_`, `AKIA`, or `xox...` secret was found. `gitleaks` and `trufflehog` were installed and both completed cleanly. Owner rerun commands:
 
 ```bash
 gitleaks detect --source . --log-opts="--all"
@@ -192,3 +192,17 @@ trufflehog git file://. --only-verified
 12      src/architectures/cafo_cnn.py
 12      AUDIT_FOLLOWUPS.md
 ```
+
+## Final report for the previous task
+
+| Step | Status | Commit/evidence |
+|---|---|---|
+| 4a analysis hardening | DONE | `a0ed244` (`fix: harden ablation run analysis`); focused and full tests pass |
+| 4b dependencies | PARTIAL | `7ed6730` (`fix: complete runtime dependency declarations`); requirements are explicit, but the pinned Torch release cannot install on the available Python 3.13 interpreter and Athena `pip freeze` is still needed |
+| 4c base config and measurement review | DONE | `ed40f31`; W&B entity is null, shared defaults are documented, and measurement-region findings are recorded without changing measurement logic |
+| 5 README and metadata | PARTIAL | `ed40f31`, `15e88ec`, `d381364`, and `2faa2e6`; README, changelog, citation metadata, audit ledger, links, and figure cleanup are done. Protected arXiv links, GitHub metadata, Zenodo, and release tags remain owner actions by rule |
+| 6 verification | PARTIAL | `python3 -m compileall -q src scripts`, `pytest`, link checks, gitleaks, trufflehog, and requested greps pass. The local MNIST quickstart could not download data because of certificate/fallback-URL errors; the full fresh dependency install is blocked by Python 3.13/Torch compatibility |
+
+Final executable results: `77 passed, 13 skipped, 9 warnings, 6 subtests passed`; README link/anchor check: `0 errors`; superseded-number grep and removed-figure reference grep: no output. The warning set consists of the expected deprecated pynvml notice, SciPy precision warnings for degenerate synthetic tests, and one PyTorch tensor-conversion warning.
+
+`git diff main --stat` includes the large canonical methodology rewrite that was already present when this branch started, in addition to the follow-up commits. The requested `git diff main -- README.md | grep -E '^[+-]' | grep -E '[0-9]'` output is non-empty for that reason and includes canonical table values and deleted superseded README values. No canonical table number or analysis constant was changed by the follow-up commits; the permitted comment/disclosure values were deleted. For an isolated follow-up check, compare `git diff d381364 -- README.md`.
