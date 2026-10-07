@@ -16,8 +16,11 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.utils.backend_policy import get_execution_backend
 from src.utils.config_parser import load_config

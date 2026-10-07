@@ -109,6 +109,7 @@ The commands intentionally omit `CO2e`, `optuna`, and `hyperparameter-optimizati
 - Confirm the approximate GPU-hour budget.
 - Confirm whether historical tuning artifacts should be restored to a documented archive; they were not recreated or deleted from the current tree because the tracked checkout contains no implementation to validate.
 - Historical reproduction comments still contain `61.13`, `268.45`, `62.34`, and `177.70` in `configs/reproduction/`. They are preserved because the release rule forbids changing reported scientific numbers; the owner should decide whether those reproduction configs belong in a separately documented historical archive.
+- The local MNIST quickstart reached training setup but could not download the dataset: the HTTPS certificate chain was rejected and the fallback URL returned 404. A pre-downloaded dataset or corrected CA trust is required to verify training end to end.
 
 The remaining `superseded` identifiers in `src/plotting/tidy.py` and `tests/test_plotting.py` are active provenance fields and tests that exclude known non-canonical source directories. They are not README claims or current result tables.
 
