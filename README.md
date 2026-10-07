@@ -143,6 +143,9 @@ The code repository retains the tidy measurements and experiment-side analysis n
 The per-run JSON records and the 1027 NVML power traces are archived separately and available from
 the authors on request (`TODO: Zenodo DOI`).
 
+The `configs/diagnostics/*_legacy_es.yaml` files are stopping-policy sensitivity diagnostics, not
+canonical result configurations; the paper does not report them as headline results.
+
 Experiment configurations for each arm of the study:
 
 | Arm | Configs |
@@ -192,7 +195,7 @@ its Optuna environment, so the tuned baseline values are consumed as config data
 |   |-- diagnostics/                   # matched data-pass (equal-epoch) budgets
 |   |-- ff/, cafo/, mf/                # final experiment configs per algorithm
 |   |-- reproduction/                  # reproductions of the published MF setup
-|-- plots/                             # retained plotting code and source figure
+|-- plots/                             # plotting code for generated figures
 |-- scripts/
 |   |-- run_experiment.py              # single train-and-test entry point
 |   |-- run_local_array.py             # local sequential batch runner
@@ -338,7 +341,7 @@ Configs are plain YAML merged with [`configs/base.yaml`](configs/base.yaml) by
 | Field | Meaning |
 |---|---|
 | `experiment_name` | Run name used for logs, W&B, results and checkpoints |
-| `general.backend` | `"slurm"` (default) or `"local"`; overridable with `--backend` |
+| `general.backend` | `"slurm"` (default cluster profile: workers and pinned memory) or `"local"`; this is not a job-submission mechanism and is overridable with `--backend` |
 | `algorithm.name` | `BP`, `FF`, `CaFo` or `MF` |
 | `data.name`, `data.root`, `data.val_split` | Dataset, directory and validation fraction |
 | `data_loader.batch_size` | Training batch size (128 for every MLP in the paper) |
