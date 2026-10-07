@@ -1,0 +1,83 @@
+# Phase 3, task 10: the CIFAR-10 early-stopping diagnostic.
+#
+# Identical to configs/mf/cifar10_mlp_3x2000.yaml (rung 4, MF-recompute) except
+# for the early-stopping policy, which is restored to the pre-Phase-2 values
+# recorded in that file's legacy_hyperparameters block. Early stopping is
+# therefore the ONLY factor that differs between the two conditions, so any gap
+# is attributable to the protocol rather than to the method.
+#
+# The prompt asked for this against rung 5, but rung 5 cannot exist on CIFAR-10:
+# RandomCrop and RandomHorizontalFlip change the input every epoch, so cached
+# activations go stale and assert_activation_cache_allowed refuses to run. The
+# cache question is answered instead on MNIST and Fashion-MNIST at n=20 per rung.
+#
+# run_summary_dir keeps these runs out of results/runs. They share rung 4's algorithm
+# and cache identity, so analyze_ablation_ladder.py would otherwise key them to
+# the same (rung, seed) slot and overwrite the real rung-4 observations.
+#
+# It lives outside configs/mf/ because tests/test_fairness_invariants.py holds
+# every config in that group to one stopping rule, and this one exists precisely
+# to break it. A lockstep test still ties it to its twin below.
+
+experiment_name: "mf_cifar10_mlp_3x2000_legacy_es"
+run_summary_dir: "results/diagnostics"
+# The rung-4 twin. tests/test_fairness_invariants.py asserts the two are identical
+# apart from the stopping rule, so task 7b cannot retune one and miss the other.
+diagnostic_of: "configs/mf/cifar10_mlp_3x2000.yaml"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00021536491821693216
+  weight_decay: 1.606438244272842e-06
+  log_interval: 9999
+  activation_cache: recompute
+
+# The pre-Phase-2 policy: epochs_per_layer 15, patience 4, min_delta 1e-4.
+# metric and mode are carried over unchanged because MF's per-layer stopping
+# reads only enabled, patience and min_delta, plus max_epochs as the layer cap.
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0001
+  patience: 4
+  max_epochs: 15
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_cifar10_mlp_3x2000_legacy_es"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

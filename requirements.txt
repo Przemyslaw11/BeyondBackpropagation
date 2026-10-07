@@ -5,10 +5,10 @@ torchvision==0.19.0 # Version compatible with torch 2.4.0
 
 # Monitoring & Profiling
 pynvml             # Allow latest compatible
+psutil             # Process RSS sampling alongside NVML counters
 
-# Experiment Tracking & Hyperparameter Optimization
+# Experiment Tracking
 wandb              # Allow latest compatible
-optuna             # Allow latest compatible
 
 # Configuration & Utilities
 PyYAML>=6.0        # Keep requirement, allow updates

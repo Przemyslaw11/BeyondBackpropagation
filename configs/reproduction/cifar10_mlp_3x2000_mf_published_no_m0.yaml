@@ -1,0 +1,76 @@
+# Phase 4, task 1: the reproduction check, second arm.
+#
+# Identical to cifar10_mlp_3x2000_mf_published.yaml except that the M0 stage is off.
+#
+# The first arm missed the published totals by +33 % time and +26 % energy while
+# matching them per epoch to within 5 %, because it trains four stages where the
+# published runs trained three. The W&B archive settles it: run 0b8w3rdi
+# (2025-05-07, seed 42, 62.34 %, 175.15 s, 3.265 Wh) logs only Layer_W1_M1 at 15
+# epochs, Layer_W2_M2 at 15 and Layer_W3_M3 at 8 -- 38 in total, matching the
+# thesis's 38.00 +/- 0.00 -- and carries no Layer_M0 key at all. Run zop09eb3
+# (2025-05-31) is the first that does. M0 was therefore added to mf.py after the
+# runs behind Table 2, and the squashed import at 869d7b0 already contains it, so
+# the pre-M0 source is not recoverable from git.
+#
+# M0 is dead compute regardless of provenance: phase 2 trains W_i+1 against M_i+1
+# for i >= 0, and evaluate_mf_model reads M_L. Nothing downstream ever reads M0.
+# Skipping it still perturbs the dataloader RNG stream, so accuracy moves a little
+# seed by seed without moving systematically.
+
+experiment_name: "repro_mf_nom0_cifar10_mlp_3x2000"
+run_summary_dir: "results/reproduction"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.0003241756767272183
+  weight_decay: 0.0
+  log_interval: 9999
+  activation_cache: recompute
+  mf_train_m0: false
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0001
+  patience: 4
+  max_epochs: 15
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/repro_mf_nom0_cifar10_mlp_3x2000"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

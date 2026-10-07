@@ -1,0 +1,322 @@
+"""Guards the protocol invariants that make cross-algorithm comparisons fair.
+
+Every experiment config in a configuration group must stop on the same metric with
+the same patience, min_delta and epoch cap, use the same pruner policy, and see the
+same data. Anything else turns an energy comparison into a budget comparison.
+"""
+
+import unittest
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import yaml
+
+from src.utils.config_parser import load_config
+from src.utils.early_stopping import resolve_early_stopping
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BASE_CONFIG = REPO_ROOT / "configs" / "base.yaml"
+# The ladder rungs added in Phase 3 have no pre-Phase-2 protocol to preserve.
+LEGACY_EXPERIMENT_DIRS = ("bp_baselines", "cafo", "ff", "mf")
+EXPERIMENT_DIRS = LEGACY_EXPERIMENT_DIRS + ("bp_ds", "mf_joint")
+# configs/diagnostics is deliberately absent: those configs exist to break the shared
+# stopping rule, so they get their own, stricter test rather than an exemption here.
+DIAGNOSTIC_EXEMPT_KEYS = {
+    "experiment_name",
+    "early_stopping",
+    "run_summary_dir",
+    "diagnostic_of",
+    "checkpointing",  # a separate checkpoint_dir, so the twin's files are not clobbered
+    "legacy_hyperparameters",  # the diagnostic applies them rather than recording them
+}
+
+# How hard a run is allowed to try. Shared by every algorithm, no exemptions: this is
+# what stops an energy comparison from becoming a budget comparison.
+STOPPING_BUDGET_KEYS = ("enabled", "min_delta", "patience", "max_epochs")
+# Which quantity names the best epoch. FF measures val_loss as cross-entropy over
+# goodness scores, a surrogate that reaches its minimum around epoch 2 and rises for
+# the rest of training while val accuracy climbs from 89% to 97%, so selecting on it
+# restores an untrained network. FF therefore selects on accuracy. The budget above
+# is unchanged, so FF gets no extra epochs, only a metric that means something.
+SELECTION_METRIC_OPT_OUT = frozenset(
+    {
+        "ff/mnist_mlp_3x1000_ADAMW.yaml",
+        "ff/mnist_mlp_3x1000_SGD.yaml",
+        "ff/mnist_mlp_4x2000.yaml",
+        "ff/fashion_mnist_mlp_4x2000.yaml",
+    }
+)
+
+TUNED_HYPERPARAMETERS = (
+    ("optimizer", "lr"),
+    ("optimizer", "weight_decay"),
+    ("algorithm_params", "predictor_lr"),
+    ("algorithm_params", "predictor_weight_decay"),
+    ("algorithm_params", "block_lr"),
+    ("algorithm_params", "block_weight_decay"),
+    ("algorithm_params", "ff_learning_rate"),
+    ("algorithm_params", "ff_weight_decay"),
+    ("algorithm_params", "downstream_learning_rate"),
+    ("algorithm_params", "downstream_weight_decay"),
+    ("algorithm_params", "mf_lr"),
+    ("algorithm_params", "mf_weight_decay"),
+    ("algorithm_params", "aux_weight"),
+)
+
+# Config pairs known to carry an identical tuned value that was copied rather than
+# searched. Phase 3 re-tunes them; until then the collision is acknowledged, not hidden.
+SHARED_HYPERPARAMETER_OPT_OUT = {
+    # Ladder rungs 4, 5 and 6 differ only by the activation cache. They MUST share
+    # rung 4's hyperparameters, otherwise the comparison measures the search too.
+    *(
+        (section, name, owner, other)
+        for section, name in (
+            ("algorithm_params", "lr"),
+            ("algorithm_params", "weight_decay"),
+        )
+        for owner, other in (
+            ("mnist_mlp_2x1000.yaml", "mnist_mlp_2x1000_cache_device.yaml"),
+            ("mnist_mlp_2x1000.yaml", "mnist_mlp_2x1000_cache_host.yaml"),
+            (
+                "mnist_mlp_2x1000_cache_device.yaml",
+                "mnist_mlp_2x1000_cache_host.yaml",
+            ),
+            (
+                "fashion_mnist_mlp_2x1000.yaml",
+                "fashion_mnist_mlp_2x1000_cache_device.yaml",
+            ),
+            (
+                "fashion_mnist_mlp_2x1000.yaml",
+                "fashion_mnist_mlp_2x1000_cache_host.yaml",
+            ),
+            (
+                "fashion_mnist_mlp_2x1000_cache_device.yaml",
+                "fashion_mnist_mlp_2x1000_cache_host.yaml",
+            ),
+        )
+    ),
+}
+
+
+def _experiment_config_paths() -> List[Path]:
+    paths: List[Path] = []
+    for directory in EXPERIMENT_DIRS:
+        paths.extend(sorted((REPO_ROOT / "configs" / directory).glob("*.yaml")))
+    return paths
+
+
+def _diagnostic_config_paths() -> List[Path]:
+    return sorted((REPO_ROOT / "configs" / "diagnostics").glob("*.yaml"))
+
+
+def _load(path: Path) -> Dict[str, Any]:
+    return load_config(str(path), base_config_path=str(BASE_CONFIG))
+
+
+def _load_raw(path: Path) -> Dict[str, Any]:
+    """Reads a config without the base merge, so inherited defaults are not mistaken
+    for values a config chose for itself."""
+    with open(path, "r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def _group_key(config: Dict[str, Any]) -> Tuple[str, str]:
+    """Groups configs that must be directly comparable in a results table."""
+    model_params = config.get("model", {}).get("params", {})
+    shape = model_params.get("hidden_dims") or model_params.get("block_channels") or []
+    return config.get("data", {}).get("name", "?").lower(), str(list(shape))
+
+
+class FairnessInvariantTests(unittest.TestCase):
+    """Asserts that protocol settings are uniform within each configuration group."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.experiment_configs = {
+            path: _load(path) for path in _experiment_config_paths()
+        }
+        cls.raw_configs = {
+            path: _load_raw(path) for path in _experiment_config_paths()
+        }
+        cls.groups: Dict[Tuple[str, str], List[Path]] = {}
+        for path, config in cls.experiment_configs.items():
+            cls.groups.setdefault(_group_key(config), []).append(path)
+
+    def test_configs_exist(self) -> None:
+        self.assertTrue(self.experiment_configs)
+
+    def test_early_stopping_identical_within_group(self) -> None:
+        for key, paths in self.groups.items():
+            budgets = {
+                path.name: tuple(
+                    (k, resolve_early_stopping(self.experiment_configs[path])[k])
+                    for k in STOPPING_BUDGET_KEYS
+                )
+                for path in paths
+            }
+            self.assertEqual(
+                len(set(budgets.values())),
+                1,
+                f"Group {key} has diverging stopping budgets: {budgets}",
+            )
+            selectors = {
+                f"{path.parent.name}/{path.name}": (
+                    resolve_early_stopping(self.experiment_configs[path])["metric"],
+                    resolve_early_stopping(self.experiment_configs[path])["mode"],
+                )
+                for path in paths
+                if f"{path.parent.name}/{path.name}" not in SELECTION_METRIC_OPT_OUT
+            }
+            self.assertLessEqual(
+                len(set(selectors.values())),
+                1,
+                f"Group {key} has diverging selection metrics: {selectors}",
+            )
+
+    def test_opted_out_configs_select_on_accuracy(self) -> None:
+        """An opt-out is only justified if it buys an accuracy-based metric."""
+        seen = set()
+        for path, config in self.experiment_configs.items():
+            name = f"{path.parent.name}/{path.name}"
+            if name not in SELECTION_METRIC_OPT_OUT:
+                continue
+            seen.add(name)
+            policy = resolve_early_stopping(config)
+            self.assertIn("acc", policy["metric"], f"{name} opted out but kept a loss.")
+            self.assertEqual(policy["mode"], "max", f"{name} maximises accuracy.")
+        self.assertEqual(
+            seen,
+            set(SELECTION_METRIC_OPT_OUT),
+            "SELECTION_METRIC_OPT_OUT names a config that no longer exists.",
+        )
+
+    def test_no_per_algorithm_early_stopping_keys_remain(self) -> None:
+        forbidden = (
+            "early_stopping_metric",
+            "early_stopping_patience",
+            "early_stopping_min_delta",
+            "early_stopping_mode",
+            "mf_early_stopping_enabled",
+            "predictor_early_stopping_enabled",
+        )
+        for path, config in self.experiment_configs.items():
+            for section in ("training", "algorithm_params"):
+                keys = config.get(section, {}) or {}
+                for name in forbidden:
+                    self.assertNotIn(
+                        name,
+                        keys,
+                        f"{path.name} still sets {section}.{name}; use the shared "
+                        "early_stopping block instead.",
+                    )
+
+    def test_pruner_policy_is_uniform(self) -> None:
+        pruners = {
+            path.name: str(config.get("tuning", {}).get("pruner", "None")).lower()
+            for path, config in self.experiment_configs.items()
+        }
+        self.assertEqual(
+            set(pruners.values()),
+            {"none"},
+            f"Pruner policy is not uniform across algorithms: {pruners}",
+        )
+
+    def test_data_pipeline_identical_within_group(self) -> None:
+        for key, paths in self.groups.items():
+            batch_sizes = {
+                path.name: self.experiment_configs[path]
+                .get("data_loader", {})
+                .get("batch_size")
+                for path in paths
+            }
+            val_splits = {
+                path.name: self.experiment_configs[path]
+                .get("data", {})
+                .get("val_split")
+                for path in paths
+            }
+            self.assertEqual(
+                len(set(batch_sizes.values())),
+                1,
+                f"Group {key} has diverging batch sizes: {batch_sizes}",
+            )
+            self.assertEqual(
+                len(set(val_splits.values())),
+                1,
+                f"Group {key} has diverging validation splits: {val_splits}",
+            )
+
+    def test_tuned_hyperparameters_are_not_silently_shared(self) -> None:
+        seen: Dict[Tuple[str, str, Any], str] = {}
+        collisions: List[str] = []
+        for path in sorted(self.raw_configs):
+            config = self.raw_configs[path]
+            for section, name in TUNED_HYPERPARAMETERS:
+                value = (config.get(section) or {}).get(name)
+                if value is None:
+                    continue
+                marker = (section, name, value)
+                owner = seen.setdefault(marker, path.name)
+                if owner == path.name:
+                    continue
+                if (section, name, owner, path.name) in SHARED_HYPERPARAMETER_OPT_OUT:
+                    continue
+                collisions.append(
+                    f"{section}.{name}={value} shared by {owner} and {path.name}"
+                )
+        self.assertEqual(
+            collisions,
+            [],
+            "Tuned values duplicated across configs without an opt-out entry: "
+            + "; ".join(collisions),
+        )
+
+    def test_legacy_hyperparameters_are_preserved(self) -> None:
+        for path, config in self.experiment_configs.items():
+            if path.parent.name not in LEGACY_EXPERIMENT_DIRS:
+                continue
+            self.assertIn(
+                "legacy_hyperparameters",
+                config,
+                f"{path.name} dropped its pre-Phase-2 settings; Phase 6 needs them.",
+            )
+
+    def test_diagnostics_differ_from_their_twin_only_by_early_stopping(self) -> None:
+        """The task 10 diagnostics sit outside EXPERIMENT_DIRS because they exist to
+        violate the shared stopping rule. That exemption is only sound if early
+        stopping is the single thing they change, so it is asserted here instead."""
+        paths = _diagnostic_config_paths()
+        self.assertTrue(paths, "configs/diagnostics is empty; task 10 has no condition.")
+        for path in paths:
+            twin_ref = _load_raw(path).get("diagnostic_of")
+            self.assertIsNotNone(
+                twin_ref, f"{path.name} must name the config it is a diagnostic of."
+            )
+            twin_path = REPO_ROOT / str(twin_ref)
+            self.assertTrue(twin_path.is_file(), f"{path.name} points at a missing {twin_ref}.")
+
+            diagnostic = _load(path)
+            twin = _load(twin_path)
+            self.assertNotEqual(
+                resolve_early_stopping(diagnostic),
+                resolve_early_stopping(twin),
+                f"{path.name} stops exactly like {twin_path.name}, so it measures nothing.",
+            )
+
+            # Everything else must move in lockstep, or the contrast silently picks up
+            # a second factor. Retuning the twin and forgetting this file fails here.
+            differences = {
+                key
+                for key in set(diagnostic) | set(twin)
+                if diagnostic.get(key) != twin.get(key)
+            }
+            self.assertEqual(
+                differences - DIAGNOSTIC_EXEMPT_KEYS,
+                set(),
+                f"{path.name} diverges from {twin_path.name} beyond early stopping: "
+                f"{sorted(differences - DIAGNOSTIC_EXEMPT_KEYS)}",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

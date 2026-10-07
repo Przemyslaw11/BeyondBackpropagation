@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.architectures.cafo_cnn import CaFo_CNN, CaFoBlock, CaFoPredictor
+from src.utils.early_stopping import resolve_early_stopping
 from src.utils.helpers import (
     create_directory_if_not_exists,
     format_time,
@@ -592,17 +593,19 @@ def train_cafo_model(
     predictor_lr = algo_config.get("predictor_lr", 0.001)
     predictor_weight_decay = algo_config.get("predictor_weight_decay", 0.0)
     criterion_name = algo_config.get("loss_type", "CrossEntropyLoss")
-    epochs_per_block = algo_config.get("num_epochs_per_block", 10)
+    es_policy = resolve_early_stopping(config)
+    epochs_per_block = es_policy["max_epochs"]
     log_interval = algo_config.get("log_interval", 100)
     optimizer_params_extra = algo_config.get("optimizer_params", {})
     checkpoint_dir = config.get("checkpointing", {}).get("checkpoint_dir", None)
 
+    # CaFo stops each predictor independently; the policy values are the shared ones.
     predictor_es_config = {
-        "enabled": algo_config.get("predictor_early_stopping_enabled", True),
-        "metric": algo_config.get("predictor_early_stopping_metric", "val_loss"),
-        "patience": algo_config.get("predictor_early_stopping_patience", 10),
-        "mode": algo_config.get("predictor_early_stopping_mode", "min"),
-        "min_delta": algo_config.get("predictor_early_stopping_min_delta", 0.0),
+        "enabled": es_policy["enabled"],
+        "metric": es_policy["metric"],
+        "patience": es_policy["patience"],
+        "mode": es_policy["mode"],
+        "min_delta": es_policy["min_delta"],
     }
 
     if criterion_name.lower() == "crossentropyloss":
@@ -737,6 +740,9 @@ def train_cafo_model(
 
         current_block_input_fn = create_next_input_fn(i, current_block_input_fn)
 
+    config.setdefault("_run_stats", {})[
+        "epochs_completed"
+    ] = total_epochs_trained_all_predictors
     logger.info(
         f"Finished all layer-wise CaFo predictor training. Total Epochs Trained "
         f"(Sum): {total_epochs_trained_all_predictors}"
