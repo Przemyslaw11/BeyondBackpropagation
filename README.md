@@ -212,7 +212,6 @@ its Optuna environment, so the tuned baseline values are consumed as config data
     |-- training/                      # experiment orchestration engine
     `-- utils/                         # config parsing, logging, NVML monitoring, profiling
 |-- tests/                             # unit and invariant tests
-|-- CHANGELOG.md                       # neutral methodology correction note
 `-- CITATION.cff                       # PPAM 2026 citation metadata
 ```
 
