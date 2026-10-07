@@ -37,8 +37,8 @@ PRE-REGISTERED DECISIONS
 5.  EVERY PARITY CLAIM USES TOST. The equivalence margin for accuracy is fixed at
     0.25 PERCENTAGE POINTS, pre-specified, chosen before seeing the data. A
     non-significant difference test is NOT evidence of equivalence and is never
-    reported as such: the verdict vocabulary is deliberately restricted to
-    DIFFERENT, EQUIVALENT, and INCONCLUSIVE.
+reported as such: the verdict vocabulary is deliberately restricted to
+DIFFERENT, DIFFERENT-BUT-NEGLIGIBLE, EQUIVALENT, and INCONCLUSIVE.
 
 Usage:
     python scripts/analyze_ablation_ladder.py --results-dir results/runs

@@ -49,9 +49,11 @@ optimizer:
 logging:
   level: "INFO"
   wandb:
+    # Profiling, CodeCarbon and W&B are enabled by default; use WANDB_MODE=offline
+    # on isolated nodes or set use_wandb to false for runs without tracking.
     use_wandb: true
     project: "BeyondBackpropagation"
-    entity: "przspyra11"
+    entity: null
 
 monitoring:
   enabled: true

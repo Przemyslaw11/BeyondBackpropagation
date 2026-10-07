@@ -18,7 +18,7 @@
 <p align="center">
   <a href="https://arxiv.org/abs/2511.01061">Paper</a> ·
   <a href="#key-results">Key Results</a> ·
-  <a href="#reproducing-the-paper">Reproduce</a> ·
+  <a href="#reproducing-the-experiments">Reproduce</a> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#citation">Citation</a>
 </p>
@@ -27,7 +27,7 @@
 
 > **Paper:** *Energy-Efficient Deep Learning Without Backpropagation: A Rigorous Hardware-Validated
 > Benchmarking Study of Forward-Only Algorithms*, accepted at PPAM 2026 (Springer LNCS).
-> The camera-ready paper source and PDF are maintained separately from this code repository.
+> The paper source and PDF are maintained separately from this code repository.
 > An earlier preprint is [arXiv:2511.01061](https://arxiv.org/abs/2511.01061).<br>
 > **Authors:** Przemysław Spyra, Witold Dzwinel · AGH University of Krakow, Faculty of Computer Science
 
@@ -35,7 +35,7 @@
 
 - [Overview](#overview)
 - [Key Results](#key-results)
-- [Reproducing the Paper](#reproducing-the-paper)
+- [Reproducing the Experiments](#reproducing-the-experiments)
 - [Repository Structure](#repository-structure)
 - [Installation](#installation)
 - [Data](#data)
@@ -45,7 +45,6 @@
 - [Scope and Limitations](#scope-and-limitations)
 - [Citation](#citation)
 - [License and Acknowledgements](#license-and-acknowledgements)
-- [Superseded Results](#superseded-results)
 
 ## Overview
 
@@ -68,12 +67,16 @@ CaFo 3.0× to 7.1×. Mono-Forward is different. Given the same number of data pa
 12.5% to 19.9% less energy and up to 27.5% less memory on the largest MLPs tested, and on CIFAR-100
 its accuracy is statistically equivalent to BP's. Trained to its own convergence, MF exceeds BP's
 test accuracy on CIFAR-10 and CIFAR-100 by 3.90 and 5.04 percentage points, at 3.2× to 4.0× BP's
-energy because it needs 3.5× to 4.5× as many passes. A pre-registered ablation identifies gradient
+energy because it needs 3.5× to 4.5× as many passes. A pre-specified ablation identifies gradient
 detachment, not MF's auxiliary losses, as the dominant factor tested.
+
+Under matched passes, the accuracy costs shown below are −1.11 pp on CIFAR-10, −0.22 pp on MNIST,
+and −0.49 pp on Fashion-MNIST.
 
 ## Key Results
 
-All numbers below are produced by the released analysis; none is transcribed by hand.
+All numbers below are produced by the released analysis; none is transcribed by hand. The raw run
+records are archived separately (`TODO: Zenodo DOI`).
 Every run stops under one rule (validation loss, patience 20, cap 100 epochs per training unit),
 and the paper reports two protocols because no single one answers both questions a practitioner
 asks:
@@ -103,7 +106,7 @@ a power saving at near-equal wall-clock time. Trained to convergence it is more 
 end, because it needs 3.5× to 4.5× as many passes. The pass multiplier, not the cost of a pass, is
 what stands between MF and an end-to-end energy advantage.
 
-### Where the accuracy comes from: a pre-registered ablation ladder
+### Where the accuracy comes from: a pre-specified ablation ladder
 
 The ladder moves from BP to MF one structural change at a time:
 BP → BP with deep supervision (BP-DS) → MF-Joint (MF's readout, global gradients) → MF (local
@@ -129,15 +132,16 @@ The complete per-configuration FF and CaFo table belongs to the paper archive an
 
 ## Reproducing the Experiments
 
-The code repository retains the tidy measurements and experiment-side analysis needed to inspect the released results. The camera-ready LaTeX source, generated paper tables, and archived raw run traces are maintained separately.
+The code repository retains the tidy measurements and experiment-side analysis needed to inspect the released results. The LaTeX source, generated paper tables, and archived raw run traces are maintained separately.
 
 | Artefact | Location |
 |---|---|
 | Tidy table of 19 944 measurements | Generated locally from run records |
 | Builder of the tidy table from raw run records | [`scripts/build_tidy_table.py`](scripts/build_tidy_table.py) |
-| Pre-registered ladder analysis | [`scripts/analyze_ablation_ladder.py`](scripts/analyze_ablation_ladder.py) |
+| Pre-specified ladder analysis | [`scripts/analyze_ablation_ladder.py`](scripts/analyze_ablation_ladder.py) |
 | Bit-exactness check of the MF activation cache | [`scripts/check_mf_cache_equivalence.py`](scripts/check_mf_cache_equivalence.py) |
-The per-run JSON records and the 1027 NVML power traces are archived and available from the authors on request.
+The per-run JSON records and the 1027 NVML power traces are archived separately and available from
+the authors on request (`TODO: Zenodo DOI`).
 
 Experiment configurations for each arm of the study:
 
@@ -148,6 +152,34 @@ Experiment configurations for each arm of the study:
 | Ablation ladder controls | [`configs/bp_ds/`](configs/bp_ds/), [`configs/mf_joint/`](configs/mf_joint/) |
 | Matched data-pass budgets | [`configs/diagnostics/`](configs/diagnostics/) |
 | Forward-Forward, CaFo | [`configs/ff/`](configs/ff/), [`configs/cafo/`](configs/cafo/) |
+
+### Reproducing the full study
+
+Run the study in this order on an A100-40GB, using the seed lists in each config; the MF
+comparisons use n = 20 seeds per configuration. Run outputs are written below `results/`, with
+the main arms in `results/phase4`, ladder controls in `results/runs`, matched-pass diagnostics in
+`results/equal_epochs`, and reproduction checks in `results/reproduction`.
+
+```bash
+# BP baselines
+python scripts/run_local_array.py --config-dir configs/bp_baselines/
+# MF, FF and CaFo
+python scripts/run_local_array.py --config-dir configs/mf/
+python scripts/run_local_array.py --config-dir configs/ff/
+python scripts/run_local_array.py --config-dir configs/cafo/
+# Ablation ladder controls
+python scripts/run_local_array.py --config-dir configs/bp_ds/
+python scripts/run_local_array.py --config-dir configs/mf_joint/
+# Matched data-pass diagnostics
+python scripts/run_local_array.py --config-dir configs/diagnostics/
+# Build the tidy measurements and analyze the ladder
+python scripts/build_tidy_table.py --results-dir results/phase4 --output results/tidy.csv
+python scripts/analyze_ablation_ladder.py --results-dir results/runs --json results/ablation_ladder.json
+```
+
+The exact Athena GPU-hour budget is `TODO: owner`. The `configs/reproduction/` files are the
+published MF reproduction checks; this checkout does not retain the historical tuning driver or
+its Optuna environment, so the tuned baseline values are consumed as config data.
 
 ## Repository Structure
 
@@ -160,12 +192,12 @@ Experiment configurations for each arm of the study:
 |   |-- diagnostics/                   # matched data-pass (equal-epoch) budgets
 |   |-- ff/, cafo/, mf/                # final experiment configs per algorithm
 |   |-- reproduction/                  # reproductions of the published MF setup
-|-- plots/                             # figures shown in this README
+|-- plots/                             # retained plotting code and source figure
 |-- scripts/
 |   |-- run_experiment.py              # single train-and-test entry point
 |   |-- run_local_array.py             # local sequential batch runner
 |   |-- build_tidy_table.py            # run records -> generated tidy table
-|   |-- analyze_ablation_ladder.py     # pre-registered ladder statistics
+|   |-- analyze_ablation_ladder.py     # pre-specified ladder statistics
 |   |-- check_mf_cache_equivalence.py  # MF activation-cache bit-exactness check
 |   `-- __init__.py                    # package marker for analysis imports
 `-- src/
@@ -176,6 +208,8 @@ Experiment configurations for each arm of the study:
     |-- plotting/                      # tidy-table construction and plotting helpers
     |-- training/                      # experiment orchestration engine
     `-- utils/                         # config parsing, logging, NVML monitoring, profiling
+  |-- tests/                             # unit and invariant tests
+  `-- CHANGELOG.md                       # neutral methodology correction note
 ```
 
 `data/`, `results/`, `checkpoints/` and `wandb/` are created at run time and are not version
@@ -384,44 +418,3 @@ grant PLG/2025/018341, and AGH University of Krakow for institutional support.
 
 The algorithms studied are due to Hinton (Forward-Forward), Zhao et al. (Cascaded Forward) and
 Gong, Li and Abdulla (Mono-Forward).
-
-## Superseded Results
-
-<details>
-<summary>Pre-audit results from the originally accepted version (do not cite)</summary>
-
-An audit of our own configurations found that the early-stopping rule was not uniform across
-algorithms. Because the stopping rule decides how long each run lasts, it determines any energy or
-time comparison rather than merely perturbing it, and under a harmonised rule the sign of the
-end-to-end result reverses. The tables below are the figures the originally accepted version
-reported; they are kept only so the correction can be checked against them. Their memory column is
-the device-wide NVML reading, which the current work does not use. Values are averages over 3 runs.
-
-| Dataset | Architecture | Algorithm | Test accuracy (%) | Train time (s) | Energy (Wh) | Peak memory (MiB, device-wide) |
-|---|---:|---|---:|---:|---:|---:|
-| Fashion-MNIST | MLP 4x2000 | FF-AdamW | 89.63 | 574.60 | 14.28 | 1190 |
-| Fashion-MNIST | MLP 4x2000 | BP baseline | 88.88 | 43.09 | 1.48 | 1168 |
-| CIFAR-10 | MLP 3x2000 | MF | 62.34 | 177.70 | 3.17 | 1120 |
-| CIFAR-10 | MLP 3x2000 | BP baseline | 61.13 | 268.45 | 5.35 | 1184 |
-
-`Δ Acc.` is the absolute test-accuracy difference; the other deltas are relative changes.
-
-| Family | Dataset | Architecture / variant | Δ Acc. (pp) | Δ time | Δ energy | Δ memory |
-|---|---|---|---:|---:|---:|---:|
-| FF | Fashion-MNIST | MLP 4x2000 | +0.75 | +1233.26% | +862.35% | +1.88% |
-| FF | MNIST | MLP 3x1000 | +0.24 | +342.11% | +339.95% | +0.85% |
-| FF | MNIST | MLP 4x2000 | −0.01 | +305.08% | +236.88% | +1.88% |
-| CaFo-Rand-CE | MNIST | 3-block CNN | −0.32 | +88.48% | +32.65% | −6.67% |
-| CaFo-DFA-CE | MNIST | 3-block CNN | +0.08 | +124.82% | +81.83% | +1.11% |
-| CaFo-Rand-CE | Fashion-MNIST | 3-block CNN | +1.11 | +205.00% | +115.99% | −6.67% |
-| CaFo-DFA-CE | Fashion-MNIST | 3-block CNN | +2.47 | +206.51% | +201.43% | +1.11% |
-| CaFo-Rand-CE | CIFAR-10 | 3-block CNN | −13.23 | −2.96% | −19.24% | −8.98% |
-| CaFo-DFA-CE | CIFAR-10 | 3-block CNN | −1.72 | +287.17% | +301.94% | +1.26% |
-| CaFo-Rand-CE | CIFAR-100 | 3-block CNN | −11.44 | +246.27% | +188.87% | −5.02% |
-| CaFo-DFA-CE | CIFAR-100 | 3-block CNN | −4.43 | +557.19% | +576.82% | +2.51% |
-| MF | MNIST | MLP 2x1000 | +0.09 | −12.07% | −13.34% | +0.86% |
-| MF | Fashion-MNIST | MLP 2x1000 | +0.51 | +18.20% | +9.90% | +0.86% |
-| MF | CIFAR-10 | MLP 3x2000 | +1.21 | −33.81% | −40.78% | −5.41% |
-| MF | CIFAR-100 | MLP 3x2000 | +0.37 | −1.28% | −12.48% | −4.19% |
-
-</details>

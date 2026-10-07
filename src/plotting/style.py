@@ -1,6 +1,6 @@
-"""Single source of figure style for the camera-ready.
+"""Single source of figure style for the paper.
 
-Reviewer R1 called Figures 3 and 4 "completely illegible". The cause was
+An external audit found Figures 3 and 4 illegible. The cause was
 scaling: a 1568 px raster with 20 px glyphs placed at 0.32--0.48\\linewidth on a
 122 mm LNCS text block renders type at roughly 1.7--2.5 pt. Nothing here fixes
 that by enlarging fonts after the fact; instead every figure is generated at its

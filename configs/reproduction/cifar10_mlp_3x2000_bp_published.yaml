@@ -15,7 +15,7 @@
 # the forward pass, so they never received a gradient and AdamW skipped them
 # entirely, leaving the numerics untouched. Only the parameter count and a little
 # memory differ. Reintroducing the asymmetry purely to match a bug would put the
-# reviewers' own complaint back into the codebase.
+# historical asymmetry back into the canonical codebase.
 
 experiment_name: "repro_bp_cifar10_mlp_3x2000"
 run_summary_dir: "results/reproduction"

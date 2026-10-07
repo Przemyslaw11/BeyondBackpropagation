@@ -1,4 +1,4 @@
-"""Builds the tidy table every camera-ready figure and table reads from.
+"""Builds the tidy table every paper figure and table reads from.
 
     python scripts/build_tidy_table.py
     python scripts/build_tidy_table.py --out results/tidy --no-traces

@@ -1,12 +1,8 @@
 # File: .gitignore
 # Byte-compiled / optimized / DLL files
 
-a.txt
 wandb/
-wheels_3_10/
 checkpoints/
-wheels_3104/
-venv_backup/
 
 __pycache__/
 *.py[cod]
@@ -188,7 +184,6 @@ data/
 results/
 *.log
 logs/
-checkpoints/ # Ignore checkpoints directory
 
 # IDE settings
 .vscode/
@@ -199,19 +194,12 @@ checkpoints/ # Ignore checkpoints directory
 Thumbs.db
 
 # SLURM output files
-logs/
-slurm-*.out # Older SLURM naming pattern, just in case
+slurm-*.out
 
 # Tex files
 *.aux
 *.bbl
 *.blg  
 
-master_thesis/*.fdb_latexmk
 *.fls
 *.synctex.gz
-*.out
-
-# Signed Springer licence and archives that contain it (private, never public)
-*COPYRIGHT*
-License-to-Publish*

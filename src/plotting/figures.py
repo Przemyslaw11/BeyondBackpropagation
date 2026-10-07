@@ -1,4 +1,4 @@
-"""Every camera-ready figure, generated from the tidy table and nothing else.
+"""Every paper figure, generated from the tidy table and nothing else.
 
 Reviewer R1 found Figures 3 and 4 illegible. The cause was not taste but
 geometry: raster exports from the Weights & Biases UI, scaled down by

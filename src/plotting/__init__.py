@@ -1,4 +1,4 @@
-"""Figure generation for the PPAM 2026 camera-ready.
+"""Figure generation for the PPAM 2026 paper.
 
 No number in the paper is transcribed by hand: :mod:`src.plotting.tidy` builds a
 single long-format table from the run summaries and the NVML traces, and every
