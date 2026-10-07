@@ -1,9 +1,5 @@
 # Phase 4, task 1: the reproduction check (stop gate).
 #
-# The published headline cell, Table 2 of the accepted paper: MF on the CIFAR-10
-# 3x2000 MLP at 62.34 +/- 0.28 %, 177.70 +/- 7.1 s, 3.17 +/- 0.12 Wh,
-# 1120 +/- 9 MiB over seeds 42, 123 and 7.
-#
 # Every value below is restored verbatim from commit 869d7b0, the state of the
 # repository that produced those numbers. That matters because Phase 3 retuned
 # configs/mf/cifar10_mlp_3x2000.yaml in place (lr 3.2418e-4 -> 2.1536e-4), so the
