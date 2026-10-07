@@ -1,4 +1,5 @@
 experiment_name: "cafodfa_cifar10_cnn_3block"
+run_summary_dir: "results/phase4"
 algorithm:
   name: "CaFo"
 
@@ -30,24 +31,25 @@ algorithm_params:
   train_blocks: true
   block_training_epochs: 250
   block_optimizer_type: "Adam"
-  block_lr: 0.0001373784595532798
-  block_weight_decay: 2.938027938703532e-07
+  block_lr: 0.0002931550261218198
+  block_weight_decay: 7.04404034634953e-06
 
   # --- Predictor Training (CE) ---
   predictor_optimizer_type: "Adam"
-  predictor_lr: 0.0006677511008261821
-  predictor_weight_decay: 1.5702970884055385e-05
+  predictor_lr: 0.00025047891426163314
+  predictor_weight_decay: 2.8729896512284735e-07
   loss_type: "CrossEntropyLoss"
-  num_epochs_per_block: 147
   log_interval: 9999
   aggregation_method: "sum"
 
-
-  predictor_early_stopping_enabled: true
-  predictor_early_stopping_metric: "val_loss"
-  predictor_early_stopping_patience: 8
-  predictor_early_stopping_mode: "min"
-  predictor_early_stopping_min_delta: 0.001
+legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
+  algorithm_params:
+    num_epochs_per_block: 147
+    predictor_early_stopping_enabled: true
+    predictor_early_stopping_metric: "val_loss"
+    predictor_early_stopping_patience: 8
+    predictor_early_stopping_mode: "min"
+    predictor_early_stopping_min_delta: 0.001
 
 logging:
   level: "INFO"

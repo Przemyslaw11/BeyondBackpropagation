@@ -1,0 +1,79 @@
+# Phase 4, task 1: the reproduction check (stop gate).
+#
+# The published headline cell, Table 2 of the accepted paper: MF on the CIFAR-10
+# 3x2000 MLP at 62.34 +/- 0.28 %, 177.70 +/- 7.1 s, 3.17 +/- 0.12 Wh,
+# 1120 +/- 9 MiB over seeds 42, 123 and 7.
+#
+# Every value below is restored verbatim from commit 869d7b0, the state of the
+# repository that produced those numbers. That matters because Phase 3 retuned
+# configs/mf/cifar10_mlp_3x2000.yaml in place (lr 3.2418e-4 -> 2.1536e-4), so the
+# legacy early-stopping diagnostic run in Phase 3 shares the protocol with the
+# published run but NOT the hyperparameters, and therefore is not the check.
+#
+# Early stopping is expressed in the shared Phase 2 block rather than the retired
+# per-algorithm keys, with the legacy values: epochs_per_layer 15 becomes the
+# per-layer max_epochs, patience 4, min_delta 1e-4.
+#
+# Checkpointing is left ON, unlike the ladder, because the published protocol had
+# it on. MF never restores a checkpoint anyway; its BP twin does, and the two must
+# be scored the way the paper scored them.
+#
+# It lives outside configs/mf/ because tests/test_fairness_invariants.py holds that
+# group to one stopping rule, and this config exists precisely to restore the old one.
+
+experiment_name: "repro_mf_cifar10_mlp_3x2000"
+run_summary_dir: "results/reproduction"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.0003241756767272183
+  weight_decay: 0.0
+  log_interval: 9999
+  activation_cache: recompute
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0001
+  patience: 4
+  max_epochs: 15
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/repro_mf_cifar10_mlp_3x2000"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

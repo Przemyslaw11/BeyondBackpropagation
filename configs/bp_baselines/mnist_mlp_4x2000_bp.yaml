@@ -1,4 +1,5 @@
 experiment_name: bp_mnist_mlp_4x2000
+run_summary_dir: results/phase4
 algorithm:
   name: BP
 data:
@@ -24,25 +25,28 @@ model:
     bias: true
 optimizer:
   type: AdamW
-  lr: 0.0001329291894316216
-  weight_decay: 0.0007114476009343421
+  lr: 0.00010637922032727485
+  weight_decay: 6.01143489300488e-06
 training:
-  epochs: 100
   criterion: CrossEntropyLoss
   log_interval: 100
-  early_stopping_enabled: true
-  early_stopping_metric: "bp_val_loss"
-  early_stopping_patience: 40
-  early_stopping_mode: "min"
-  early_stopping_min_delta: 0.0 
+legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
+  training:
+    epochs: 100
+    early_stopping_metric: bp_val_loss
+    early_stopping_patience: 40
+    early_stopping_mode: min
+    early_stopping_min_delta: 0.0
+  tuning:
+    num_epochs: 15
+    pruner: Median
 tuning:
   enabled: true
   n_trials: 10
-  num_epochs: 15
   direction: maximize
   metric: val_accuracy
   sampler: TPE
-  pruner: Median
+  pruner: None
   lr_range:
   - 1.0e-05
   - 0.01

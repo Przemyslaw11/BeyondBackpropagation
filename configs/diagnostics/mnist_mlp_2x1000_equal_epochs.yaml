@@ -1,0 +1,69 @@
+# Phase 3: MF at BP's realised epoch count -- the iso-compute condition.
+# See cifar10_mlp_3x2000_equal_epochs.yaml for the reasoning; the measured
+# medians here were BP 26 epochs against MF 90.
+#
+# This MF_MLP has 2 hidden layers, so MF trains 3 stages rather than 4. BP spent
+# 25.4 epochs on average: ceil(25.4 / 3) = 9, so MF trains 27 and is never given
+# less compute than BP had. Early stopping stays on but cannot fire -- patience
+# equals the budget and the first epoch sets the baseline -- so the budget is
+# spent exactly while MF keeps the per-epoch validation pass BP runs
+# unconditionally. patience and max_epochs are the only keys that differ from
+# the rung 4 twin.
+
+experiment_name: "mf_mnist_mlp_2x1000_equal_epochs"
+run_summary_dir: "results/equal_epochs"
+diagnostic_of: "configs/mf/mnist_mlp_2x1000.yaml"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "MNIST"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 1
+  image_size: 28
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [1000, 1000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00046569899460719333
+  weight_decay: 2.815630680397746e-05
+  log_interval: 9999
+  activation_cache: recompute
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 9
+  max_epochs: 9
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_mnist_mlp_2x1000_equal_epochs"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

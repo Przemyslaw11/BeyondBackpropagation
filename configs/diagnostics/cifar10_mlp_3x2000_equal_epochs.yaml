@@ -1,0 +1,86 @@
+# Phase 3: MF at BP's realised epoch count -- the iso-compute condition.
+#
+# The harmonised ladder gives every rung 100 epochs and patience 20 PER TRAINING
+# STAGE. BP has one stage; MF has one per hidden layer plus one, so MF's real cap
+# here is 4 x 100 and the measured medians came out BP 52 against MF 207. That
+# gap is the whole of MF's 4x wall-clock cost: an MF epoch takes 4.75 s against
+# BP's 4.87 s but draws 0.0818 Wh against 0.1038 Wh. MF is marginally faster and
+# 21 percent cheaper per epoch, and 4x more expensive per run.
+#
+# So this condition gives MF the same total epochs BP actually spent. The budget
+# is ceil(BP's mean epoch count / MF's stage count), which means rounding can
+# only ever hand MF more epochs than BP had, never fewer, and an energy saving
+# cannot be an artefact of a smaller budget. BP is not rerun: it keeps its early
+# stopping and is never pushed past the point it chose to stop.
+#
+# Early stopping stays on but cannot fire within the budget, so the budget is
+# spent exactly while MF keeps the per-epoch validation pass BP also runs.
+# patience and max_epochs are the only keys that differ from the rung 4 twin.
+#
+# run_summary_dir keeps these out of results/runs, where analyze_ablation_ladder.py
+# would key them to rung 4's (algorithm, cache) slot and overwrite it.
+
+experiment_name: "mf_cifar10_mlp_3x2000_equal_epochs"
+run_summary_dir: "results/equal_epochs"
+diagnostic_of: "configs/mf/cifar10_mlp_3x2000.yaml"
+
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00021536491821693216
+  weight_decay: 1.606438244272842e-06
+  log_interval: 9999
+  activation_cache: recompute
+
+# Early stopping is left ON but cannot fire: patience equals the budget, and the
+# first epoch always sets the baseline, so the counter tops out one short. That
+# spends the budget exactly while keeping the per-epoch validation pass, which
+# BP runs unconditionally -- disabling early stopping would skip it here and
+# credit MF for work BP does.
+#
+# BP spent 52.0 epochs here, over 4 stages: ceil(52.0 / 4) = 13, so MF trains 52.
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 13
+  max_epochs: 13
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_cifar10_mlp_3x2000_equal_epochs"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

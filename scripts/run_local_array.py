@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Local batch runner: run multiple experiment configs sequentially.
 
-Replicates the Slurm array workflow (scripts/slurm_scripts/run_array.slurm)
-for local macOS execution using the local execution backend (MPS/CPU).
+Runs a directory or explicit list of configs locally using the local execution
+backend (MPS/CPU).
 
 Usage:
   python scripts/run_local_array.py --config-dir configs/bp_baselines/

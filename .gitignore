@@ -139,6 +139,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-local
 env/
 venv/
 ENV/
@@ -198,7 +199,7 @@ checkpoints/ # Ignore checkpoints directory
 Thumbs.db
 
 # SLURM output files
-slurm_logs/
+logs/
 slurm-*.out # Older SLURM naming pattern, just in case
 
 # Tex files
@@ -206,4 +207,11 @@ slurm-*.out # Older SLURM naming pattern, just in case
 *.bbl
 *.blg  
 
-master_thesis/
+master_thesis/*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.out
+
+# Signed Springer licence and archives that contain it (private, never public)
+*COPYRIGHT*
+License-to-Publish*

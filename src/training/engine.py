@@ -2,8 +2,10 @@
 """Core training and evaluation engine for experiments."""
 
 import contextlib
+import json
 import os
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -68,10 +70,29 @@ def _create_mlp_model(
             model = FF_MLP(config=config, device=device, **arch_params)
             logger.debug("Using native modified FF_MLP structure.")
     elif arch_name == "mf_mlp":
-        model = MF_MLP(**arch_params)
-        logger.info(
-            "Using MF_MLP for %s", "BP baseline" if is_bp_baseline else "native MF."
-        )
+        if is_bp_baseline:
+            logger.info(
+                "Adapting MF_MLP structure for BP baseline -> nn.Sequential MLP."
+            )
+            hidden_dims = arch_params.get("hidden_dims", [])
+            activation_name = arch_params.get("activation", "ReLU").lower()
+            use_bias = arch_params.get("bias", True)
+            if not hidden_dims:
+                raise ValueError(
+                    "BP baseline creation failed: hidden_dims missing for MF_MLP."
+                )
+            layers = []
+            current_dim = arch_params["input_dim"]
+            act_cls = nn.ReLU if activation_name == "relu" else nn.Tanh
+            for h_dim in hidden_dims:
+                layers.append(nn.Linear(current_dim, h_dim, bias=use_bias))
+                layers.append(act_cls())
+                current_dim = h_dim
+            layers.append(nn.Linear(current_dim, num_classes, bias=use_bias))
+            model = nn.Sequential(*layers)
+        else:
+            model = MF_MLP(**arch_params)
+            logger.debug("Using native MF_MLP structure.")
     return model
 
 
@@ -187,6 +208,36 @@ def _setup_environment_and_wandb(
     set_seed(seed)
     logger.info(f"Using random seed: {seed}")
 
+    # Seeds of the same config run concurrently across the array and every
+    # algorithm writes checkpoints under a fixed, seed-free filename. BP then
+    # restores the best checkpoint before test evaluation, so without this a run
+    # can be scored on another seed's weights.
+    checkpoint_config = config.get("checkpointing", {})
+    checkpoint_dir = checkpoint_config.get("checkpoint_dir")
+    if checkpoint_dir and os.environ.get("BBP_DISABLE_CHECKPOINTS", "") not in (
+        "",
+        "0",
+        "false",
+        "False",
+    ):
+        # The ablation ladder needs one evaluation protocol across all six rungs.
+        # BP restores its best-validation weights before testing and MF never
+        # does, so leaving that in place would hand rung 1 an accuracy advantage
+        # that no other rung gets and confound every accuracy contrast.
+        logger.info(
+            "BBP_DISABLE_CHECKPOINTS set: discarding checkpoint_dir "
+            f"'{checkpoint_dir}'. Every rung is scored on its final weights."
+        )
+        checkpoint_config["checkpoint_dir"] = None
+        checkpoint_dir = None
+    if checkpoint_dir:
+        checkpoint_config["checkpoint_dir"] = os.path.join(
+            checkpoint_dir, f"seed_{seed}"
+        )
+        logger.info(
+            f"Isolating checkpoints per seed: {checkpoint_config['checkpoint_dir']}"
+        )
+
     device_pref = general_config.get("device", "auto")
     device = backend.resolve_device(device_pref)
     logger.info(
@@ -228,8 +279,23 @@ def _setup_hardware_monitors(
                     f"Initial GPU Mem: {mem_info[0]:.2f} / {mem_info[1]:.2f} MiB"
                 )
             if monitoring_config.get("energy_enabled", True):
-                monitor = GPUEnergyMonitor(device_index=gpu_index)
-                logger.info("GPU Energy monitor initialized.")
+                backend = get_execution_backend(config)
+                monitoring_dir = os.path.join(
+                    backend.resolve_results_dir(config), "monitoring"
+                )
+                run_tag = config.get("experiment_name", "run")
+                seed_tag = config.get("general", {}).get("seed", 0)
+                csv_path = os.path.join(
+                    monitoring_dir,
+                    f"{run_tag}_seed{seed_tag}_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                )
+                monitor = GPUEnergyMonitor(
+                    device_index=gpu_index,
+                    interval_sec=monitoring_config.get("energy_interval_sec", 0.2),
+                    csv_path=csv_path,
+                )
+                results["monitoring_csv_path"] = csv_path
+                logger.info(f"GPU Energy monitor initialized (CSV: {csv_path}).")
         else:
             nvml_active = False
 
@@ -323,8 +389,43 @@ def _read_codecarbon_emissions(carbon_csv_path: str) -> Tuple[float, float]:
     return float("nan"), float("nan")
 
 
+def _write_run_summary(config: Dict[str, Any], results: Dict[str, Any]) -> None:
+    """Writes one JSON summary per run so analysis does not depend on W&B."""
+    experiment_name = config.get("experiment_name", "unnamed_experiment")
+    model_params = config.get("model", {}).get("params", {})
+    record = {
+        "experiment_name": experiment_name,
+        "algorithm": config.get("algorithm", {}).get("name", ""),
+        "dataset": config.get("data", {}).get("name", ""),
+        "architecture": model_params.get("hidden_dims")
+        or model_params.get("block_channels"),
+        "activation_cache": config.get("algorithm_params", {}).get(
+            "activation_cache", "recompute"
+        ),
+        **results,
+    }
+
+    # Diagnostics must stay out of results/runs: analyze_ablation_ladder.py globs
+    # that whole tree and keys runs by rung and seed, so a run that shares a rung
+    # identity with a ladder run would silently replace it.
+    # Deliberately not named results_dir: that key lives under backend.<name> and
+    # steers monitoring and experiment output, which this must not touch.
+    out_root = Path(str(config.get("run_summary_dir", "results/runs")))
+    out_dir = out_root / experiment_name
+    seed = results.get("seed")
+    out_path = out_dir / f"{experiment_name}_seed{seed}.json"
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", encoding="utf-8") as handle:
+            json.dump(record, handle, indent=2, default=str)
+        logger.info(f"Wrote run summary to {out_path}")
+    except OSError as exc:
+        logger.warning(f"Could not write run summary to {out_path}: {exc}")
+
+
 def _finalize_run(
     run_start_time: float,
+    config: Dict[str, Any],
     results: Dict[str, Any],
     step_ref: List[int],
     tracker: Optional[Any],
@@ -348,6 +449,25 @@ def _finalize_run(
     if total_energy_joules is not None:
         results["total_gpu_energy_joules"] = total_energy_joules
         results["total_gpu_energy_wh"] = total_energy_joules / 3600.0
+    if monitor:
+        results["peak_process_rss_mib"] = monitor.get_peak("process_rss_mib")
+        results["peak_gpu_util_percent"] = monitor.get_peak("gpu_util_percent")
+
+    # Totals depend on where early stopping fires; the per-epoch rates do not, so
+    # they are the figures that survive a change of stopping rule. For MF, FF and
+    # CaFo the count is summed over stages, i.e. optimiser epochs of actual work.
+    epochs = config.get("_run_stats", {}).get("epochs_completed")
+    results["epochs_completed"] = epochs if epochs else float("nan")
+    if epochs:
+        results["gpu_energy_wh_per_epoch"] = (
+            results.get("total_gpu_energy_wh", float("nan")) / epochs
+        )
+        results["training_sec_per_epoch"] = (
+            results.get("training_duration_sec", float("nan")) / epochs
+        )
+    else:
+        results["gpu_energy_wh_per_epoch"] = float("nan")
+        results["training_sec_per_epoch"] = float("nan")
 
     if nvml_active and gpu_handle and (mem_info := get_gpu_memory_usage(gpu_handle)):
         logger.info(f"GPU Mem (End): {mem_info[0]:.2f} / {mem_info[1]:.2f} MiB")
@@ -363,10 +483,26 @@ def _finalize_run(
         "final/peak_gpu_mem_used_mib": results.get(
             "peak_gpu_mem_used_mib", float("nan")
         ),
+        "final/peak_torch_alloc_mib": results.get(
+            "peak_torch_alloc_mib", float("nan")
+        ),
+        "final/peak_process_rss_mib": results.get(
+            "peak_process_rss_mib", float("nan")
+        ),
+        "final/peak_gpu_util_percent": results.get(
+            "peak_gpu_util_percent", float("nan")
+        ),
         "final/total_gpu_energy_joules": results.get(
             "total_gpu_energy_joules", float("nan")
         ),
         "final/total_gpu_energy_wh": results.get("total_gpu_energy_wh", float("nan")),
+        "final/epochs_completed": results.get("epochs_completed", float("nan")),
+        "final/gpu_energy_wh_per_epoch": results.get(
+            "gpu_energy_wh_per_epoch", float("nan")
+        ),
+        "final/training_sec_per_epoch": results.get(
+            "training_sec_per_epoch", float("nan")
+        ),
         "final/estimated_fwd_gflops": results.get("estimated_fwd_gflops", float("nan")),
         "final/estimated_bp_update_gflops": results.get(
             "estimated_bp_update_gflops", float("nan")
@@ -387,6 +523,8 @@ def _finalize_run(
     if nvml_active:
         shutdown_nvml()
 
+    _write_run_summary(config, results)
+
 
 def run_training(
     config: Dict[str, Any], wandb_run: Optional["wandb.sdk.wandb_run.Run"] = None
@@ -398,6 +536,7 @@ def run_training(
 
     try:
         seed, device, wandb_run = _setup_environment_and_wandb(config, wandb_run)
+        results["seed"] = seed
         backend = get_execution_backend(config)
 
         (
@@ -441,6 +580,8 @@ def run_training(
         train_loop_start_time = time.time()
         algo_name = config.get("algorithm", {}).get("name", "").lower()
         training_fn = get_training_function(algo_name)
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
         with monitor if monitor else contextlib.nullcontext():
             train_args = {
                 "model": model,
@@ -458,6 +599,12 @@ def run_training(
             results["peak_gpu_mem_used_mib"] = (
                 train_output if isinstance(train_output, (float, int)) else float("nan")
             )
+        # Device-wide NVML memory includes the ~800 MiB CUDA context; this one does not.
+        results["peak_torch_alloc_mib"] = (
+            torch.cuda.max_memory_allocated(device) / (1024**2)
+            if device.type == "cuda"
+            else float("nan")
+        )
         results["training_duration_sec"] = time.time() - train_loop_start_time
         logger.info(
             f"Training finished in {format_time(results['training_duration_sec'])}."
@@ -466,13 +613,20 @@ def run_training(
         logger.info("Starting evaluation phase on test set...")
         evaluation_fn = get_evaluation_function(algo_name)
         eval_criterion = nn.CrossEntropyLoss()
-        eval_args = {
-            "model": model,
-            "data_loader": test_loader,
-            "device": device,
-            "criterion": eval_criterion,
-            "input_adapter": input_adapter,
-        }
+        if algo_name == "ff":
+            eval_args = {
+                "model": model,
+                "data_loader": test_loader,
+                "device": device,
+            }
+        else:
+            eval_args = {
+                "model": model,
+                "data_loader": test_loader,
+                "device": device,
+                "criterion": eval_criterion,
+                "input_adapter": input_adapter,
+            }
         if algo_name == "cafo":
             eval_args["aggregation_method"] = config.get("algorithm_params", {}).get(
                 "aggregation_method", "sum"
@@ -496,6 +650,7 @@ def run_training(
     finally:
         _finalize_run(
             run_start_time,
+            config,
             results,
             step_ref,
             tracker,

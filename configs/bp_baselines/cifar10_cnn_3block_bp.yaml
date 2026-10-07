@@ -1,4 +1,5 @@
 experiment_name: bp_baseline_cifar10_cnn_3block
+run_summary_dir: results/phase4
 algorithm:
   name: BP
 data:
@@ -26,25 +27,28 @@ model:
     pool_stride: 2
 optimizer:
   type: AdamW
-  lr: 0.0067628739201322655
-  weight_decay: 4.7418070637518205e-06
+  lr: 0.0034182462066954865
+  weight_decay: 2.731733577005281e-06
 training:
-  epochs: 100
   criterion: CrossEntropyLoss
   log_interval: 100
-  early_stopping_enabled: true
-  early_stopping_metric: "bp_val_loss"
-  early_stopping_patience: 40
-  early_stopping_mode: "min"
-  early_stopping_min_delta: 0.0 
+legacy_hyperparameters:  # Pre-Phase-2 protocol, kept for the disclosure table.
+  training:
+    epochs: 100
+    early_stopping_metric: bp_val_loss
+    early_stopping_patience: 40
+    early_stopping_mode: min
+    early_stopping_min_delta: 0.0
+  tuning:
+    num_epochs: 15
+    pruner: Median
 tuning:
   enabled: true
   n_trials: 10
-  num_epochs: 15
   direction: maximize
   metric: val_accuracy
   sampler: TPE
-  pruner: Median
+  pruner: None
   lr_range:
   - 1.0e-05
   - 0.01
