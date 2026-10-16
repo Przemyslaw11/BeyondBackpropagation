@@ -85,6 +85,12 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   Tuning job submitted: `sbatch scripts/slurm_scripts/mfsimul_tune.slurm` = array
   3371585 (2 tasks: CIFAR-10, CIFAR-100; 50 TPE trials each; studies
   `ladder_mfsimul_*`; 12 h wall cap, resumable). Cluster unit tests 12/12 OK.
+- 2026-10-17 (ddc195a + next): pilot array script prepared
+  (`scripts/slurm_scripts/g1_pilot.slurm`, 4 arms x seeds 42-46 CIFAR-10; submit after
+  tuning freezes `configs/mf_simul/*`). Canonical run JSONs and logs archived before any
+  overwrite: cluster `results/archive_pre_g1_20261017/` (all `*_run.log` + `runs/`),
+  local `jpdc_data/canonical_runs_v2/runs/` (2.8M JSONs). Tuning job 3371585 still
+  queued (Priority) at last check.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
