@@ -69,11 +69,21 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 
 ## Session log
 - 2026-10-16 (c76d2ad): phase-0 audit, epoch multiplier decomposition, power model fits.
-- 2026-10-17: MF-Simul implemented (bp_ds.py + registrations + config + tests); 78/78 repo
-  tests pass; local CPU smoke run OK (MNIST 3 epochs, 94.76% test acc, 57 s); PREREG.md
-  drafted; scripts/jpdc updated for the `mf_simul` group (parse + power fit); AUDIT §5
-  final (0.3c). Decisive-run hyperparameters for MF-Simul still provisional (MF-Joint
-  values) until the ladder tuning port lands.
+- 2026-10-17 (284ccac): MF-Simul implemented (bp_ds.py + registrations + config + tests);
+  78/78 repo tests pass; local CPU smoke run OK (MNIST 3 epochs, 94.76% test acc, 57 s);
+  PREREG.md drafted; scripts/jpdc updated for the `mf_simul` group (parse + power fit);
+  AUDIT §5 final (0.3c).
+- 2026-10-17 (90e7f95): ladder Optuna tuning stack ported from pre-removal history
+  (`src/tuning/*`, `scripts/run_optuna_search.py` + MF_SIMUL dispatch/formatter,
+  `configs/tuning/mfsimul_{cifar10,cifar100}_mlp_3x2000_tune.yaml`,
+  `scripts/slurm_scripts/mfsimul_tune.slurm`). Local 3-trial smoke of the full tuning
+  loop OK (study resume via load_if_exists verified; best-params YAML carries
+  `config_override`). Cluster sync method: `git bundle create /tmp/jpdc-extension.bundle
+  181ecc4..jpdc-extension` -> scp -> `git fetch /tmp/jpdc-extension.bundle
+  jpdc-extension:jpdc-extension` -> checkout (no GitHub push needed).
+  Tuning job submitted: `sbatch scripts/slurm_scripts/mfsimul_tune.slurm` = array
+  3371585 (2 tasks: CIFAR-10, CIFAR-100; 50 TPE trials each; studies
+  `ladder_mfsimul_*`; 12 h wall cap, resumable). Cluster unit tests 12/12 OK.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
