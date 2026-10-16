@@ -52,6 +52,8 @@ echo "#####################################################################"
 
 cd "$SLURM_SUBMIT_DIR" || exit 1
 
+export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
+
 module purge
 module load Python/3.10.4
 module load CUDA/12.4.0
