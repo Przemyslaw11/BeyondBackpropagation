@@ -93,6 +93,9 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   1 s on both tasks (`ModuleNotFoundError: No module named 'src'` — sbatch script lacked
   PYTHONPATH); fixed and resubmitted as 3371597 (pending, Priority).
 - 2026-10-17 (a9fd8b8): `g1_pilot.slurm` + tuning fix committed; cluster synced.
+- 2026-10-17 (next): `g1_decisive.slurm` prepared (8 configs x 20 seeds = 160 runs;
+  submit after the §10 freeze). Run order fixed: tuning (3371597) -> freeze MF-Simul
+  params -> pilot (g1_pilot.slurm) -> decisive (g1_decisive.slurm) -> analyze_g1.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
