@@ -47,16 +47,17 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   Helper pattern: scp script -> `ssh athena 'bash -l /tmp/x.sh'`; never train on login nodes.
 
 ## Next actions (ordered)
-1. Port ladder tuning machinery to `jpdc-extension`: `scripts/run_optuna_search.py`,
-   `src/tuning/*`, `configs/tuning/mfsimul_*` (cloned from the MF-Joint ladder procedure,
-   reconstruct configs from `ladder_mfjoint_*_tune_best_params.yaml` if needed).
-2. Tune MF-Simul per dataset (50 TPE trials, maximize val_accuracy, no pruner); freeze
-   best params into `configs/mf_simul/*`.
-3. Pilot n=5 (seeds 42-46, CIFAR-10, four arms) on Athena via SLURM; one-page summary for
-   the ~29 Oct author meeting; pilots never enter decisive tables.
+1. ~~Port ladder tuning machinery~~ DONE (`90e7f95`).
+2. ~~Tune MF-Simul per dataset~~ RUNNING (job 3371585, studies `ladder_mfsimul_*`).
+   When done: freeze `config_override` from
+   `results/optuna/ladder_mfsimul_*_best_params.yaml` into `configs/mf_simul/*`.
+3. Prepare and submit pilot n=5 (seeds 42-46, CIFAR-10, four arms) on Athena via SLURM;
+   one-page summary for the ~29 Oct author meeting; pilots never enter decisive tables.
+   Needs a pilot array SLURM script + a small `run_array`-style driver (port from
+   `scripts/slurm_scripts/run_ladder_array.slurm` history if needed).
 4. Decisive runs n=20 (seeds 42-61, CIFAR-10 + CIFAR-100, four arms, one commit) after
-   PREREG freeze (record PREREG + `scripts/jpdc/analyze_g1.py` hashes); then run the
-   preregistered analysis and write the G1 verdict (due 8 Nov 2026).
+   PREREG freeze; `scripts/jpdc/analyze_g1.py` @ `8a4ce41` reduces raw results; then the
+   G1 verdict (due 8 Nov 2026).
 5. Budget mapping: estimate A100-hours from monitoring trace durations (report sacct +
    NVML Wh per session; budget itself is not a planning constraint).
 

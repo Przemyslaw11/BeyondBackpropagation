@@ -112,3 +112,4 @@ and wall-clock estimates, variance estimate for sizing. Pilot results are explor
 | date | change | by |
 |---|---|---|
 | 2026-10-17 | PREREG created; MF-Simul implemented + tested (same commit) | agent |
+| 2026-10-17 | analysis script added: `scripts/jpdc/analyze_g1.py` @ `8a4ce41` (dry-run on synthetic fixture passed); tuning stack ported (`90e7f95`), MF-Simul studies `ladder_mfsimul_*` launched (SLURM 3371585) | agent |
