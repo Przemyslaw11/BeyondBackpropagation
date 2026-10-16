@@ -89,8 +89,10 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   (`scripts/slurm_scripts/g1_pilot.slurm`, 4 arms x seeds 42-46 CIFAR-10; submit after
   tuning freezes `configs/mf_simul/*`). Canonical run JSONs and logs archived before any
   overwrite: cluster `results/archive_pre_g1_20261017/` (all `*_run.log` + `runs/`),
-  local `jpdc_data/canonical_runs_v2/runs/` (2.8M JSONs). Tuning job 3371585 still
-  queued (Priority) at last check.
+  local `jpdc_data/canonical_runs_v2/runs/` (2.8M JSONs). Tuning job 3371585 failed in
+  1 s on both tasks (`ModuleNotFoundError: No module named 'src'` — sbatch script lacked
+  PYTHONPATH); fixed and resubmitted as 3371597 (pending, Priority).
+- 2026-10-17 (a9fd8b8): `g1_pilot.slurm` + tuning fix committed; cluster synced.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
