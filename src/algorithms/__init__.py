@@ -29,11 +29,19 @@ def get_training_function(name: str) -> Callable:
         return train_mf_model
     elif name == "bp":
         return train_bp_model
-    elif name in ("bp_ds", "mf_joint"):
+    elif name in ("bp_ds", "mf_joint", "mf_simul"):
         # Imported here because bp_ds reads mf_local_loss_fn out of this package.
-        from src.baselines.bp_ds import train_bp_ds_model, train_mf_joint_model
+        from src.baselines.bp_ds import (
+            train_bp_ds_model,
+            train_mf_joint_model,
+            train_mf_simul_model,
+        )
 
-        return train_bp_ds_model if name == "bp_ds" else train_mf_joint_model
+        return {
+            "bp_ds": train_bp_ds_model,
+            "mf_joint": train_mf_joint_model,
+            "mf_simul": train_mf_simul_model,
+        }[name]
     else:
         raise ValueError(f"Unknown algorithm name for training: {name}")
 
@@ -49,10 +57,18 @@ def get_evaluation_function(name: str) -> Callable:
         return evaluate_mf_model
     elif name == "bp":
         return evaluate_bp_baseline
-    elif name in ("bp_ds", "mf_joint"):
-        from src.baselines.bp_ds import evaluate_bp_ds_model, evaluate_mf_joint_model
+    elif name in ("bp_ds", "mf_joint", "mf_simul"):
+        from src.baselines.bp_ds import (
+            evaluate_bp_ds_model,
+            evaluate_mf_joint_model,
+            evaluate_mf_simul_model,
+        )
 
-        return evaluate_bp_ds_model if name == "bp_ds" else evaluate_mf_joint_model
+        return {
+            "bp_ds": evaluate_bp_ds_model,
+            "mf_joint": evaluate_mf_joint_model,
+            "mf_simul": evaluate_mf_simul_model,
+        }[name]
     else:
         raise ValueError(f"Unknown algorithm name for evaluation: {name}")
 

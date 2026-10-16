@@ -142,16 +142,23 @@ defined operationally in PREREG.md with this mapping).
 
 ## 5. Origin of the "41% less energy / 34% faster" headline (0.3c)
 
-The claim belongs to the Nov 3 2025 arXiv preprint of this work (kb_work.md:210) — same
-research thread as the PPAM camera-ready, whose claims were revised to
-12.5–19.9% less energy and ≤27.5% less memory (CP025.tex). The protocol difference that
-explains it [Assumption, pending arXiv v1 PDF check]: the 2025 runs used the legacy
-per-layer schedule (15 epochs/layer, patience 4, min_delta 1e-4), under which MF consumes
-about the same number of unit-epochs as BP (CIFAR-10: ~52 vs ~53 measured on the
-`repro_*` experiments, ~1.0×) while running cheaper devices per epoch — vs the
-camera-ready shared-stopping-policy protocol where MF spends 3.7–4.5× BP's epoch budget.
-The `mf_cifar10_mlp_3x2000_legacy_es` and `repro_mf_cifar10_mlp_3x2000` runs exist to
-pin this down; complete the two-line trace before quoting it in the paper.
+The claim belongs to the Nov 3 2025 arXiv preprint of this work (kb_work.md:210); the
+PPAM camera-ready revised it to 12.5–19.9% less energy and ≤27.5% less memory
+(CP025.tex). The protocol behind the old claim is the pre-Phase-2 schedule preserved
+verbatim in `configs/reproduction/*_mf_published.yaml` (restored from commit `869d7b0`,
+the thesis codebase that produced those numbers):
+
+- MF: Adam, lr 3.2418e-4, wd 0, cap 15 epochs per layer, patience 4, min_delta 1e-4
+  (per-layer ES), M0 trained.
+- BP: AdamW, lr 8.1159e-5, wd 2.0847e-5, cap 100, patience 20, min_delta 0, val-loss ES.
+
+Measured today under that regime (repro arms + the Phase-3 `legacy_es` diagnostic):
+MF CIFAR-10 ≈ 52 unit-epochs vs BP ≈ 53.7 → ≈1.0×. I.e., the old headline lived in a
+regime where MF consumed roughly BP's epoch budget and won on power per epoch; the
+camera-ready's shared stopping policy (per-unit patience 20, min_delta 0, cap 100)
+inflates MF to 4.07× BP unit-epochs and the energy claim shrinks accordingly.
+The "34% faster" half of the old sentence is attributed to the same 2025 run set
+[Assumption: dataset/instrument pairing not yet pinned from the arXiv v1; low priority].
 
 ## 6. Power model P = P_static + κ·u (0.3b)
 
@@ -185,8 +192,8 @@ pooled fit.
 
 ## 7. Open items before PREREG completes
 
-1. Confirm from `archive2025/bbp_experiments_2025.tar.gz` and the arXiv v1 (Nov 2025)
-   which BP baseline (tuning budget, ES settings) the 41%/34% numbers compared against.
+1. Optionally pin the "34% faster" claim's dataset/instrument pairing from the
+   Nov 2025 arXiv v1 PDF (energy half is fully traced, AUDIT §5).
 2. Recover W1–W3 per-epoch curves from W&B offline runs if per-stage epochs-to-best
    are needed for the cost model (E2).
 3. Data-order/split parity across algorithms: verify identical val split and shuffling

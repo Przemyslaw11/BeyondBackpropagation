@@ -1,6 +1,6 @@
-# HANDOFF — JPDC extension (Phase 0)
+# HANDOFF — JPDC extension (Phase 0 + Phase 1 start)
 
-Updated: 2026-10-16. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
+Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
 
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
@@ -9,9 +9,20 @@ Updated: 2026-10-16. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   outputs `jpdc_data/tidy/epochs_by_unit.csv`, `multiplier_decomposition.csv`.
 - Phase 0.3b power fits: DONE -> `scripts/jpdc/fit_power_model.py`,
   output `jpdc_data/tidy/power_model_fits.csv`; cross-run fits recorded in AUDIT.md §6.
-- Phase 0.3c arXiv headline trace: draft in AUDIT.md §5; needs the Nov-2025 arXiv v1
-  protocol check against `jpdc_data/archive2025/bbp_experiments_2025.tar.gz`.
-- Phase 0.4 (report to author): this summary + blocking questions below.
+- Phase 0.3c arXiv headline trace: DONE -> AUDIT.md §5 (repro configs from commit
+  `869d7b0` are the authoritative source; `archive2025` tarball holds no arXiv v1 PDF).
+  Only the "34% faster" pairing remains [Assumption], low priority.
+- Phase 1 MF-Simul implementation: DONE -> `src/baselines/bp_ds.py` (`detach_between_layers`
+  flag, `train/evaluate_mf_simul_model`), registered in `src/algorithms|baselines/__init__.py`,
+  config `configs/mf_simul/cifar10_mlp_3x2000.yaml`, tests `tests/test_mf_simul.py`
+  (3 tests) + fairness invariants extended. All 78 repo tests pass locally; CPU smoke
+  run (MNIST, 3 epochs) finished at 94.76% test accuracy.
+- PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
+  unit tests, drift controls, amendments log). Freeze at the decisive commit + record
+  hashes before inspecting decisive results.
+- Next: port the ladder Optuna driver from `main` (removed on release branch) into
+  `jpdc-extension`, add `mfsimul_*_tune` configs (50 TPE trials, same procedure as
+  `ladder_mfjoint_*`), tune MF-Simul per dataset, then pilot n=5 (seeds 42-46, CIFAR-10).
 
 ## Headline numbers (canonical Protocol A, 20 seeds)
 - MF/BP unit-epoch multiplier: CIFAR-10 4.07, CIFAR-100 4.46, MNIST 3.67, Fashion 4.32.
@@ -36,14 +47,18 @@ Updated: 2026-10-16. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   Helper pattern: scp script -> `ssh athena 'bash -l /tmp/x.sh'`; never train on login nodes.
 
 ## Next actions (ordered)
-1. Confirm 2025 protocol trace (0.3c) from the archive + arXiv v1; write the two lines.
-2. Prepare PREREG.md draft (MF-Simul definition, arms, n=20, seeds, decision thresholds
-   A/B/C, ES quantity = final-readout M_L validation CE, unit tests: gradient locality +
-   trajectory equivalence, drift controls).
-3. Then Phase 1 implementation: add MF-Simul arm to codebase + tests; tiny CPU smoke
-   test; only then pilot on Athena (n=5) and full runs (n=20).
-4. Budget mapping: 4 configs (BP / MF-Joint / MF-Simul / MF-Seq) x CIFAR-10 + maybe
-   CIFAR-100, n=20 — estimate A100-hours from existing trace durations once budget known.
+1. Port ladder tuning machinery to `jpdc-extension`: `scripts/run_optuna_search.py`,
+   `src/tuning/*`, `configs/tuning/mfsimul_*` (cloned from the MF-Joint ladder procedure,
+   reconstruct configs from `ladder_mfjoint_*_tune_best_params.yaml` if needed).
+2. Tune MF-Simul per dataset (50 TPE trials, maximize val_accuracy, no pruner); freeze
+   best params into `configs/mf_simul/*`.
+3. Pilot n=5 (seeds 42-46, CIFAR-10, four arms) on Athena via SLURM; one-page summary for
+   the ~29 Oct author meeting; pilots never enter decisive tables.
+4. Decisive runs n=20 (seeds 42-61, CIFAR-10 + CIFAR-100, four arms, one commit) after
+   PREREG freeze (record PREREG + `scripts/jpdc/analyze_g1.py` hashes); then run the
+   preregistered analysis and write the G1 verdict (due 8 Nov 2026).
+5. Budget mapping: estimate A100-hours from monitoring trace durations (report sacct +
+   NVML Wh per session; budget itself is not a planning constraint).
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -51,6 +66,14 @@ Updated: 2026-10-16. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 3. Power / exclusive-GPU policy: no special replication needed for G1.
 4. Original-MF-vs-repo-MF schedule discrepancy: OK to state, as a neutral observation.
 5. New analysis code stays in `scripts/jpdc/`.
+
+## Session log
+- 2026-10-16 (c76d2ad): phase-0 audit, epoch multiplier decomposition, power model fits.
+- 2026-10-17: MF-Simul implemented (bp_ds.py + registrations + config + tests); 78/78 repo
+  tests pass; local CPU smoke run OK (MNIST 3 epochs, 94.76% test acc, 57 s); PREREG.md
+  drafted; scripts/jpdc updated for the `mf_simul` group (parse + power fit); AUDIT §5
+  final (0.3c). Decisive-run hyperparameters for MF-Simul still provisional (MF-Joint
+  values) until the ladder tuning port lands.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.

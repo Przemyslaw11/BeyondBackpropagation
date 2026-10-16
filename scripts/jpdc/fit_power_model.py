@@ -13,6 +13,8 @@ NAME_RE = re.compile(r"^(?P<experiment>.+?)_seed(?P<seed>\d+)_\d{8}_\d{6}\.csv$"
 
 def algorithm_of(experiment: str) -> str:
     """Maps an experiment name to its algorithm family."""
+    if experiment.startswith(("mf_simul",)):
+        return "mf_simul"
     if experiment.startswith(("mf_joint",)):
         return "mf_joint"
     if experiment.startswith(("bp_ds",)):

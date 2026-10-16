@@ -1,17 +1,23 @@
 # File: ./src/baselines/bp_ds.py
-"""The joint-gradient rungs of the ablation ladder: BP-DS and MF-Joint.
+"""The joint-gradient rungs of the ablation ladder: BP-DS, MF-Joint and MF-Simul.
 
 The control asks whether Mono-Forward's gains come from its forward-only mechanism
-or merely from placing a loss at every layer. Answering that needs two
-intermediate baselines, and both attach MF's local loss to every layer and
-propagate joint gradients. They differ only in which head makes the prediction,
-so they share one training loop:
+or merely from placing a loss at every layer. Answering that needs intermediate
+baselines, and all of them attach MF's local loss to every layer and propagate
+joint gradients. They differ only in which head makes the prediction and whether
+inter-layer inputs are detached, so they share one training loop:
 
     BP-DS     reads out through ``output_layer``; M_0..M_L are auxiliary heads.
     MF-Joint  reads out through M_L; M_0..M_{L-1} are auxiliary heads.
+    MF-Simul  same as MF-Joint, but every hidden layer consumes a detached copy
+              of its input, so each local loss reaches only its own parameters.
+              At ``aux_weight`` 1.0 this is a one-step realisation of the
+              published MF update rule (arXiv:2501.09238, K=1) and differs from
+              MF-Joint by the detachment alone.
 
 At ``aux_weight`` 1.0 MF-Joint optimises exactly MF's sum of local losses, so it
-differs from MF by detachment alone.
+differs from MF by detachment alone; MF-Simul adds that detachment while keeping
+the joint schedule, isolating the schedule change in the MF-Joint -> MF-Seq step.
 """
 
 import logging
@@ -58,6 +64,25 @@ def _readout_logits(
         return model.output_layer(activations[last])
     # mf_local_loss_fn's goodness step, expanded so the logits can also score accuracy.
     return torch.matmul(activations[last], model.get_projection_matrix(last).t())
+
+
+def _detached_intermediate_activations(model: MF_MLP, x: torch.Tensor) -> List[torch.Tensor]:
+    """Forward pass in which every hidden layer consumes a detached input copy.
+
+    With the input of each W_i detached, the local loss at a_i reaches exactly the
+    parameters of that layer, W_i and M_i, even though one backward pass sums all
+    local losses. This mirrors the published MF update rule (arXiv:2501.09238),
+    where K=1 local steps are taken per layer before activations move forward.
+    """
+    layer_activations = [x]
+    current_activation = x
+    for i in range(model.num_hidden_layers):
+        linear_layer = model.layers[i * 2]
+        act_layer = model.layers[i * 2 + 1]
+        pre_activation = linear_layer(current_activation.detach())
+        current_activation = act_layer(pre_activation)
+        layer_activations.append(current_activation)
+    return layer_activations
 
 
 def _select_trainable_parameters(model: MF_MLP, readout: str) -> List[nn.Parameter]:
@@ -132,6 +157,7 @@ def _train_epoch(
     total_epochs: int,
     readout: str,
     aux_weight: float,
+    detach_between_layers: bool,
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]],
     log_prefix: str,
     wandb_run: "Optional[wandb.sdk.wandb_run.Run]",
@@ -153,7 +179,10 @@ def _train_epoch(
         images, labels = images.to(device), labels.to(device)
         adapted = input_adapter(images) if input_adapter else images
 
-        activations = model.forward_with_intermediate_activations(adapted)
+        if detach_between_layers:
+            activations = _detached_intermediate_activations(model, adapted)
+        else:
+            activations = model.forward_with_intermediate_activations(adapted)
         loss, logits, aux_component = _deep_supervised_losses(
             model, activations, labels, criterion, readout, aux_weight
         )
@@ -212,6 +241,7 @@ def train_deep_supervised_model(
     readout: str,
     default_optimizer: str,
     log_prefix: str,
+    detach_between_layers: bool = False,
     wandb_run: "Optional[wandb.sdk.wandb_run.Run]" = None,
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     step_ref: Optional[List[int]] = None,
@@ -270,11 +300,12 @@ def train_deep_supervised_model(
         **optimizer_config.get("params", {}),
     )
     logger.info(
-        "%s: %d auxiliary heads, aux_weight %.4g, readout '%s', optimizer %s.",
+        "%s: %d auxiliary heads, aux_weight %.4g, readout '%s', detach=%s, optimizer %s.",
         log_prefix,
         len(_auxiliary_indices(model, readout)),
         aux_weight,
         readout,
+        detach_between_layers,
         optimizer_name,
     )
 
@@ -291,6 +322,7 @@ def train_deep_supervised_model(
             epochs,
             readout,
             aux_weight,
+            detach_between_layers,
             input_adapter,
             log_prefix,
             wandb_run,
@@ -442,6 +474,57 @@ def evaluate_mf_joint_model(
     input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> Tuple[float, float]:
     """Evaluates rung 3 through M_L, as MF does."""
+    return _evaluate(
+        model, data_loader, criterion, device, input_adapter, READOUT_PROJECTION
+    )
+
+
+def train_mf_simul_model(
+    model: MF_MLP,
+    train_loader: DataLoader,
+    val_loader: Optional[DataLoader],
+    config: Dict[str, Any],
+    device: torch.device,
+    wandb_run: "Optional[wandb.sdk.wandb_run.Run]" = None,
+    input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    step_ref: Optional[List[int]] = None,
+    gpu_handle: Optional[pynvml.c_nvmlDevice_t] = None,
+    nvml_active: bool = False,
+) -> float:
+    """Rung 3b, MF-Simul: MF-Joint's objective and readout with detached inputs.
+
+    One backward per batch sums all local losses, but each hidden layer consumes a
+    detached copy of its input, so every local loss reaches only its own W_i and
+    M_i, as in the published MF update rule (arXiv:2501.09238, K=1). The joint
+    schedule, single optimizer and single early-stopping rule are kept, which
+    isolates detachment from the schedule changes in MF-Seq.
+    """
+    return train_deep_supervised_model(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        config=config,
+        device=device,
+        readout=READOUT_PROJECTION,
+        default_optimizer="Adam",
+        log_prefix="MF_Simul",
+        detach_between_layers=True,
+        wandb_run=wandb_run,
+        input_adapter=input_adapter,
+        step_ref=step_ref,
+        gpu_handle=gpu_handle,
+        nvml_active=nvml_active,
+    )
+
+
+def evaluate_mf_simul_model(
+    model: MF_MLP,
+    data_loader: DataLoader,
+    criterion: nn.Module,
+    device: torch.device,
+    input_adapter: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+) -> Tuple[float, float]:
+    """Evaluates MF-Simul through M_L, as MF does."""
     return _evaluate(
         model, data_loader, criterion, device, input_adapter, READOUT_PROJECTION
     )

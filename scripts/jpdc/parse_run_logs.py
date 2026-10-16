@@ -26,7 +26,7 @@ JOINT_EPOCH_RE = re.compile(r"(\S+) Epoch (\d+)/(\d+) \| .*?Val Loss: ([-+0-9.eE
 STOP_MF_RE = re.compile(r"Layer_([A-Za-z0-9_]+): Early Stopping at Epoch (\d+)")
 STOP_GENERIC_RE = re.compile(r"Early Stopping Triggered")
 
-ALGO_PREFIX = {"BP": "bp", "BP_DS": "bp_ds", "MF_Joint": "mf_joint"}
+ALGO_PREFIX = {"BP": "bp", "BP_DS": "bp_ds", "MF_Joint": "mf_joint", "MF_Simul": "mf_simul"}
 
 CANONICAL_PAIRS = [
     ("cifar10", "bp_cifar10_mlp_3x2000", "mf_cifar10_mlp_3x2000"),

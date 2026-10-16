@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BASE_CONFIG = REPO_ROOT / "configs" / "base.yaml"
 # The ladder rungs added in Phase 3 have no pre-Phase-2 protocol to preserve.
 LEGACY_EXPERIMENT_DIRS = ("bp_baselines", "cafo", "ff", "mf")
-EXPERIMENT_DIRS = LEGACY_EXPERIMENT_DIRS + ("bp_ds", "mf_joint")
+EXPERIMENT_DIRS = LEGACY_EXPERIMENT_DIRS + ("bp_ds", "mf_joint", "mf_simul")
 # configs/diagnostics is deliberately absent: those configs exist to break the shared
 # stopping rule, so they get their own, stricter test rather than an exemption here.
 DIAGNOSTIC_EXEMPT_KEYS = {
