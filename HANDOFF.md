@@ -125,6 +125,10 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   best-val-accuracy restore = protocol deviation -> ALL 40 BP decisive tasks must rerun;
   the 56 completed MF*/MF-Joint/MF-Simul results are valid (their configs have
   `checkpoint_dir: null`). Rerun = failed IDs + BP-completed IDs (104 tasks), same commit.
+- 2026-10-17 (6a06fa4): incident fix committed + synced. Reruns submitted: 3373251
+  (87 failed IDs) + 3373266 (17 BP-completed IDs). BP reruns double-checked against the
+  fixed script (`BBP_DISABLE_CHECKPOINTS=1`, wandb -> `$SCRATCH/bbp_wandb`). MF*/MF-Joint/
+  MF-Simul completions from 3372435 remain valid.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
