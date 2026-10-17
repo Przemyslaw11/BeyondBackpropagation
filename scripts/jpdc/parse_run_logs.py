@@ -108,7 +108,14 @@ def parse_log(path: Path) -> list[dict]:
             continue
         m = MF_EPOCH_RE.search(line)
         if m:
-            stage, epoch, val = m.group(1), int(m.group(2)), float(m.group(4))
+            stage, epoch = m.group(1), int(m.group(2))
+            try:
+                val = float(m.group(4))
+            except ValueError:
+                # Rarely a log line is glued to its successor (truncated write
+                # plus timestamp), producing e.g. "1.12932026-10-17". Skip the
+                # corrupted value; epoch counts fall back to ES/cap logic.
+                continue
             active = f"mf:{stage}"
             u = touch("mf", stage, active)
             if len(u["vals"]) < epoch:
@@ -119,7 +126,11 @@ def parse_log(path: Path) -> list[dict]:
             algo = ALGO_PREFIX.get(m.group(1))
             if algo is None:
                 continue
-            epoch, val = int(m.group(2)), float(m.group(4))
+            epoch = int(m.group(2))
+            try:
+                val = float(m.group(4))
+            except ValueError:
+                continue
             active = algo
             u = touch(algo, algo, active)
             if len(u["vals"]) < epoch:
