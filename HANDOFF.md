@@ -104,6 +104,13 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - 2026-10-17 (00db091): pilot array `g1_pilot.slurm` submitted = job 3371868 (20 tasks).
   Partition congested (13 nodes fail*, 10 down*); SLURM start estimate 07:35 CEST.
   `scripts/jpdc/summarize_pilot.py` added (exploratory C10 pilot one-pager; fixture-tested).
+- 2026-10-17 (bb75bb7): pilot finished (20/20 COMPLETED by 05:06). Exploratory C10 n=5:
+  BP 62.69+-0.26 (49.4 passes, ~4 Wh) | MF-Joint 62.45 (51.8) | MF-Simul 61.70+-0.30
+  (59.0, ratio 1.19, ~5 Wh) | MF-Seq 66.39 (219.0, ratio 4.43, ~17 Wh). Bug found and
+  fixed: run logs are append-only, so pass sums double-counted canonical+pilot blocks;
+  `analyze_g1.run_passes` now takes the latest run per seed (fixture-unchanged, hash
+  re-recorded in PREREG §10). Summary file: `results/jpdc_g1_pilot_summary.md` (cluster)
+  + `jpdc_data/pilot/`. Decisive array submitted next.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
