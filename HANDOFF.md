@@ -63,10 +63,22 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
    - MF-Joint C100 = +1.86 pp over BP => staging (not detachment) carries the whole
      MF advantage; detachment alone is ~BP or slightly below.
    Outputs: `results/g1/g1_summary.md` + `g1_per_seed.csv` (cluster), `jpdc_data/g1/`.
-5. G1 report + Phase-2 planning (E1-E8 tiers; G2 candidate scope) — next session.
+5. ~~G1 report + Phase-2 planning~~ DONE as drafts: `PREREG-phase2.md` (W1 ladder, decision
+   rules frozen for review), `G1_ATTRIBUTION_SUMMARY.md` (author one-pager),
+   `ERRATA_PPAM.md` (claim-level corrections).
 6. Budget mapping: ~**28.7 A100-GPU-hours** for the whole G1 chain (tuning 2x50 trials,
    pilot 20, decisive 160 + incident reruns 112; sacct 2026-10-17). NVML Wh per run in
    `g1_per_seed.csv` (C100: BP 4.48, MF-Joint 5.07, MF-Simul 3.55, MF-Seq 16.52 Wh).
+7. **NOW (blocked on Athena login access):** (a) pull results of repair job 3376703,
+   re-run `analyze_g1` + `w0a` against `results/` on the new artifacts, refresh
+   `jpdc_data/g1/{g1_*,w0a/w0a_*}`; (b) confirm W0c cap anatomy from the pulled
+   `BBP_G1*.out` set with `parse_task_outs.py` (PPAM baseline: W1_M1 cap 90% C10 / 50%
+   C100; cap-300 pilot n=5 queued behind PREREG-phase2 §3 H-W1cap); (c) decide §5 HPO
+   question (inherit vs tune Seq-Global) and record it in `PREREG-phase2.md` §9;
+   (d) then submit the W1 family (6 arms x 2 datasets x 20 seeds) with the g1_repair
+   hygiene pattern; W0d BP-long control rides along.
+8. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py` (to be
+   written; mirror `analyze_g1` structure with H-W1a..d as decision blocks).
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -141,6 +153,22 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   parser hardened against glued log lines and empty NVML CSVs. Final reduction:
   160/160 runs, n=20 per arm/dataset. **G1 verdict = B (schedule artifact)**.
   Session budget: ~28.7 A100-GPU-h across all jobs (incl. incident reruns).
+- 2026-10-17/19 (W0 session, commits d90c7be..HEAD): post-verdict artifact audit found
+  12/160 decisive run JSONs declaring NVML traces that never landed (quota window); the
+  old glob fallback had silently used September traces for those energies. PREREG §10
+  amended: passes from run-JSON `epochs_completed` (shared log lost lines: e.g. MF-Seq
+  C100 seed42 W1_M1 100 per log vs 81 per `.out`+JSON), energy strictly from each JSON's
+  `monitoring_csv_path`. Repair job 3376703 = the 12 (arm, seed) reruns at the decisive
+  commit (per-seed log files, forced `WANDB_DIR=$SCRATCH/bbp_wandb`, quota precheck).
+  New analysis: `w0a_energy_memory.py` (cost table), `w0e_drift.py` (G1 vs PPAM regime:
+  no co-tenancy anywhere, drift ≤±5% arm-specific), `w0b_m0_energy.py` (M0 = 22.9%/22.8%
+  of MF-Seq Wh), `parse_task_outs.py` (per-task `.out` anatomy; log-independent).
+  W1 implemented: `src/algorithms/mf_global.py` (Seq-Global) + 5 gradient tests +
+  `test_m0_dead_stage.py` + `configs/mf_global/`, `configs/mf_nom0/*`; CPU smoke OK
+  (MNIST 98.08%). Drafts: `PREREG-phase2.md`, `G1_ATTRIBUTION_SUMMARY.md`,
+  `ERRATA_PPAM.md`. **Incident: Athena login nodes restricted** (site security patch,
+  admin notice 2026-10-17 evening) — 3376703 keeps running on compute nodes; pulls and
+  new submissions blocked until access returns.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
