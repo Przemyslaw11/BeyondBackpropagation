@@ -41,7 +41,10 @@ def run_json(results_dir: Path, experiment: str, seed: int) -> dict | None:
     path = results_dir / "runs" / experiment / f"{experiment}_seed{seed}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
 
 
 def run_passes(results_dir: Path, experiment: str, seed: int) -> float:
@@ -64,10 +67,19 @@ def run_passes(results_dir: Path, experiment: str, seed: int) -> float:
 
 
 def run_energy_wh(results_dir: Path, experiment: str, seed: int) -> float:
-    paths = sorted((results_dir / "monitoring").glob(f"{experiment}_seed{seed}_*.csv"))
+    paths = [
+        p
+        for p in sorted((results_dir / "monitoring").glob(f"{experiment}_seed{seed}_*.csv"))
+        if p.stat().st_size > 0
+    ]
     if not paths:
         return float("nan")
-    trace = pd.read_csv(paths[-1])
+    try:
+        trace = pd.read_csv(paths[-1])
+    except (pd.errors.EmptyDataError, pd.errors.ParserError):
+        return float("nan")
+    if "timestamp_sec" not in trace.columns or "power_watts" not in trace.columns:
+        return float("nan")
     dt = trace["timestamp_sec"].diff().fillna(0.0)
     joules = float((trace["power_watts"] * dt).sum())
     return joules / 3600.0
