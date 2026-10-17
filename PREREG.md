@@ -32,15 +32,15 @@ MF-Simul, exact (implemented at `src/baselines/bp_ds.py:69,482`):
 ```
 a_0 = x
 a_i = ReLU( W_i · a_{i-1}.detach() )            i = 1..L
-loss = CE(M_L a_L, y) + λ · Σ_{i<L} CE(M_i a_i, y),   λ = aux_weight = 1.0
+loss = CE(M_L a_L, y) + λ · Σ_{i<L} CE(M_i a_i, y),   λ = aux_weight
 ```
 
 One backward pass per batch sums all local losses; every local loss reaches only its own
 `W_i` and `M_i`. Single Adam, single global early stopping on the validation CE of M_L.
-`λ = 1.0` keeps the summed objective identical to MF-Seq's per-unit local losses, so the
-only difference from the staged algorithm is the schedule, not the objective weights.
-Equivalence anchor: one MF-Simul step = one step of each MF-Seq unit's objective
-(`tests/test_mf_simul.py`, seeded unit tests).
+`λ` is tuned exactly like the MF-Joint rung's (same ladder Optuna procedure, §4); at
+`λ = 1.0` the summed objective is identical to MF-Seq's per-unit local losses, which is
+the equivalence anchor used by the unit tests. The frozen tuned values are in
+`configs/mf_simul/*` (CIFAR-10 λ 0.0207, CIFAR-100 λ 0.2166).
 
 ## 3. Endpoints
 
@@ -113,3 +113,4 @@ and wall-clock estimates, variance estimate for sizing. Pilot results are explor
 |---|---|---|
 | 2026-10-17 | PREREG created; MF-Simul implemented + tested (same commit) | agent |
 | 2026-10-17 | analysis script added: `scripts/jpdc/analyze_g1.py` @ `8a4ce41` (dry-run on synthetic fixture passed); tuning stack ported (`90e7f95`), MF-Simul studies `ladder_mfsimul_*` launched (SLURM 3371585) | agent |
+| 2026-10-17 | §2 λ wording clarified (λ is tuned like MF-Joint's, λ=1.0 kept as unit-test anchor). Tuning done before any G1 result was inspected: 50/50 trials per dataset, best val_accuracy 60.02 (C10, trial 21) / 31.50 (C100, trial 37). Frozen: C10 lr 2.338e-4, wd 2.660e-6, λ 0.0207; C100 lr 3.079e-4, wd 1.922e-5, λ 0.2166 (`configs/mf_simul/*`, best-params YAMLs in `jpdc_data/optuna/`) | agent |

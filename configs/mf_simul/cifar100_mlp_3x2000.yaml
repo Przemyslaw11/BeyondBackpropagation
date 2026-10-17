@@ -1,0 +1,53 @@
+experiment_name: "mf_simul_cifar100_mlp_3x2000"
+
+algorithm:
+  name: "MF_SIMUL"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "Adam"
+  # Frozen from ladder_mfsimul_cifar100_mlp_3x2000_tune (50 TPE trials, best trial
+  # 37, best val_accuracy 31.50) under the same ladder procedure as MF-Joint.
+  lr: 0.00030794367419377923
+  weight_decay: 1.9216110177972008e-05
+
+algorithm_params:
+  # Tuned by the same ladder procedure as the MF-Joint rung (aux_weight range
+  # 1e-2..1e1). See the CIFAR-10 config for the lambda = 1.0 equivalence note.
+  aux_weight: 0.2165606554235897
+  log_interval: 9999
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

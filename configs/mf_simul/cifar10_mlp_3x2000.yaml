@@ -25,15 +25,17 @@ model:
 
 optimizer:
   type: "Adam"
-  # Provisional: inherited from the tuned MF-Joint rung; re-tuned for MF-Simul
-  # with an identical Optuna budget before the decisive runs.
-  lr: 0.00018792091899949145
-  weight_decay: 1.6676492206220718e-06
+  # Frozen from ladder_mfsimul_cifar10_mlp_3x2000_tune (50 TPE trials, best trial
+  # 21, best val_accuracy 60.02) under the same ladder procedure as MF-Joint.
+  lr: 0.00023382467225130908
+  weight_decay: 2.6599275491929037e-06
 
 algorithm_params:
-  # 1.0 keeps the objective identical to MF-Seq's per-unit local losses, so the
-  # only difference from the staged algorithm is the schedule, not the weights.
-  aux_weight: 1.0
+  # Tuned by the same ladder procedure as the MF-Joint rung (aux_weight range
+  # 1e-2..1e1). With detached inputs the auxiliary heads no longer carry the
+  # readout gradient, so the search de-weights them; the lambda = 1.0 case (the
+  # objective-identical anchor used by the unit tests) is not the tuned optimum.
+  aux_weight: 0.020691318314831043
   log_interval: 9999
 
 logging:

@@ -20,9 +20,8 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
   unit tests, drift controls, amendments log). Freeze at the decisive commit + record
   hashes before inspecting decisive results.
-- Next: port the ladder Optuna driver from `main` (removed on release branch) into
-  `jpdc-extension`, add `mfsimul_*_tune` configs (50 TPE trials, same procedure as
-  `ladder_mfjoint_*`), tune MF-Simul per dataset, then pilot n=5 (seeds 42-46, CIFAR-10).
+- Next: pilot n=5 (seeds 42-46, CIFAR-10) -> one-page author summary; then decisive runs
+  n=20 (seeds 42-61, both datasets) -> `analyze_g1.py` -> G1 verdict (due 8 Nov 2026).
 
 ## Headline numbers (canonical Protocol A, 20 seeds)
 - MF/BP unit-epoch multiplier: CIFAR-10 4.07, CIFAR-100 4.46, MNIST 3.67, Fashion 4.32.
@@ -48,15 +47,16 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 
 ## Next actions (ordered)
 1. ~~Port ladder tuning machinery~~ DONE (`90e7f95`).
-2. ~~Tune MF-Simul per dataset~~ RUNNING (job 3371585, studies `ladder_mfsimul_*`).
-   When done: freeze `config_override` from
-   `results/optuna/ladder_mfsimul_*_best_params.yaml` into `configs/mf_simul/*`.
-3. Prepare and submit pilot n=5 (seeds 42-46, CIFAR-10, four arms) on Athena via SLURM;
-   one-page summary for the ~29 Oct author meeting; pilots never enter decisive tables.
-   Needs a pilot array SLURM script + a small `run_array`-style driver (port from
-   `scripts/slurm_scripts/run_ladder_array.slurm` history if needed).
+2. ~~Tune MF-Simul per dataset~~ DONE (job 3371597; 50/50 trials each; best val acc
+   60.02 C10 trial 21 / 31.50 C100 trial 37). Frozen into `configs/mf_simul/*` (C10
+   lr 2.338e-4, wd 2.660e-6, λ 0.0207; C100 lr 3.079e-4, wd 1.922e-5, λ 0.2166);
+   best-params YAMLs copied to `jpdc_data/optuna/`; PREREG §2 clarified + §10 row.
+3. ~~Prepare pilot array script~~ DONE (`8e99dbb`, `scripts/slurm_scripts/g1_pilot.slurm`);
+   submit now that MF-Simul params are frozen; one-page summary for the ~29 Oct author
+   meeting; pilots never enter decisive tables.
 4. Decisive runs n=20 (seeds 42-61, CIFAR-10 + CIFAR-100, four arms, one commit) after
-   PREREG freeze; `scripts/jpdc/analyze_g1.py` @ `8a4ce41` reduces raw results; then the
+   PREREG §10 freeze row; script ready (`bc9083a`, `scripts/slurm_scripts/g1_decisive.slurm`,
+   160 tasks); `scripts/jpdc/analyze_g1.py` @ `8a4ce41` reduces raw results; then the
    G1 verdict (due 8 Nov 2026).
 5. Budget mapping: estimate A100-hours from monitoring trace durations (report sacct +
    NVML Wh per session; budget itself is not a planning constraint).
@@ -96,6 +96,11 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - 2026-10-17 (next): `g1_decisive.slurm` prepared (8 configs x 20 seeds = 160 runs;
   submit after the §10 freeze). Run order fixed: tuning (3371597) -> freeze MF-Simul
   params -> pilot (g1_pilot.slurm) -> decisive (g1_decisive.slurm) -> analyze_g1.
+- 2026-10-17 (next, tuning run): 3371597 finished, studies 50/50 trials each (best val
+  acc 60.02/31.50; MF-Joint reference 59.70/31.86). MF-Simul hyperparameters frozen
+  into both `configs/mf_simul/*` configs (C100 config created); PREREG §2 λ wording
+  clarified (tuned like MF-Joint; λ=1.0 stays the unit-test anchor) + §10 row; 12
+  fairness/MF-Simul tests pass. Pilot submitted next.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
