@@ -100,7 +100,10 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   acc 60.02/31.50; MF-Joint reference 59.70/31.86). MF-Simul hyperparameters frozen
   into both `configs/mf_simul/*` configs (C100 config created); PREREG §2 λ wording
   clarified (tuned like MF-Joint; λ=1.0 stays the unit-test anchor) + §10 row; 12
-  fairness/MF-Simul tests pass. Pilot submitted next.
+   fairness/MF-Simul tests pass. Pilot submitted next.
+- 2026-10-17 (00db091): pilot array `g1_pilot.slurm` submitted = job 3371868 (20 tasks).
+  Partition congested (13 nodes fail*, 10 down*); SLURM start estimate 07:35 CEST.
+  `scripts/jpdc/summarize_pilot.py` added (exploratory C10 pilot one-pager; fixture-tested).
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
