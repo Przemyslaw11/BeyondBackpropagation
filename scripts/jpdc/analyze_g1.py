@@ -45,13 +45,22 @@ def run_json(results_dir: Path, experiment: str, seed: int) -> dict | None:
 
 
 def run_passes(results_dir: Path, experiment: str, seed: int) -> float:
+    """Total unit epochs of the LATEST run of `seed` in the (append-only) run log.
+
+    Logs accumulate one block per run; reruns of a seed (pilot, then decisive)
+    append new blocks. Keeping the last row per (algorithm, unit) selects the
+    most recent run and keeps pass counts stable across reruns.
+    """
     log_path = results_dir / experiment / f"{experiment}_run.log"
     if not log_path.exists():
         return float("nan")
-    rows = [r for r in parse_log(log_path) if r["seed"] == seed]
-    if not rows:
+    latest: dict[tuple[str, str], float] = {}
+    for row in parse_log(log_path):
+        if row["seed"] == seed:
+            latest[(row["algorithm"], row["unit"])] = float(row["epochs_run"])
+    if not latest:
         return float("nan")
-    return float(sum(r["epochs_run"] for r in rows))
+    return float(sum(latest.values()))
 
 
 def run_energy_wh(results_dir: Path, experiment: str, seed: int) -> float:
