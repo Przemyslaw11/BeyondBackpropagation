@@ -52,14 +52,21 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
    lr 2.338e-4, wd 2.660e-6, λ 0.0207; C100 lr 3.079e-4, wd 1.922e-5, λ 0.2166);
    best-params YAMLs copied to `jpdc_data/optuna/`; PREREG §2 clarified + §10 row.
 3. ~~Prepare pilot array script~~ DONE (`8e99dbb`, `scripts/slurm_scripts/g1_pilot.slurm`);
-   submit now that MF-Simul params are frozen; one-page summary for the ~29 Oct author
-   meeting; pilots never enter decisive tables.
-4. Decisive runs n=20 (seeds 42-61, CIFAR-10 + CIFAR-100, four arms, one commit) after
-   PREREG §10 freeze row; script ready (`bc9083a`, `scripts/slurm_scripts/g1_decisive.slurm`,
-   160 tasks); `scripts/jpdc/analyze_g1.py` @ `8a4ce41` reduces raw results; then the
-   G1 verdict (due 8 Nov 2026).
-5. Budget mapping: estimate A100-hours from monitoring trace durations (report sacct +
-   NVML Wh per session; budget itself is not a planning constraint).
+   pilot ran (3371868). One-page pilot summary → `jpdc_data/pilot/`; pilots never enter
+   decisive tables.
+4. ~~Decisive runs n=20~~ DONE (jobs 3372435/3373251/3373266/3376200; 160/160 valid run
+   JSONs, seeds 42-61, four arms both datasets, one commit). Reduced with
+   `scripts/jpdc/analyze_g1.py` (@ `328b573`) -> **G1 verdict = B (schedule artifact)**:
+   - C100: MF-Simul - BP = **-0.27 pp** [-0.50, -0.03], p=0.076; passes ratio R=0.88;
+     contemporaneous MF-Seq - BP = **+5.04 pp** [+4.82, +5.25], p<0.001.
+   - C10 (secondary): MF-Simul - BP = -0.86 pp [-1.16, -0.56]; MF-Seq +3.90 pp.
+   - MF-Joint C100 = +1.86 pp over BP => staging (not detachment) carries the whole
+     MF advantage; detachment alone is ~BP or slightly below.
+   Outputs: `results/g1/g1_summary.md` + `g1_per_seed.csv` (cluster), `jpdc_data/g1/`.
+5. G1 report + Phase-2 planning (E1-E8 tiers; G2 candidate scope) — next session.
+6. Budget mapping: ~**28.7 A100-GPU-hours** for the whole G1 chain (tuning 2x50 trials,
+   pilot 20, decisive 160 + incident reruns 112; sacct 2026-10-17). NVML Wh per run in
+   `g1_per_seed.csv` (C100: BP 4.48, MF-Joint 5.07, MF-Simul 3.55, MF-Seq 16.52 Wh).
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -128,7 +135,12 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - 2026-10-17 (6a06fa4): incident fix committed + synced. Reruns submitted: 3373251
   (87 failed IDs) + 3373266 (17 BP-completed IDs). BP reruns double-checked against the
   fixed script (`BBP_DISABLE_CHECKPOINTS=1`, wandb -> `$SCRATCH/bbp_wandb`). MF*/MF-Joint/
-  MF-Simul completions from 3372435 remain valid.
+   MF-Simul completions from 3372435 remain valid.
+- 2026-10-17 (328b573): five decisive run JSONs + three MF JSONs were found truncated
+  (quota-window partial writes, tasks had exited 0) — 8 tasks rerun (job 3376200);
+  parser hardened against glued log lines and empty NVML CSVs. Final reduction:
+  160/160 runs, n=20 per arm/dataset. **G1 verdict = B (schedule artifact)**.
+  Session budget: ~28.7 A100-GPU-h across all jobs (incl. incident reruns).
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
