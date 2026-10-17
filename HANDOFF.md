@@ -111,6 +111,9 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   `analyze_g1.run_passes` now takes the latest run per seed (fixture-unchanged, hash
   re-recorded in PREREG §10). Summary file: `results/jpdc_g1_pilot_summary.md` (cluster)
   + `jpdc_data/pilot/`. Decisive array submitted next.
+- 2026-10-17 (next): decisive array `g1_decisive.slurm` submitted = job 3372435
+  (160 tasks; 8 configs x seeds 42-61). Analysis next: `python3 -m scripts.jpdc.analyze_g1
+  --results-dir results --out-dir results/g1` on the cluster.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
