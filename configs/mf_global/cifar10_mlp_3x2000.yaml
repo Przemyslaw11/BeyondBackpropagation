@@ -1,0 +1,59 @@
+# W1 attribution ladder: Seq-Global arm.
+#
+# Stage s trains W_1..W_s + M_s on M_s's local loss, identical schedule and early
+# stopping to MF-Seq, but the trainable prefix is UNFROZEN. It isolates "the
+# schedule" from "the frozen prefix": if MF-Seq's advantage survives here, the
+# advantage is the stopping schedule, not locality.
+#
+# Hyperparameters are inherited from configs/mf/cifar10_mlp_3x2000.yaml (the same
+# tuned values MF-Seq uses) so that the two arms differ in one thing only. If the
+# ladder budget grants Seq-Global its own HPO run, the frozen values move here and
+# PREREG-phase2.md records the change before any confirmatory run.
+
+experiment_name: "mf_global_cifar10_mlp_3x2000"
+algorithm:
+  name: "MF_GLOBAL"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00021536491821693216
+  weight_decay: 1.606438244272842e-06
+  log_interval: 9999
+  # The prefix is trainable, so cached activations would be stale by construction.
+  activation_cache: recompute
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_global_cifar10_mlp_3x2000"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
