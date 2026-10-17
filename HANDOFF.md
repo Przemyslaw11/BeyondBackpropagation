@@ -114,6 +114,17 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - 2026-10-17 (next): decisive array `g1_decisive.slurm` submitted = job 3372435
   (160 tasks; 8 configs x seeds 42-61). Analysis next: `python3 -m scripts.jpdc.analyze_g1
   --results-dir results --out-dir results/g1` on the cluster.
+- 2026-10-17 (INCIDENT): 3372435 ran 73 OK / 87 FAILED. Root cause chain: the pilot and
+  decisive sbatch scripts did NOT export `BBP_DISABLE_CHECKPOINTS=1`, so BP runs saved
+  per-seed checkpoints (~150-200 MB each, `checkpoints/` grew to 3.0 GB) -> $HOME hit its
+  10 GiB quota at ~10:05 -> site quota watchdog killed 87 running tasks mid-epoch
+  (exit 0:53) and sbatch rejected resubmissions. Fixes: deleted `checkpoints/*`
+  (HOME back to 70.8%), both g1 scripts now export `BBP_DISABLE_CHECKPOINTS=1` (also
+  required by PREREG §3: final weights scored) and redirect `WANDB_DIR` to `$SCRATCH`.
+  Consequence: today's BP results (all pilot + 17 decisive completions) were scored with
+  best-val-accuracy restore = protocol deviation -> ALL 40 BP decisive tasks must rerun;
+  the 56 completed MF*/MF-Joint/MF-Simul results are valid (their configs have
+  `checkpoint_dir: null`). Rerun = failed IDs + BP-completed IDs (104 tasks), same commit.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.

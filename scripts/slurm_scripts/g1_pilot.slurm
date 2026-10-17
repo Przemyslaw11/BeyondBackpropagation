@@ -67,7 +67,13 @@ module load Python/3.10.4
 module load CUDA/12.4.0
 source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
 
+# Canonical protocol (PREREG.md §3): final weights, single test evaluation,
+# no checkpoint restore. HOME is quota-limited (10 GiB); BP checkpoints fill it.
+export BBP_DISABLE_CHECKPOINTS=1
+
 export WANDB_MODE=offline
+# Keep wandb artifacts off $HOME: offline runs grow ~100 MB per task.
+export WANDB_DIR="${WANDB_DIR:-${SCRATCH:-$SLURM_SUBMIT_DIR}/bbp_wandb}"
 
 srun python scripts/run_experiment.py --config "$CONFIG_FILE"
 EXIT_CODE=$?
