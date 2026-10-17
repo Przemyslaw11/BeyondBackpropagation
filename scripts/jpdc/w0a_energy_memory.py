@@ -2,14 +2,16 @@
 """W0a: decisive G1 energy / power / wall-clock / memory table.
 
 Reads per arm x dataset x seed 42-61:
-- run JSON:  <results>/runs/<exp>/<exp>_seed<s>.json
-- run log:   <results>/<exp>/<exp>_run.log               (passes)
+- run JSON:  <results>/runs/<exp>/<exp>_seed<s>.json      (passes, durations, memory)
 - NVML CSV:  the exact <monitoring_csv_path> stored in the run JSON, and nowhere
-  else. A missing strict path is reported, never silently replaced: during the
+  else. A missing strict path is a NaN, never silently replaced: during the
   2026-10-17 quota window 12 decisive runs finished (JSON written) while their
   NVML CSV write failed, and the previous glob fallback then mixed September
-  PPAM-era traces into the decisive energy table. The fallback still surfaces a
-  `trace_from=glob` row, flagged for exclusion.
+  PPAM-era traces into the decisive energy table.
+
+Passes come from the JSON `epochs_completed` field (AMENDMENT 2026-10-17,
+PREREG.md §10): the shared append-only run log lost header and mid-block lines
+that day, so log-derived pass counts are not reproducible artifacts.
 """
 
 import argparse
@@ -21,21 +23,6 @@ import pandas as pd
 from scipy import stats
 
 from scripts.jpdc.analyze_g1 import ARMS, BOOTSTRAP_N, BOOTSTRAP_SEED, EXPERIMENTS, SEEDS, holm
-from scripts.jpdc.parse_run_logs import parse_log
-
-
-def passes_by_seed(results_dir: Path, experiment: str) -> dict[int, float]:
-    """Unit epochs per seed from the latest run block (same rule as analyze_g1)."""
-    log_path = results_dir / experiment / f"{experiment}_run.log"
-    if not log_path.exists():
-        return {}
-    latest: dict[tuple[int, str, str], float] = {}
-    for row in parse_log(log_path):
-        latest[(row["seed"], row["algorithm"], row["unit"])] = float(row["epochs_run"])
-    totals: dict[int, float] = {}
-    for (seed, _, _), epochs in latest.items():
-        totals[seed] = totals.get(seed, 0.0) + epochs
-    return totals
 
 
 def run_json(results_dir: Path, experiment: str, seed: int) -> dict | None:
@@ -48,7 +35,7 @@ def run_json(results_dir: Path, experiment: str, seed: int) -> dict | None:
         return None
 
 
-def load_trace(results_dir: Path, record: dict, experiment: str, seed: int):
+def load_trace(results_dir: Path, record: dict):
     """Returns (DataFrame | None, trace_from) using the JSON path strictly."""
     declared = record.get("monitoring_csv_path")
     if declared:
@@ -61,16 +48,6 @@ def load_trace(results_dir: Path, record: dict, experiment: str, seed: int):
                 return pd.read_csv(path), "json"
             except (pd.errors.EmptyDataError, pd.errors.ParserError):
                 pass
-    fallback = sorted(
-        p
-        for p in (results_dir / "monitoring").glob(f"{experiment}_seed{seed}_*.csv")
-        if p.stat().st_size > 0
-    )
-    if fallback:
-        try:
-            return pd.read_csv(fallback[-1]), "glob"
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            pass
     return None, "missing"
 
 
@@ -92,19 +69,18 @@ def trace_stats(trace: pd.DataFrame) -> dict:
 def collect(results_dir: Path) -> pd.DataFrame:
     rows = []
     for (arm, dataset), experiment in EXPERIMENTS.items():
-        passes = passes_by_seed(results_dir, experiment)
         for seed in SEEDS:
             record = run_json(results_dir, experiment, seed)
             if record is None:
                 continue
-            trace, trace_from = load_trace(results_dir, record, experiment, seed)
+            trace, trace_from = load_trace(results_dir, record)
             rows.append(
                 dict(
                     arm=arm,
                     dataset=dataset,
                     seed=seed,
                     test_accuracy=record.get("test_accuracy"),
-                    passes=passes.get(seed, float("nan")),
+                    passes=record.get("epochs_completed"),
                     duration_sec=record.get("total_run_duration_sec"),
                     peak_torch_alloc_mib=record.get("peak_torch_alloc_mib"),
                     peak_gpu_mem_used_mib=record.get("peak_gpu_mem_used_mib"),

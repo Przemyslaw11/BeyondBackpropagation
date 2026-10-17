@@ -2,9 +2,13 @@
 """Reduce raw G1 results to every number used in PREREG.md §5.
 
 Reads (per arm x dataset x seed 42-61):
-- run JSON:        <results>/runs/<exp>/<exp>_seed<s>.json   (accuracy, durations)
-- run log:         <results>/<exp>/<exp>_run.log             (unit epochs = passes)
-- NVML CSV:        <results>/monitoring/<exp>_seed<s>_*.csv  (energy, Wh)
+- run JSON:        <results>/runs/<exp>/<exp>_seed<s>.json   (accuracy, passes, duration)
+- NVML CSV:        the exact `monitoring_csv_path` stored in that JSON (energy, Wh)
+
+AMENDMENT 2026-10-17 (PREREG.md §10): passes come from the run JSON's own
+`epochs_completed` (the shared append-only run log lost lines on 2026-10-17) and
+energy comes strictly from the JSON's trace path (the old glob fallback used a
+September trace for 12 runs whose own trace was lost to the quota window).
 
 Writes <out-dir>/g1_per_seed.csv and <out-dir>/g1_summary.md, and applies the
 frozen A/B/C decision rule to the CIFAR-100 comparison. Committed before the
@@ -18,8 +22,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy import stats
-
-from scripts.jpdc.parse_run_logs import parse_log
 
 SEEDS = list(range(42, 62))
 ARMS = ["bp", "mf_joint", "mf_simul", "mf_seq"]
@@ -47,35 +49,39 @@ def run_json(results_dir: Path, experiment: str, seed: int) -> dict | None:
         return None
 
 
-def run_passes(results_dir: Path, experiment: str, seed: int) -> float:
-    """Total unit epochs of the LATEST run of `seed` in the (append-only) run log.
+def run_passes_json(record: dict) -> float:
+    """Passes from the run's own JSON ``epochs_completed`` field.
 
-    Logs accumulate one block per run; reruns of a seed (pilot, then decisive)
-    append new blocks. Keeping the last row per (algorithm, unit) selects the
-    most recent run and keeps pass counts stable across reruns.
+    AMENDMENT 2026-10-17 (see PREREG.md §10): pass counting moved from the
+    shared append-only run log to the per-run JSON after demonstrating that the
+    shared log lost header and mid-block lines during the quota window of
+    2026-10-17 (e.g. MF-Seq seed42 CIFAR-100: log suggested W1_M1 = 100 epochs,
+    the task's own slurm .out and JSON both show 81; total 185). The JSON field
+    is written by the training process itself in `_finalize_run` and is the
+    quantity the Protocol A accounting defines: summed unit epochs over stages
+    for MF, optimizer epochs for BP/BP-DS/MF-Joint/MF-Simul.
     """
-    log_path = results_dir / experiment / f"{experiment}_run.log"
-    if not log_path.exists():
+    value = record.get("epochs_completed")
+    if value is None:
         return float("nan")
-    latest: dict[tuple[str, str], float] = {}
-    for row in parse_log(log_path):
-        if row["seed"] == seed:
-            latest[(row["algorithm"], row["unit"])] = float(row["epochs_run"])
-    if not latest:
-        return float("nan")
-    return float(sum(latest.values()))
+    return float(value)
 
 
-def run_energy_wh(results_dir: Path, experiment: str, seed: int) -> float:
-    paths = [
-        p
-        for p in sorted((results_dir / "monitoring").glob(f"{experiment}_seed{seed}_*.csv"))
-        if p.stat().st_size > 0
-    ]
-    if not paths:
+def run_energy_wh(results_dir: Path, record: dict) -> float:
+    """Energy from the run's own trace file (strict JSON path, no glob fallback).
+
+    AMENDMENT 2026-10-17 (PREREG.md §10): the previous glob-latest fallback
+    silently used a September PPAM-era trace for 12 decisive runs whose own
+    trace was lost in the quota window. A missing trace is now NaN.
+    """
+    declared = record.get("monitoring_csv_path")
+    if not declared:
+        return float("nan")
+    path = results_dir / "monitoring" / Path(declared).name
+    if not path.exists() or path.stat().st_size == 0:
         return float("nan")
     try:
-        trace = pd.read_csv(paths[-1])
+        trace = pd.read_csv(path)
     except (pd.errors.EmptyDataError, pd.errors.ParserError):
         return float("nan")
     if "timestamp_sec" not in trace.columns or "power_watts" not in trace.columns:
@@ -92,6 +98,7 @@ def collect(results_dir: Path) -> pd.DataFrame:
             record = run_json(results_dir, experiment, seed)
             if record is None:
                 continue
+            energy_wh = run_energy_wh(results_dir, record)
             rows.append(
                 dict(
                     arm=arm,
@@ -99,10 +106,11 @@ def collect(results_dir: Path) -> pd.DataFrame:
                     seed=seed,
                     test_accuracy=record.get("test_accuracy"),
                     test_loss=record.get("test_loss"),
-                    passes=run_passes(results_dir, experiment, seed),
-                    energy_wh=run_energy_wh(results_dir, experiment, seed),
+                    passes=run_passes_json(record),
+                    energy_wh=energy_wh,
                     duration_sec=record.get("total_run_duration_sec"),
                     epochs_completed=record.get("epochs_completed"),
+                    trace_from="json" if not np.isnan(energy_wh) else "missing",
                 )
             )
     return pd.DataFrame(rows)
@@ -178,8 +186,16 @@ def main() -> None:
     summary_lines = ["# G1 summary (PREREG.md §5)", ""]
     summary_lines.append(
         f"Reduced {len(df)} runs from `{args.results_dir}`; "
-        f"seeds {SEEDS[0]}-{SEEDS[-1]}."
+        f"seeds {SEEDS[0]}-{SEEDS[-1]}. Passes from JSON `epochs_completed`; "
+        f"energy from each run's own trace (strict `monitoring_csv_path`)."
     )
+    missing = df[df.trace_from != "json"]
+    if len(missing):
+        summary_lines.append("")
+        summary_lines.append(
+            f"WARNING: {len(missing)} runs have no trace of their own "
+            "(see w0a provenance audit); their energy is NaN."
+        )
     summary_lines.append("")
 
     summary_lines.append("## Per-arm means (95% CI)")
