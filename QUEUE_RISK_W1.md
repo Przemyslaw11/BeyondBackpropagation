@@ -1,7 +1,10 @@
 # Queue risk and W1 launch plan
 
-Snapshot: 2026-10-21 23:35 CEST. No new job submitted for this memo; all options
+Snapshot: 2026-10-22 00:20 CEST. No new job submitted for this memo; all options
 below are prepared, not launched. The live jobs remain pending.
+
+2026-10-22 recheck: both arrays are still `PENDING` with 0 GPU-hours and the same
+`ReqNodeNotAvail` node list; no W1 job was submitted or cancelled.
 
 ## 1. Current jobs and charge
 
