@@ -56,7 +56,16 @@ def parse_args() -> argparse.Namespace:
         "--n-trials",
         type=int,
         default=None,
-        help="Number of trials to run (overrides config).",
+        help="Number of trials to run in this invocation (overrides config).",
+    )
+    parser.add_argument(
+        "--target-trials",
+        type=int,
+        default=None,
+        help=(
+            "Total number of trials the study should contain. Resumable: each "
+            "invocation runs only target-trials minus the trials already stored."
+        ),
     )
     parser.add_argument(
         "--backend",
@@ -195,10 +204,22 @@ def main() -> None:
             pruner=pruner,
             load_if_exists=True,
         )
+        if args.target_trials is not None:
+            already = len(study.trials)
+            n_trials = max(0, args.target_trials - already)
+            logger.info(
+                f"Target total is {args.target_trials} trials; {already} already "
+                f"stored, so this invocation runs at most {n_trials} more."
+            )
         logger.info(
             f"Starting Optuna optimization ({algorithm_name}) with {n_trials} trials..."
         )
-        study.optimize(lambda trial: objective_func(trial, config), n_trials=n_trials)
+        if n_trials > 0:
+            study.optimize(
+                lambda trial: objective_func(trial, config), n_trials=n_trials
+            )
+        else:
+            logger.info("Target trial count already reached; skipping optimization.")
 
         logger.info("Optimization finished.")
         logger.info(f"Number of finished trials: {len(study.trials)}")

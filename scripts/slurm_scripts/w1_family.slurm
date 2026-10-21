@@ -1,27 +1,28 @@
 #!/bin/bash
-# W1 confirmatory family (PREREG-phase2.md §5): one commit, paired seeds 42-61,
-# both datasets, six main arms + the H-W1d BP-long control.
+# W1 core confirmatory family (PREREG-phase2.md §5): one commit, paired seeds
+# 42-61, both datasets, six main arms = 240 tasks.
 #
 # Main arms: BP, MF-Joint, MF-Simul, MF-Seq, Seq-Global, MF-Seq-nom0.
-# Control:   BP @ max_epochs 300 (H-W1d).
+# Controls are in w1_family_controls.slurm (BP-long, BP-bestval, Protocol B);
+# BP-sched is in w1_bp_sched.slurm after its tuning study freezes.
 # Conditional (not in this array): MF-Seq cap-300 full arm, only if H-W1cap
 # Step 1 triggers; submit separately with the same hygiene.
 #
 # Hygiene: per-seed run logs via generated configs, forced scratch wandb,
 # HOME-quota precheck, no checkpoints, per-task .out retained.
 #
-#SBATCH --job-name=BBP_W1
+#SBATCH --job-name=BBP_W1Core
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128000M
-#SBATCH --time=06:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=48000M
+#SBATCH --time=01:00:00
 #SBATCH -A plglscclass26-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-280
+#SBATCH --array=1-240
 
 CONFIG_FILES=(
     "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml"
@@ -36,8 +37,6 @@ CONFIG_FILES=(
     "configs/mf_global/cifar100_mlp_3x2000.yaml"
     "configs/mf_nom0/cifar10_mlp_3x2000.yaml"
     "configs/mf_nom0/cifar100_mlp_3x2000.yaml"
-    "configs/bp_long/cifar10_mlp_3x2000.yaml"
-    "configs/bp_long/cifar100_mlp_3x2000.yaml"
 )
 SEEDS=(42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61)
 

@@ -1,7 +1,7 @@
 # Queue risk and W1 launch plan
 
-Snapshot: 2026-10-21 21:42 CEST. No job submitted for this memo; all options below
-are proposals.
+Snapshot: 2026-10-21 23:35 CEST. No new job submitted for this memo; all options
+below are prepared, not launched. The live jobs remain pending.
 
 ## 1. Current jobs and charge
 
@@ -37,6 +37,12 @@ only a handful of `mix`/`alloc` nodes.
 - `8k3-gpu` / `8k3-gpu-r1` are **not** accessible with either account
   (`Access/permission denied`).
 - `plgrid-now` is accessible with both accounts; it has a hard **1 h** limit.
+  **Policy check:** the published Cyfronet definition (the Athena docs do not list
+  a separate Athena policy) describes `plgrid-now` as *intended for interactive
+  jobs*, with 1 running/queued job and 1 node maximum. A batch Optuna segment is
+  not an interactive job, even with monitoring disabled. `plgrid-now` is therefore
+  **not used** for validation-only tuning unless the helpdesk confirms an exemption
+  in writing. Scheduler metadata (`scontrol show partition`) is not a policy.
 
 ### Scheduler estimates (GPU job, `--test-only`)
 
@@ -47,9 +53,10 @@ only a handful of `mix`/`alloc` nodes.
 | 1 h, 1 GPU, `plgrid-now` | **2026-10-21 22:54** | 2026-10-21 22:54 |
 
 These are estimates from a degraded partition, not guarantees. The relative signal
-is still useful: the oncology account is roughly a week earlier, and `plgrid-now`
-can run a 1 h segment tonight. Note that moving accounts means cancelling and
-resubmitting (age/priority is only ~2 h, so the loss is small).
+is still useful: the oncology account is roughly a week earlier. The `plgrid-now`
+line is a scheduler estimate only; the policy check above says it must not be used
+for batch tuning. Note that moving accounts means cancelling and resubmitting
+(age/priority is only ~2 h, so the loss is small).
 
 **Recommendation:** ask the grant owner today whether BBP may be charged to
 `plgoncotherapy2-gpu-a100`. If yes, resubmit the two pending arrays there and keep
@@ -58,46 +65,52 @@ account; the root cause is the node outage, not the account.
 
 ## 3. Segmentation plan (proposal, not submitted)
 
-### 3.1 Tuning: 5 × 10-trial segments instead of one 50-trial job
+### 3.1 Tuning: 4 × 5-hour resumable segments instead of one 24 h job
 
-Each Seq-Global trial is ~20–25 min. A 50-trial task is 17–21 h; if the node dies at
-hour 16, all uncommitted trials are lost (Optuna keeps completed ones, but the job
-does not resume itself). Replace each 24 h array task with five chained 5 h jobs:
+Each Seq-Global trial is ~20–25 min; 50 trials is 17–21 h per dataset. The
+implemented chain is `scripts/slurm_scripts/mfglobal_tune_segment.slurm` with
+`submit_mfglobal_segments.sh`:
 
-- `--n-trials 10` per segment (the flag exists in `scripts/run_optuna_search.py`).
-- same `--study-name`; `load_if_exists=True` already in the script, so each segment
-  adds 10 trials to the same SQLite study.
-- `--dependency=afterany:<previous>` so only one process writes the SQLite file at
-  a time. Two studies (CIFAR-10/CIFAR-100) still run in parallel.
-- `--time=05:00:00`, `--cpus-per-task=8`, `--mem=48000M` (down from 16 CPU/128 GB).
-  The 3×2000 model and 4 workers do not need 128 GB; smaller requests backfill more
-  easily.
-- If a segment is killed mid-trial, Optuna marks that trial failed and the next
-  segment continues; record failed-trial counts in §9.
+- `--target-trials 50` (new in `scripts/run_optuna_search.py`) means each
+  invocation runs only `50 − stored trials` more. It is a total target, not a
+  per-segment count, so a slow segment cannot overshoot 50.
+- same `--study-name`; `load_if_exists=True` keeps completed trials durable.
+- `--dependency=afterany:<previous>` serializes writers; CIFAR-10 and CIFAR-100
+  still run as two parallel array tasks.
+- `--time=05:00:00`, `--cpus-per-task=8`, `--mem=48000M`.
+- Four segments cover ~20 h at 12-15 trials/segment. A killed segment loses only
+  the in-flight trial; the next one resumes.
+- `submit_mfglobal_segments.sh` refuses to start if an existing
+  `BBP_MFGlobalTune`/`BBP_MFGlobalSeg` job is queued; cancel 3386582 before
+  switching to the chain, so two writers never share the SQLite study.
+- BP-sched gets the same `--target-trials 50` mechanism in
+  `bp_sched_tune.slurm`, but is not chained yet.
 
-This does not increase total GPU work (still 50 trials/study), only the number of
-queue entries. Ten 5 h jobs are more likely to backfill than two 24 h jobs.
+This does not increase total GPU work (still 50 trials/study). It only replaces two
+24 h queue entries with four shorter ones.
 
-### 3.2 Opportunistic `plgrid-now` segments
+### 3.2 `plgrid-now` is not used
 
-If the main queue has still not started by **25 Oct**, run 1 h / 2-trial segments on
-`plgrid-now` (same study names, same dependencies, `--n-trials 2`, `--time=01:00:00`).
-This is opportunistic only: 1 h hard cap, ~10 min startup, so 2 trials is the safe
-limit. Do not count these as the full 50-trial study; they are a hedge that can give
-a usable best-so-far if the main queue stays dead.
+The 1 h partition is fast because it is an interactive/test allocation, not a
+production batch queue. The published policy restricts it to interactive jobs, and
+Athena's docs do not publish an exemption for validation-only tuning. A tuning
+trial is still a batch job whether or not NVML is enabled. Do not use it without
+written helpdesk confirmation; no `plgrid-now` chain is prepared as a fallback.
 
-### 3.3 W1 family: split by arm, shorter wall
+### 3.3 W1 family: core first, then controls
 
-`w1_family.slurm` is 280 tasks × 6 h, 16 CPU/128 GB. Actual per-task times are
-~5 min (BP) to ~20 min (MF-Seq). Proposal for the frozen submission:
+The frozen submission is three arrays, not one 280-task array:
 
-- seven arrays of 40 tasks (BP, MF-Joint, MF-Simul, MF-Seq, Seq-Global, nom0,
-  BP-long), same commit, same seeds.
-- `--time=01:00:00`, `--cpus-per-task=8`, `--mem=48000M`.
-- 1 h is >2× the slowest observed task; if any task needs more, it is a bug and
-  should fail rather than silently occupy a node for 6 h.
-- Splitting by arm lets short BP tasks backfill and gives partial arm-level progress;
-  the freeze is still one commit, and `analyze_w1.py` is unchanged.
+- `w1_family.slurm`: six core arms, 240 tasks, 1 h, 8 CPU/48 GB.
+- `w1_family_controls.slurm`: BP-long, BP-bestval, MF-Seq Protocol B, nom0
+  Protocol B, 160 tasks, 1 h.
+- `w1_bp_sched.slurm`: BP-sched, 40 tasks, 1 h, only after its tuning freezes.
+
+All use the same commit and seeds. 1 h is >2× the slowest observed task; a task
+that needs more is a bug and should fail rather than occupy a node for 6 h. The
+account switch is one line in `scripts/slurm_scripts/w1_submit.sh`; default remains
+the class grant. See `W1_MANIFEST_ADDITIONS.md` for the 440-task count and ~109
+GPU-hour estimate.
 
 ## 4. Pre-declared HPO fallback (proposed; not yet in §9)
 
@@ -140,9 +153,9 @@ not a second worker on the same study.
 
 | date | decision |
 |---|---|
-| 2026-10-22 | Ask grant owner about charging BBP to `plgoncotherapy2-gpu-a100`; decide account |
-| 2026-10-24 | Review whether tuning has started; if not, prepare `plgrid-now` 2-trial chain |
-| **2026-10-28 12:00** | **HPO fallback trigger**; freeze Seq-Global and submit W1 family |
+| 2026-10-22 | Ask grant owner about charging BBP to `plgoncotherapy2-gpu-a100`; decide account. Do not switch before approval. |
+| 2026-10-24 | Review whether tuning has started; if not, keep the 5 h segment chain ready. Do not use `plgrid-now`. |
+| **2026-10-28 12:00** | **HPO fallback trigger**; freeze Seq-Global and submit W1 core |
 | 2026-11-05 | If W1 family has not started, split arrays / escalate node outage to Cyfronet |
 | 2026-11-15 | DSS figure data (already generated from G1 + PPAM; see `jpdc_data/dss/`) |
 | 2026-12-20 | G2 scope gate |
@@ -169,5 +182,5 @@ not a second worker on the same study.
 1. Get the account-scope answer; if yes, cancel/resubmit 3386582/3386586 to
    `plgoncotherapy2-gpu-a100` (test-only estimate 12 Nov vs 19 Nov).
 2. Approve (or edit) the §9 fallback wording above before 28 Oct.
-3. If tuning is still pending on 25 Oct, launch the `plgrid-now` 2-trial chain as a
-   hedge; otherwise keep the 5×10 segment plan ready for the moment nodes return.
+3. If tuning is still pending on 25 Oct, keep the 4×5 h segment chain ready; do
+   not launch `plgrid-now`. Re-probe `sinfo`/`--test-only` before any resubmit.

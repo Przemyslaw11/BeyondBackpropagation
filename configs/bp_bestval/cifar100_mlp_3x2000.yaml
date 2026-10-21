@@ -1,0 +1,62 @@
+# W1 control (b): BP with in-memory best-validation-accuracy restore.
+# See configs/bp_bestval/cifar10_mlp_3x2000.yaml. 0 new tuning trials; inherits
+# core BP's frozen lr/wd.
+
+experiment_name: "bp_bestval_cifar100_mlp_3x2000"
+algorithm:
+  name: "BP"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "AdamW"
+  lr: 6.681923669912236e-05
+  weight_decay: 2.9979680868782076e-06
+
+training:
+  criterion: "CrossEntropyLoss"
+  log_interval: 100
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 20
+  max_epochs: 100
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+  restore_best_in_memory: true
+  save_best_metric: "bp_val_accuracy"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

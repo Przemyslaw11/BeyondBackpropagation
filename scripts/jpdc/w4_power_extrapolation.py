@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""W4: out-of-sample test of the affine power model.
+"""W4 (reframed): within-session ratio prediction, not absolute cross-era energy.
 
-Fit P = P_static + kappa * u on pre-G1 NVML traces only (per-trace mean power
-against per-trace mean GPU utilization), then predict the 160 decisive G1 runs
-from their own mean utilization and compare with measured power and energy.
-Energy uses the measured trace span, so the comparison isolates the power model
-rather than exposure.
+The pre-G1 affine fit P = P_static + kappa*u is retained only for its slope.  For
+each dataset we calibrate the intercept on one BP run from the *same* session
+(seed 42 by default), then predict every arm's energy from its own measured span
+and utilization.  The reported endpoint is the paired per-seed ratio
+E_arm/E_BP, never an absolute cross-era energy.
 
-Trace QC: >=100 samples (>=20 s at 5 Hz), >=60 s span, at most one compute
-process. The primary fit uses every pre-G1 trace; a September-only sensitivity
-is reported. No G1 trace enters the fit.
+Why ratio-only: the intercept is era-specific (G1 sits 3-7% above the pre-G1
+fit), but the utilization slope is stable.  A one-point BP calibration removes
+the era intercept; what remains is a within-session ratio.  Absolute predictions
+are deliberately not reported.
 """
 
 import argparse
@@ -30,8 +31,6 @@ def fit_ols(x: np.ndarray, y: np.ndarray) -> dict:
     cov = sigma2 * np.linalg.inv(X.T @ X)
     se = np.sqrt(np.diag(cov))
     tcrit = stats.t.ppf(0.975, n - 2)
-    ss_res = float(resid @ resid)
-    ss_tot = float(((y - y.mean()) ** 2).sum())
     return dict(
         intercept=float(beta[0]),
         slope=float(beta[1]),
@@ -39,7 +38,7 @@ def fit_ols(x: np.ndarray, y: np.ndarray) -> dict:
         intercept_hi=float(beta[0] + tcrit * se[0]),
         slope_lo=float(beta[1] - tcrit * se[1]),
         slope_hi=float(beta[1] + tcrit * se[1]),
-        r2=1.0 - ss_res / ss_tot,
+        r2=float(1 - (resid @ resid) / ((y - y.mean()) ** 2).sum()),
         resid_sd=float(np.sqrt(sigma2)),
         n=n,
     )
@@ -82,15 +81,75 @@ def trace_table(pattern: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def annotate(pred: pd.DataFrame) -> pd.DataFrame:
-    pred = pred.copy()
-    pred["power_pred"] = pred.intercept + pred.slope * pred.mean_util
-    pred["power_err_pct"] = (
-        100 * (pred.power_pred - pred.mean_power_w) / pred.mean_power_w
-    )
-    pred["energy_pred"] = pred.power_pred * pred.span_sec / 3600.0
-    pred["energy_err_pct"] = 100 * (pred.energy_pred - pred.energy_wh) / pred.energy_wh
-    return pred
+def predicted_energy(g: pd.DataFrame, intercept: float, slope: float) -> pd.Series:
+    return (intercept + slope * g.mean_util) * g.span_sec / 3600.0
+
+
+def ratio_table(cost: pd.DataFrame, slope: float, cal_seed: int) -> pd.DataFrame:
+    out = []
+    for dataset, g in cost.groupby("dataset"):
+        bp = g[g.arm == "bp"].set_index("seed")
+        if cal_seed not in bp.index:
+            raise ValueError(f"calibration seed {cal_seed} missing for {dataset}")
+        cal = bp.loc[cal_seed]
+        intercept = float(cal.mean_power_w - slope * cal.mean_util)
+        g = g.copy()
+        g["intercept_cal"] = intercept
+        g["slope"] = slope
+        g["energy_pred_cal"] = predicted_energy(g, intercept, slope)
+        bp_pred = g[g.arm == "bp"].set_index("seed").energy_pred_cal
+        bp_meas = g[g.arm == "bp"].set_index("seed").energy_wh
+        for arm, a in g.groupby("arm"):
+            a = a.set_index("seed")
+            common = sorted(a.index.intersection(bp_meas.index))
+            if not common:
+                continue
+            meas_ratio = a.loc[common, "energy_wh"] / bp_meas.loc[common]
+            pred_ratio = a.loc[common, "energy_pred_cal"] / bp_pred.loc[common]
+            if arm == "bp":
+                continue
+            err = (pred_ratio / meas_ratio - 1.0) * 100.0
+            out.append(
+                dict(
+                    dataset=dataset,
+                    arm=arm,
+                    n=len(common),
+                    cal_seed=cal_seed,
+                    measured_ratio=float(meas_ratio.mean()),
+                    predicted_ratio=float(pred_ratio.mean()),
+                    ratioBias_pct=float(err.mean()),
+                    ratioMAE_pct=float(err.abs().mean()),
+                    ratioErr_lo=float(err.mean() - stats.sem(err) * stats.t.ppf(0.975, len(err) - 1)),
+                    ratioErr_hi=float(err.mean() + stats.sem(err) * stats.t.ppf(0.975, len(err) - 1)),
+                    measured_ratio_lo=float(meas_ratio.mean() - stats.sem(meas_ratio) * stats.t.ppf(0.975, len(meas_ratio) - 1)),
+                    measured_ratio_hi=float(meas_ratio.mean() + stats.sem(meas_ratio) * stats.t.ppf(0.975, len(meas_ratio) - 1)),
+                )
+            )
+    return pd.DataFrame(out)
+
+
+def sensitivity(cost: pd.DataFrame, slope: float, primary_cal: int) -> pd.DataFrame:
+    rows = []
+    for dataset, g in cost.groupby("dataset"):
+        bp_seeds = sorted(g[g.arm == "bp"].seed.unique())
+        for arm in ("mf_joint", "mf_simul", "mf_seq"):
+            errs = []
+            for cal in bp_seeds:
+                t = ratio_table(g, slope, int(cal))
+                row = t[t.arm == arm]
+                if len(row):
+                    errs.append(float(row.ratioBias_pct.iloc[0]))
+            rows.append(
+                dict(
+                    dataset=dataset,
+                    arm=arm,
+                    primary_cal_seed=primary_cal,
+                    sensitivity_min=float(np.min(errs)),
+                    sensitivity_max=float(np.max(errs)),
+                    sensitivity_median=float(np.median(errs)),
+                )
+            )
+    return pd.DataFrame(rows)
 
 
 def main() -> None:
@@ -98,140 +157,121 @@ def main() -> None:
     parser.add_argument("--traces", type=str, required=True)
     parser.add_argument("--g1-cost", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument("--cal-seed", type=int, default=42)
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     tr = trace_table(args.traces)
     tr.to_csv(args.out_dir / "w4_training_traces.csv", index=False)
     primary = fit_ols(tr.util_pct.to_numpy(float), tr.power_w.to_numpy(float))
-    sep = tr[tr.date.between("20260901", "20260930")]
-    sensitivity = fit_ols(sep.util_pct.to_numpy(float), sep.power_w.to_numpy(float))
+    sep = tr[tr.date.astype(str).str.startswith("202609")]
+    sensitivity_fit = (
+        fit_ols(sep.util_pct.to_numpy(float), sep.power_w.to_numpy(float))
+        if len(sep) >= 3
+        else primary
+    )
 
     cost = pd.read_csv(args.g1_cost)
-    pred = cost[
-        ["arm", "dataset", "seed", "mean_util", "mean_power_w", "span_sec", "energy_wh"]
-    ].copy()
-    pred["intercept"] = primary["intercept"]
-    pred["slope"] = primary["slope"]
-    pred = annotate(pred)
-    pred.to_csv(args.out_dir / "w4_per_run.csv", index=False)
+    ratio = ratio_table(cost, primary["slope"], args.cal_seed)
+    ratio.to_csv(args.out_dir / "w4_ratio_summary.csv", index=False)
+    sens = sensitivity(cost, primary["slope"], args.cal_seed)
+    sens.to_csv(args.out_dir / "w4_ratio_sensitivity.csv", index=False)
 
-    # constant-power baseline
-    naive_power = float(tr.power_w.mean())
-    pred["power_naive"] = naive_power
-    pred["power_naive_err_pct"] = (
-        100 * (pred.power_naive - pred.mean_power_w) / pred.mean_power_w
-    )
-    pred["energy_naive"] = naive_power * pred.span_sec / 3600.0
-    pred["energy_naive_err_pct"] = (
-        100 * (pred.energy_naive - pred.energy_wh) / pred.energy_wh
-    )
-
-    rows = []
-    for (dataset, arm), g in pred.groupby(["dataset", "arm"]):
-        p_err = g.power_err_pct.to_numpy(float)
-        e_err = g.energy_err_pct.to_numpy(float)
-        rows.append(
-            dict(
-                dataset=dataset,
-                arm=arm,
-                n=len(g),
-                power_measured=float(g.mean_power_w.mean()),
-                power_pred=float(g.power_pred.mean()),
-                power_bias_pct=float(p_err.mean()),
-                power_mae_pct=float(np.abs(p_err).mean()),
-                power_rmse_w=float(
-                    np.sqrt((g.power_pred - g.mean_power_w).pow(2).mean())
-                ),
-                power_r2=float(
-                    1
-                    - ((g.power_pred - g.mean_power_w) ** 2).sum()
-                    / ((g.mean_power_w - g.mean_power_w.mean()) ** 2).sum()
-                ),
-                energy_measured=float(g.energy_wh.mean()),
-                energy_pred=float(g.energy_pred.mean()),
-                energy_bias_pct=float(e_err.mean()),
-                energy_mae_pct=float(np.abs(e_err).mean()),
-                power_mae_naive_pct=float(np.abs(g.power_naive_err_pct).mean()),
-                power_mae_gain_pct=float(
-                    np.abs(g.power_naive_err_pct).mean() - np.abs(p_err).mean()
-                ),
+    # Per-run audit values, still ratio-oriented in the summary.
+    per_run = []
+    for dataset, g in cost.groupby("dataset"):
+        bp = g[g.arm == "bp"].set_index("seed")
+        cal = bp.loc[args.cal_seed]
+        intercept = float(cal.mean_power_w - primary["slope"] * cal.mean_util)
+        g = g.copy()
+        g["intercept_cal"] = intercept
+        g["energy_pred_cal"] = predicted_energy(g, intercept, primary["slope"])
+        bp_e = bp.energy_wh
+        bp_p = g[g.arm == "bp"].set_index("seed").energy_pred_cal
+        for _, r in g.iterrows():
+            if r.seed not in bp_e.index:
+                continue
+            per_run.append(
+                dict(
+                    dataset=dataset,
+                    arm=r.arm,
+                    seed=int(r.seed),
+                    mean_util=r.mean_util,
+                    measured_energy_wh=r.energy_wh,
+                    predicted_energy_cal_wh=r.energy_pred_cal,
+                    measured_ratio_vs_bp=float(r.energy_wh / bp_e.loc[r.seed]),
+                    predicted_ratio_vs_bp=float(r.energy_pred_cal / bp_p.loc[r.seed]),
+                )
             )
-        )
-    arm_tab = pd.DataFrame(rows)
-    arm_tab.to_csv(args.out_dir / "w4_arm_summary.csv", index=False)
+    pd.DataFrame(per_run).to_csv(args.out_dir / "w4_ratio_per_run.csv", index=False)
 
-    all_p = pred.power_err_pct.to_numpy(float)
-    all_e = pred.energy_err_pct.to_numpy(float)
-    overall = dict(
-        power_bias=float(all_p.mean()),
-        power_mae=float(np.abs(all_p).mean()),
-        energy_bias=float(all_e.mean()),
-        energy_mae=float(np.abs(all_e).mean()),
-        power_r2=float(
-            1
-            - ((pred.power_pred - pred.mean_power_w) ** 2).sum()
-            / ((pred.mean_power_w - pred.mean_power_w.mean()) ** 2).sum()
-        ),
-    )
-
-    lines = ["# W4 — out-of-sample affine power model", ""]
+    lines = ["# W4 — within-session MF/BP energy-ratio prediction", ""]
     lines.append(
-        "Fit on pre-G1 traces only (no G1 trace enters the fit): per-trace mean "
-        "power vs per-trace mean GPU utilization. Predictions use each G1 run's "
-        "own utilization; predicted energy = predicted power × that run's measured "
-        "trace span, so the error is the power-model error, not a duration choice."
+        "**Reframing.** Absolute cross-era energy predictions are retired. The "
+        "model predicts only the within-session ratio E_arm/E_BP after a one-point "
+        "intercept calibration on a same-dataset BP run (seed "
+        f"{args.cal_seed}). The pre-G1 fit supplies the utilization slope; the "
+        "calibration removes the era-specific intercept."
     )
     lines.append("")
-    lines.append("## Pre-G1 fit")
+    lines.append("## Pre-G1 slope fit (fit only; not a G1 absolute prediction)")
     lines.append("")
     lines.append(
-        f"- traces passing QC: **{primary['n']}** (September-only sensitivity n={sensitivity['n']})"
+        f"- traces passing QC: **{primary['n']}**; September-only n={sensitivity_fit['n']}"
     )
     lines.append(
-        f"- **P = {primary['intercept']:.2f} [{primary['intercept_lo']:.2f}, "
+        f"- P = {primary['intercept']:.2f} [{primary['intercept_lo']:.2f}, "
         f"{primary['intercept_hi']:.2f}] + {primary['slope']:.3f} "
-        f"[{primary['slope_lo']:.3f}, {primary['slope_hi']:.3f}] · u**, R² = "
-        f"**{primary['r2']:.3f}**, residual SD = {primary['resid_sd']:.2f} W"
+        f"[{primary['slope_lo']:.3f}, {primary['slope_hi']:.3f}]·u, R² = "
+        f"{primary['r2']:.3f}"
     )
     lines.append(
-        f"- September-only fit: P = {sensitivity['intercept']:.2f} + "
-        f"{sensitivity['slope']:.3f}·u, R² = {sensitivity['r2']:.3f} (coefficients "
-        "stable to <0.01 W / <0.001)"
+        f"- September-only slope {sensitivity_fit['slope']:.3f} "
+        f"[{sensitivity_fit['slope_lo']:.3f}, {sensitivity_fit['slope_hi']:.3f}], "
+        f"R² = {sensitivity_fit['r2']:.3f}"
     )
     lines.append("")
-    lines.append("## Out-of-sample G1 prediction (n=160)")
+    lines.append("## Ratio prediction (paired by seed, mean [95% t-CI])")
     lines.append("")
     lines.append(
-        f"- power bias **{overall['power_bias']:+.2f}%**, MAE **{overall['power_mae']:.2f}%**, "
-        f"run-level R² **{overall['power_r2']:.3f}**"
+        "| dataset | arm | n | measured E_arm/E_BP | predicted ratio | ratio bias % | ratio MAE % |"
     )
-    lines.append(
-        f"- energy bias **{overall['energy_bias']:+.2f}%**, MAE **{overall['energy_mae']:.2f}%**"
-    )
-    lines.append("")
-    lines.append(
-        "| dataset | arm | n | power meas W | power pred W | bias % | MAE % | energy meas Wh | energy pred Wh | bias % | MAE % | MAE gain vs constant (pp) |"
-    )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
-    for _, r in arm_tab.iterrows():
+    lines.append("|---|---|---|---|---|---|---|")
+    for _, r in ratio.iterrows():
         lines.append(
-            f"| {r.dataset} | {r.arm} | {r.n} | {r.power_measured:.1f} | {r.power_pred:.1f} | "
-            f"{r.power_bias_pct:+.1f} | {r.power_mae_pct:.1f} | {r.energy_measured:.2f} | "
-            f"{r.energy_pred:.2f} | {r.energy_bias_pct:+.1f} | {r.energy_mae_pct:.1f} | "
-            f"{r.power_mae_gain_pct:+.1f} |"
+            f"| {r.dataset} | {r.arm} | {int(r.n)} | "
+            f"{r.measured_ratio:.3f} [{r.measured_ratio_lo:.3f}, {r.measured_ratio_hi:.3f}] | "
+            f"{r.predicted_ratio:.3f} | {r.ratioBias_pct:+.2f} "
+            f"[{r.ratioErr_lo:+.2f}, {r.ratioErr_hi:+.2f}] | {r.ratioMAE_pct:.2f} |"
+        )
+    lines.append("")
+    lines.append("## Calibration-run sensitivity")
+    lines.append("")
+    lines.append(
+        "Each BP seed 42–61 was used as the one calibration point in turn; the "
+        "table gives the range of the mean ratio bias. This tests whether the "
+        "headline ratio depends on seed 42 being atypical."
+    )
+    lines.append("")
+    lines.append("| dataset | arm | primary seed | bias range % | median bias % |")
+    lines.append("|---|---|---|---|---|")
+    for _, r in sens.iterrows():
+        lines.append(
+            f"| {r.dataset} | {r.arm} | {int(r.primary_cal_seed)} | "
+            f"[{r.sensitivity_min:+.2f}, {r.sensitivity_max:+.2f}] | "
+            f"{r.sensitivity_median:+.2f} |"
         )
     lines.append("")
     lines.append("## Reading")
     lines.append("")
     lines.append(
-        "The utilization slope transfers, but the intercept does not: every G1 arm "
-        "sits 3–7% above the pre-G1 prediction at the same utilization, which is the "
-        "same era shift W0e measures directly (power +0.5 to +2.8 W, no co-tenants). "
-        "The model therefore ranks arms only partly correctly — MF-Seq is identified "
-        "as the low-power arm, but CIFAR-100 BP vs MF-Joint flips — and must not be "
-        "used for absolute cross-era energy. It is usable only with a same-era "
-        "recalibration, which is exactly why the decisive table is G1-only."
+        "The slope transfers; the raw intercept does not. After one BP calibration "
+        "point per dataset, the CIFAR-10 mean ratio bias is within about 1%, but the "
+        "per-seed ratio MAE is 4.0–4.7%; CIFAR-100 has a +3.5 to +4.4% mean bias and "
+        "5.4–6.4% MAE. These are ratio errors, not absolute joule predictions. The "
+        "calibration-seed range shows that seed 42 is not special, but it also shows "
+        "that the residual ratio error is real. Do not use the model across eras "
+        "without a fresh same-session BP calibration."
     )
     (args.out_dir / "w4_summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))

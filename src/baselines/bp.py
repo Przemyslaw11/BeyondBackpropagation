@@ -2,6 +2,7 @@
 """Implementation of standard backpropagation training and evaluation."""
 
 import logging
+import math
 import os
 import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
@@ -196,6 +197,17 @@ def train_bp_model(
     keep_best_only = checkpoint_config.get("keep_best_only", True)
     save_best_metric = checkpoint_config.get("save_best_metric", "bp_val_loss").lower()
     save_best_metric_mode = "max" if "accuracy" in save_best_metric else "min"
+    restore_best_in_memory = bool(
+        checkpoint_config.get("restore_best_in_memory", False)
+    )
+    if restore_best_in_memory and val_loader is None:
+        logger.warning(
+            "restore_best_in_memory=true but no validation loader; disabling "
+            "in-memory best-state restore."
+        )
+        restore_best_in_memory = False
+    best_in_memory_state: Optional[Dict[str, torch.Tensor]] = None
+    best_in_memory_accuracy = -float("inf")
 
     es_enabled = es_policy["enabled"]
     es_metric = es_policy["metric"]
@@ -316,6 +328,20 @@ def train_bp_model(
             val_loss, val_acc = evaluate_bp_model(
                 model, val_loader, criterion, device, input_adapter
             )
+            if (
+                restore_best_in_memory
+                and math.isfinite(float(val_acc))
+                and float(val_acc) > best_in_memory_accuracy
+            ):
+                best_in_memory_accuracy = float(val_acc)
+                best_in_memory_state = {
+                    key: value.detach().cpu().clone()
+                    for key, value in model.state_dict().items()
+                }
+                logger.info(
+                    f"Epoch {epoch + 1}: new best in-memory validation accuracy "
+                    f"{best_in_memory_accuracy:.2f}%."
+                )
             if save_best_metric == "bp_val_accuracy":
                 current_checkpoint_metric_value = val_acc
             elif save_best_metric == "bp_val_loss":
@@ -471,7 +497,18 @@ def train_bp_model(
         f"{format_time(total_training_time)}"
     )
 
-    if checkpoint_dir:
+    if restore_best_in_memory:
+        if best_in_memory_state is not None:
+            logger.info(
+                "Restoring best in-memory validation-accuracy state "
+                f"({best_in_memory_accuracy:.2f}%). No checkpoint file was written."
+            )
+            model.load_state_dict(best_in_memory_state)
+        else:
+            logger.warning(
+                "No finite validation accuracy was recorded; keeping last-epoch weights."
+            )
+    elif checkpoint_dir:
         experiment_name = config.get("experiment_name", "model")
         best_checkpoint_path = os.path.join(
             checkpoint_dir, f"bp_{experiment_name}_best.pth"

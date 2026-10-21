@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""W3: hook-based byte accounting per pass and to stopping.
+"""W3 legacy: logical *memory-traffic* accounting (not cut communication).
+
+This table counts every parameter read and every layer activation read/write,
+not just tensors crossing a layer boundary.  The old headline "69 GB/pass" is
+memory traffic, not communication.  The redone cut-boundary accounting is
+``w3_cut_communication.py``; keep this file only as the relabelled memory table.
 
 Counts tensor traffic through the exact execution graph of each arm on the
 canonical 3x2000 CIFAR MLP:
@@ -444,7 +449,13 @@ def main() -> None:
     cache_df.to_csv(args.out_dir / "w3_cache_counterfactual.csv", index=False)
 
     # markdown
-    lines = ["# W3 — hook-based byte accounting", ""]
+    lines = ["# W3 legacy — logical memory traffic (not cut communication)", ""]
+    lines.append(
+        "**Do not cite the 69 GB/pass total as communication.** This table counts "
+        "parameter reads and all layer activation reads/writes; the redone "
+        "cut-boundary accounting is in `w3_cut_summary.md`."
+    )
+    lines.append("")
     lines.append(
         f"Canonical 3×2000 CIFAR MLP, batch {BATCH}, {N_BATCHES} batches/pass "
         f"({TRAIN_SAMPLES:,} training samples). Logical tensor traffic: forward "

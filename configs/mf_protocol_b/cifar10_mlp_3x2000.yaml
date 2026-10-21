@@ -1,0 +1,66 @@
+# W1 control (d): MF-Seq under Protocol B, contemporaneous with core BP.
+#
+# Protocol B gives every MF stage the same epoch budget, ceil(Ebar_BP / S), with
+# S = 4 (M0 + W1..W3). Ebar_BP is the mean core-BP pass count from the same W1
+# session; the planning value comes from G1 (52.95 C10), giving ceil(52.95/4)=14.
+# The control-run budget is frozen from the actual core-BP mean before these
+# runs start and recorded in PREREG-phase2.md §9. BP itself is not rerun: the
+# core BP arm, with its own early stopping, is the Protocol-B BP reference.
+#
+# Patience equals the budget so early stopping cannot fire before the budget is
+# spent; validation still runs every epoch, as in BP.
+
+experiment_name: "mf_protocol_b_cifar10_mlp_3x2000"
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00021536491821693216
+  weight_decay: 1.606438244272842e-06
+  log_interval: 9999
+  activation_cache: recompute
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 14
+  max_epochs: 14
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

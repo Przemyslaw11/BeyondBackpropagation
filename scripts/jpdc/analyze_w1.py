@@ -6,7 +6,9 @@ Reads per arm x dataset x seed 42-61, exactly like analyze_g1:
 - NVML CSV:  the exact `monitoring_csv_path` stored in that JSON (energy, Wh)
 
 Arms (6 main): bp, mf_joint, mf_simul, mf_seq, mf_global, mf_nom0.
-Conditional arms (if present): bp_long (max_epochs 300), mf_seq_cap300.
+Controls (descriptive, not in Holm): bp_long (max_epochs 300), bp_bestval,
+bp_sched, mf_seq_protocol_b, mf_nom0_protocol_b, and the conditional
+mf_seq_cap300.
 
 Decision blocks (frozen thresholds, CIFAR-100 primary; CIFAR-10 consistency):
 - H-W1a (locality):      global - seq <= -2.0 pp AND global - simul <= +1.0 pp
@@ -17,7 +19,9 @@ Holm: three primary comparisons (global-seq, global-simul, nom0-seq) on C100.
 
 Missing arms are reported as "not run" and their hypotheses left undecided; the
 script never imputes. All numbers come from the run artifacts named above; the
-shared append-only log is never read (PREREG.md §10 amendment).
+shared append-only log is never read (PREREG.md §10 amendment). Means and
+medians are both reported; inference uses the pre-registered Wilcoxon test on
+paired differences.
 """
 
 import argparse
@@ -44,15 +48,19 @@ ARMS = {
     "mf_global": "mf_global_{dataset}_mlp_3x2000",
     "mf_nom0": "mf_nom0_{dataset}_mlp_3x2000",
 }
-CONDITIONAL_ARMS = {
+CONTROL_ARMS = {
     "bp_long": "bp_long_{dataset}_mlp_3x2000",
+    "bp_bestval": "bp_bestval_{dataset}_mlp_3x2000",
+    "bp_sched": "bp_sched_{dataset}_mlp_3x2000",
+    "mf_seq_protocol_b": "mf_protocol_b_{dataset}_mlp_3x2000",
+    "mf_nom0_protocol_b": "mf_nom0_protocol_b_{dataset}_mlp_3x2000",
     "mf_seq_cap300": "mf_cap300_{dataset}_mlp_3x2000",
 }
 
 
 def collect(results_dir: Path) -> pd.DataFrame:
     rows = []
-    for arm, pattern in {**ARMS, **CONDITIONAL_ARMS}.items():
+    for arm, pattern in {**ARMS, **CONTROL_ARMS}.items():
         for dataset in ("cifar10", "cifar100"):
             experiment = pattern.format(dataset=dataset)
             for seed in SEEDS:
@@ -74,6 +82,18 @@ def collect(results_dir: Path) -> pd.DataFrame:
                         duration_sec=record.get("total_run_duration_sec"),
                     )
                 )
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "arm",
+                "dataset",
+                "seed",
+                "test_accuracy",
+                "passes",
+                "energy_wh",
+                "duration_sec",
+            ]
+        )
     return pd.DataFrame(rows)
 
 
@@ -84,13 +104,21 @@ def paired(df: pd.DataFrame, arm_a: str, arm_b: str, dataset: str, metric: str) 
     diffs = (a.loc[common] - b.loc[common]).to_numpy(dtype=float)
     diffs = diffs[~np.isnan(diffs)]
     if len(diffs) < 3:
-        return dict(n=len(diffs), mean=float("nan"), ci_low=float("nan"), ci_high=float("nan"), p=1.0)
+        return dict(
+            n=len(diffs),
+            mean=float("nan"),
+            median=float("nan"),
+            ci_low=float("nan"),
+            ci_high=float("nan"),
+            p=1.0,
+        )
     rng = np.random.default_rng(BOOTSTRAP_SEED)
     boot = diffs[rng.integers(0, len(diffs), size=(BOOTSTRAP_N, len(diffs)))].mean(axis=1)
     p = 1.0 if np.allclose(diffs, 0.0) else float(stats.wilcoxon(diffs, alternative="two-sided").pvalue)
     return dict(
         n=len(diffs),
         mean=float(np.mean(diffs)),
+        median=float(np.median(diffs)),
         ci_low=float(np.percentile(boot, 2.5)),
         ci_high=float(np.percentile(boot, 97.5)),
         p=p,
@@ -133,7 +161,7 @@ def main() -> None:
     lines.append("")
     lines.append("| arm | dataset | n | acc % | passes | energy Wh | wall s |")
     lines.append("|---|---|---|---|---|---|---|")
-    for arm in list(ARMS) + list(CONDITIONAL_ARMS):
+    for arm in list(ARMS) + list(CONTROL_ARMS):
         for dataset in ("cifar10", "cifar100"):
             sub = df[(df.arm == arm) & (df.dataset == dataset)]
             if sub.empty:
@@ -149,6 +177,24 @@ def main() -> None:
             lines.append(f"| {arm} | {dataset} | {len(sub)} | " + " | ".join(cells) + " |")
     lines.append("")
 
+    lines.append("## Per-arm medians")
+    lines.append("")
+    lines.append("| arm | dataset | n | median acc % | median passes | median energy Wh | median wall s |")
+    lines.append("|---|---|---|---|---|---|---|")
+    for arm in list(ARMS) + list(CONTROL_ARMS):
+        for dataset in ("cifar10", "cifar100"):
+            sub = df[(df.arm == arm) & (df.dataset == dataset)]
+            if sub.empty:
+                continue
+            medians = []
+            for metric in ("test_accuracy", "passes", "energy_wh", "duration_sec"):
+                values = sub[metric].astype(float).dropna()
+                medians.append(f"{values.median():.3g}" if len(values) else "n/a")
+            lines.append(
+                f"| {arm} | {dataset} | {len(sub)} | " + " | ".join(medians) + " |"
+            )
+    lines.append("")
+
     lines.append("## Primary comparisons (CIFAR-100)")
     lines.append("")
     comparisons = []
@@ -159,14 +205,15 @@ def main() -> None:
         comparisons.append((arm_a, arm_b, stat))
     pvals = [stat["p"] for _, _, stat in comparisons]
     adjusted = holm(pvals) if all(np.isfinite(pvals)) else pvals
-    lines.append("| delta | n | mean pp | 95% CI | raw p | Holm p |")
-    lines.append("|---|---|---|---|---|---|")
+    lines.append("| delta | n | mean pp | median pp | 95% CI | raw p | Holm p |")
+    lines.append("|---|---|---|---|---|---|---|")
     for (arm_a, arm_b, stat), p_holm in zip(comparisons, adjusted):
         if stat["n"] == 0:
-            lines.append(f"| {arm_a} − {arm_b} | — | not run | | | |")
+            lines.append(f"| {arm_a} − {arm_b} | — | not run | — | — | — | — |")
         else:
             lines.append(
-                f"| {arm_a} − {arm_b} | {stat['n']} | {stat['mean']:+.2f} "
+                f"| {arm_a} − {arm_b} | {stat['n']} | {stat['mean']:+.2f} | "
+                f"{stat['median']:+.2f} | "
                 f"[{stat['ci_low']:+.2f}, {stat['ci_high']:+.2f}] | {stat['p']:.4f} | {p_holm:.4f} |"
             )
     lines.append("")
@@ -203,7 +250,6 @@ def main() -> None:
 
     if arm_present(df, "bp_long", "cifar100") and arm_present(df, "mf_seq", "cifar100"):
         d_bp_long = paired(df, "bp_long", "mf_seq", "cifar100", "test_accuracy")
-        ratio = paired(df, "bp_long", "mf_seq", "cifar100", "passes")
         seq_passes = df[(df.arm == "mf_seq") & (df.dataset == "cifar100")].passes.mean()
         bp_long_passes = df[(df.arm == "bp_long") & (df.dataset == "cifar100")].passes.mean()
         verdicts.append(
@@ -216,6 +262,46 @@ def main() -> None:
 
     for line in verdicts:
         lines.append(f"- {line}")
+    lines.append("")
+
+    lines.append("## Control and robustness checks (descriptive; not in Holm)")
+    lines.append("")
+    lines.append(
+        "These are controls added before any W1 confirmatory result. They do not "
+        "change the six-arm primary family, thresholds or Holm correction. BP under "
+        "Protocol B is the core BP arm; no duplicate BP Protocol-B runs exist."
+    )
+    lines.append("")
+    lines.append("| dataset | contrast | metric | n | mean diff | median diff | 95% CI | raw p |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    contrasts = [
+        ("bp_bestval", "bp", "test_accuracy", "BP-bestval − BP (pp)"),
+        ("bp_sched", "bp", "test_accuracy", "BP-sched − BP (pp)"),
+        ("mf_seq_protocol_b", "bp", "test_accuracy", "MF-Seq ProtoB − BP (pp)"),
+        ("mf_seq_protocol_b", "bp", "passes", "MF-Seq ProtoB − BP passes"),
+        ("mf_seq_protocol_b", "bp", "energy_wh", "MF-Seq ProtoB − BP energy (Wh)"),
+        ("mf_nom0_protocol_b", "mf_seq_protocol_b", "test_accuracy", "nom0 ProtoB − MF-Seq ProtoB (pp)"),
+        ("mf_nom0_protocol_b", "mf_seq_protocol_b", "passes", "nom0 ProtoB − MF-Seq ProtoB passes"),
+        ("mf_nom0_protocol_b", "mf_seq_protocol_b", "energy_wh", "nom0 ProtoB − MF-Seq ProtoB energy (Wh)"),
+        ("bp_sched", "bp", "energy_wh", "BP-sched − BP energy (Wh)"),
+    ]
+    for dataset in ("cifar10", "cifar100"):
+        for arm_a, arm_b, metric, label in contrasts:
+            if not (arm_present(df, arm_a, dataset) and arm_present(df, arm_b, dataset)):
+                continue
+            stat = paired(df, arm_a, arm_b, dataset, metric)
+            lines.append(
+                f"| {dataset} | {label} | {metric} | {stat['n']} | "
+                f"{stat['mean']:+.3f} | {stat['median']:+.3f} | "
+                f"[{stat['ci_low']:+.3f}, {stat['ci_high']:+.3f}] | "
+                f"{stat['p']:.4f} |"
+            )
+    lines.append("")
+    lines.append(
+        "Tuning disclosure: Seq-Global and BP-sched each receive 50 lr/wd trials per "
+        "dataset; BP-bestval and both Protocol-B arms inherit frozen values and add "
+        "0 trials. The six core arms keep their original budgets."
+    )
     lines.append("")
 
     if arm_present(df, "mf_seq_cap300", "cifar100") and arm_present(df, "mf_seq", "cifar100"):

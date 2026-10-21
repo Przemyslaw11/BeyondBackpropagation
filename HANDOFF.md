@@ -34,22 +34,41 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - **DSS Pareto data:** `jpdc_data/dss/` has Protocol A (all four arms, G1) and
   Protocol B (PPAM BP + MF-Seq only; MF-Joint/MF-Simul explicitly not measured).
   Protocol B reproduces −19.9%/−12.5% energy and −27.5%/−24.6% memory.
-- **W4 power model:** fit on 892 pre-G1 traces only, P = 51.97 [51.33, 52.61] +
-  1.085 [1.036, 1.133]·u, R²=0.684. It under-predicts every G1 arm by 3–7%
-  (MAE 4.9%, run-level R² 0.317) — the era shift again. No absolute cross-era use.
-- **W3 byte accounting:** hooks on the exact BP/MF-Simul/MF-Seq graphs; BP 69.1 GB
-  per pass (C10), MF-Simul 70.6, MF-Seq 25.1–37.6 by stage; bytes-to-stopping
-  ratios 1.13× (MF-Simul C10), 0.86× (C100), 1.70×/1.90× (MF-Seq). M0 = 20.0% of
-  MF-Seq bytes (22.9% energy); cached-prefix bound saves 11–12% total / 13–14%
-  activation-only (augmentation makes the canonical cache invalid).
+- **W4 power model (reframed, 2026-10-21):** the pre-G1 fit is retained only for
+  its slope, P = 51.97 [51.33, 52.61] + 1.085 [1.036, 1.133]·u, R²=0.684. W4 now
+  reports a **within-session E_arm/E_BP ratio** after one-point intercept
+  calibration on BP seed 42 per dataset. C10 mean ratio bias ≤1.1% but per-seed
+  MAE 4.0–4.7%; C100 bias +3.5 to +4.4%, MAE 5.4–6.4%. Absolute cross-era use is
+  retired; see `jpdc_data/g1/w4_ratio/`. The old absolute table is
+  `w4_absolute_legacy.md`.
+- **W3 cut communication (redone, 2026-10-21):** the old 69.1 GB/pass is
+  **memory traffic** (parameter re-reads + all layer activations), not cut
+  communication. New unit: 0.36 GB per epoch per direction per cut
+  (45,000×2,000×4 B). BP = 2.16 GB/pass, MF-Simul = 1.08, MF-Seq useful =
+  0.36 per prefix cut per stage epoch. Bytes-to-stopping: BP 114.4/94.8 GB
+  (C10/C100), MF-Simul 62.9/38.6, MF-Seq useful 30.0/26.5, MF-Seq as
+  implemented 83.4/74.4 (dead M0 forward 1.08 GB/pass). Cached-prefix bound saves
+  22.1%/25.3% of useful cut bytes; augmentation makes it a counterfactual.
+  `scripts/jpdc/w3_cut_communication.py`, `jpdc_data/g1/w3_cut/`.
+- **Stage-0 audit:** production `train_mf_matrix_only` calls W1..WL in train and
+  validation although M0 reads only a_0. The dead forward is 99.6%/96.0% of M0
+  FLOPs, ≥3.97/3.43 Wh of waste. Ex-M0 multipliers: energy 2.69×/2.92×,
+  passes 3.05×/3.35×, time 3.03×/3.35×; `ERRATA_PPAM.md` row 6,
+  `w3_stage0_audit.md`.
 - **Queue/account audit:** jobs 3386582/3386586 are on
   `plglscclass26-gpu-a100` (fairshare 0.000, 44/48 A100 nodes unavailable).
   `plgoncotherapy2-gpu-a100` exists (fairshare 0.728, 0 usage); `--test-only`
   estimates 12 Nov vs 19 Nov for a 4 h GPU job; `plgrid-now` (1 h cap) estimates
-  tonight. Proposal, no submission: `QUEUE_RISK_W1.md`.
-- **W1 manifest confirmed:** 14 configs = 6 main arms × 2 datasets + BP-long
-  control × 2; 280 tasks; cap-300 not in the array. `PREREG-phase2.md` §9 records
-  this and the separate `PREREG-W2-W3.md` draft. No W1 protocol change.
+  tonight but is **not used** because its published policy is interactive-only.
+  Proposal, no submission: `QUEUE_RISK_W1.md`.
+- **W1 manifest revised (2026-10-21, controls only):** core six arms = 240 tasks
+  (`w1_family.slurm`), controls = 160 tasks (`w1_family_controls.slurm`: BP-long,
+  BP-bestval, MF-Seq Protocol B, nom0 Protocol B), BP-sched = 40 tasks
+  (`w1_bp_sched.slurm`, after its 50-trial study). **Base total 440 tasks**;
+  cap-300 remains conditional. Equal disclosed tuning: Seq-Global and BP-sched
+  each 100 trials (50/dataset); other controls inherit. Estimated ~58 GPU-h
+  confirm + ~51 GPU-h tuning; details `W1_MANIFEST_ADDITIONS.md`. No W1 protocol
+  or threshold change; all controls outside Holm.
 
 ## Headline numbers (canonical Protocol A, 20 seeds)
 - MF/BP unit-epoch multiplier: CIFAR-10 4.07, CIFAR-100 4.46, MNIST 3.67, Fashion 4.32.
@@ -115,19 +134,25 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
      `scripts/jpdc/summarize_cap_pilot.py` (frozen trigger, unit-tested).
    - Both charge `plglscclass26-gpu-a100`, pending `ReqNodeNotAvail` with 44/48 A100
      nodes unavailable. `--test-only` estimates 19 Nov (class) vs 12 Nov (oncology
-     account) for a 4 h GPU job; `plgrid-now` 1 h estimates tonight. Account scope
-     must be approved before switching. Full evidence + segmentation/fallback plan:
-     `QUEUE_RISK_W1.md` (no job submitted for it).
-   - Then submit `scripts/slurm_scripts/w1_family.slurm` (280 tasks = 6 main arms +
-     BP-long, 14 configs x 20 seeds) at the frozen commit; archive of G1 lives in
-     cluster `results/archive_g1_20261021/`.
+     account) for a 4 h GPU job. Account scope must be approved before switching.
+     Full evidence + segmentation/fallback plan: `QUEUE_RISK_W1.md` (no job
+     submitted for it).
+   - Submission is now three arrays: core 240 (`w1_submit.sh core`), controls 160
+     (`w1_submit.sh controls`), BP-sched 40 (`w1_submit.sh sched`). The one account
+     line is in `scripts/slurm_scripts/w1_submit.sh`; default stays class. Archive
+     of G1 lives in cluster `results/archive_g1_20261021/`.
 9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
-   (already written; mirror `analyze_g1` structure with H-W1a..d as decision blocks).
+   (updated with the four control contrasts; H-W1a..d decision blocks unchanged).
 10. Queue decision by 2026-10-22: confirm whether BBP may charge
     `plgoncotherapy2-gpu-a100`; if yes, cancel/resubmit the two pending arrays there.
+    Do not switch before written approval.
 11. Approve/edit the time-triggered HPO fallback wording in `QUEUE_RISK_W1.md` §4
     before 2026-10-28 12:00 Europe/Warsaw; do not let it depend on W1 outcomes.
-12. DSS data are ready in `jpdc_data/dss/`; build the figure after W1, keeping
+    Insert it into `PREREG-phase2.md` §9 only after author confirmation.
+12. Seq-Global tuning chain is prepared as 4×5 h resumable segments
+    (`submit_mfglobal_segments.sh`, `--target-trials 50`); `plgrid-now` is **not**
+    used because its published policy is interactive-only. No chain submitted yet.
+13. DSS data are ready in `jpdc_data/dss/`; build the figure after W1, keeping
     Protocol A and B on separate axes (era drift is real).
 
 ## Resolved questions (author, 2026-10-16)
@@ -234,6 +259,14 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   account/queue audit found 44/48 nodes unavailable and a second allocation. W1 manifest
   (14 configs/280 tasks) confirmed; `PREREG-W2-W3.md` draft + `QUEUE_RISK_W1.md` memo added.
   No GPU jobs submitted.
+- 2026-10-21 (six-item package): W3 redone as cut-boundary communication (BP 2.16 GB/pass,
+  old 69.1 GB/pass relabelled memory traffic); stage-0 production path audited (dead forward
+  99.6%/96.0% of M0 FLOPs; ex-M0 multipliers 2.69×/2.92× energy); W1 controls added
+  (BP-sched, BP-bestval, Protocol-B MF-Seq/nom0; base 440 tasks, ~109 GPU-h) with an
+  in-memory best-state restore and scheduler-aware BP tuning; C100 test provenance fixed
+  (Wilcoxon p=0.0759 vs paired-t CI [-0.525,-0.008], p=0.0437); W4 reframed as a calibrated
+  ratio model; submission variants and 4×5 h resumable tuning chain prepared, not submitted.
+  `plgrid-now` rejected on policy (interactive-only). No GPU jobs submitted or cancelled.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.

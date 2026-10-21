@@ -16,11 +16,15 @@ audit (below) changed pass/energy *sources*, not endpoints or thresholds.
 | arm | C10 Δ vs BP (pp) | C100 Δ vs BP (pp) | verdict-relevant |
 |---|---|---|---|
 | MF-Joint | −0.19 [−0.44, +0.05], p=0.19 | **+1.86** [+1.66, +2.06], p=1.9e−6 | joint MF readout alone ≈ +2 pp on C100 |
-| MF-Simul | **−0.86** [−1.16, −0.56], p<0.001 | **−0.27** [−0.50, −0.03], p=0.076 | detachment alone ≈ BP; no edge |
+| MF-Simul | **−0.86** [−1.16, −0.56], p<0.001 | **−0.27** [−0.50, −0.03], p=0.076 (Wilcoxon; paired-t CI [−0.525, −0.008], p=0.044) | detachment alone ≈ BP; no edge |
 | MF-Seq | **+3.90** | **+5.04** [+4.82, +5.25] | staged schedule reproduces the paper edge |
 
 Decision rule: C100 Δ(MF-Simul − BP) ≤ +0.5 pp with MF-Seq ≥ +2.0 pp ⇒ **Decision B (schedule
 artifact)**. Detachment is not where the accuracy comes from; the staged schedule is.
+
+Brackets are 95% percentile-bootstrap CIs for the mean (production reducer: 10,000 resamples,
+seed 0); p-values are exact two-sided paired Wilcoxon tests. The C100 MF-Simul disagreement
+between the interval and the rank test is documented in the test-provenance note below.
 
 ## What the difference costs (paired, same seeds; C100)
 
@@ -71,6 +75,12 @@ M0 contributes nothing to any prediction (phase 2 never reads it; evaluation use
   (−0.86 pp C10, p=0.0003; −0.27 pp C100, p=0.0759). 91/96 cross-checks agree within
   tolerance; the five flags are ≤0.25 passes and come from the stored table's 1-decimal
   rounding, not a substantive mismatch (`jpdc_data/verification/`).
+- **C100 test provenance:** the reported p=0.0759 is the pre-registered two-sided paired
+  Wilcoxon signed-rank test (exact, n=20, W=57), not a bootstrap p-value. The 95% CI is a
+  percentile bootstrap of the mean. A paired t-test gives −0.2665 pp [−0.5247, −0.0083],
+  p=0.0437. The interval/test disagreement is an estimand difference (mean vs signed ranks),
+  not an arithmetic error; the t result is reported as sensitivity only and does not replace
+  the pre-registered verdict.
 - G1 accuracy verdicts are unaffected by all of the above (accuracy never depended on logs).
 
 ## Implications

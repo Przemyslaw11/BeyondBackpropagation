@@ -1,0 +1,59 @@
+# W1 control (c): MF-Seq-nom0 under Protocol B with S = L = 3 real stages.
+# See configs/mf_nom0_protocol_b/cifar10_mlp_3x2000.yaml. Planning value:
+# ceil(43.90 / 3) = 15 epochs per stage; frozen from actual core-BP mean.
+
+experiment_name: "mf_nom0_protocol_b_cifar100_mlp_3x2000"
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00027089684419387227
+  weight_decay: 7.204725563819985e-05
+  log_interval: 9999
+  activation_cache: recompute
+  mf_train_m0: false
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 15
+  max_epochs: 15
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

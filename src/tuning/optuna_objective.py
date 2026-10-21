@@ -97,6 +97,28 @@ def _run_bp_trial_epoch_loop(
         -float("inf") if optimization_direction == "maximize" else float("inf")
     )
 
+    # BP-sched tuning must see the same schedule as the confirmatory run; the
+    # plain BP objective historically had no scheduler support.
+    train_cfg = cfg.get("training", {})
+    scheduler_name = train_cfg.get("scheduler")
+    scheduler_params = train_cfg.get("scheduler_params", {}) or {}
+    scheduler = None
+    if scheduler_name:
+        name = str(scheduler_name).lower()
+        if name == "cosineannealinglr":
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=num_epochs, **scheduler_params
+            )
+        elif name == "steplr":
+            scheduler = optim.lr_scheduler.StepLR(optimizer, **scheduler_params)
+        elif name == "reducelronplateau":
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="max" if optimization_direction == "maximize" else "min",
+                **scheduler_params,
+            )
+        else:
+            raise ValueError(f"Unsupported scheduler for BP tuning: {scheduler_name}")
+
     logger.info(
         f"Trial {trial.number}: Starting training loop for {num_epochs} epochs."
     )
@@ -151,6 +173,12 @@ def _run_bp_trial_epoch_loop(
             best_val_metric_for_trial = min(
                 best_val_metric_for_trial, current_val_metric
             )
+
+        if scheduler is not None:
+            if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(current_val_metric)
+            else:
+                scheduler.step()
 
     total_trial_time = time.time() - trial_start_time
     logger.info(

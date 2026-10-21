@@ -1,0 +1,70 @@
+# W1 control (a) tuning: 50-trial lr/wd ladder for BP-sched, CIFAR-100.
+# See bp_sched_cifar10_mlp_3x2000_tune.yaml.
+
+experiment_name: "tune_bp_sched_cifar100_mlp_3x2000"
+algorithm:
+  name: "BP"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 0
+  pin_memory: false
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "AdamW"
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+
+training:
+  criterion: "CrossEntropyLoss"
+  log_interval: 99999
+  scheduler: "CosineAnnealingLR"
+  scheduler_params: {}
+
+early_stopping:
+  enabled: false
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 20
+  max_epochs: 100
+
+tuning:
+  enabled: true
+  n_trials: 50
+  direction: "maximize"
+  metric: "val_accuracy"
+  sampler: "TPE"
+  pruner: "None"
+  lr_range: [1.0e-5, 1.0e-2]
+  wd_range: [1.0e-6, 1.0e-3]
+  max_epochs: 100
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: false
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: false
+  energy_enabled: false
+profiling:
+  enabled: false
