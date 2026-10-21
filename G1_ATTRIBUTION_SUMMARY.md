@@ -52,12 +52,25 @@ M0 contributes nothing to any prediction (phase 2 never reads it; evaluation use
   `.out` and JSON show 81; totals 204 vs 185). Corrections: BP C10 50→53, C100 40→43.9;
   MF-Seq C10 240→211, C100 213→191 (the latter matches the PPAM-era 191.4).
 - **Drift audit (W0e):** G1 vs PPAM-era is machine-state level only — no co-tenancy on any GPU
-  (max compute_processes = 1 in all 1,000+ traces), power/temp deltas ≤ ±5% and arm-specific;
-  log-decomposition shows the small energy drift is power+throughput, not schedule.
+  (max compute_processes = 1 in all 1,000+ traces); power/temp deltas are single-digit
+  percent and arm-specific, and the energy drift decomposes into passes (BP only, +1 epoch),
+  power (−5.5% to +3.8% log; negative only for BP C10) and seconds-per-pass (+0.5% to +3.7%
+  log). BP C10 actually got cheaper (−2.2%); the C100 gaps are +8.3% (BP), +4.1% (MF-Joint)
+  and +6.9% (MF-Seq). It is not a schedule change.
 - **Cap anatomy (W0c):** per-task stdout reproduces the PPAM stage profile: MF-Seq's W1_M1
   early stop is cap-bound in **90% (C10) / 55% (C100)** of runs (PPAM 90%/50%), M0 owns
   23.4%/23.2% of passes, and per-stage sums equal the JSON `epochs_completed` in **40/40**
   runs. The decisive reruns are faithful re-executions, not a different schedule regime.
+- **BP convergence audit (W0d):** the BP baseline is not cap-truncated. It stops on validation
+  loss after a full 19-epoch patience tail (best epoch 33.0/23.9; last epoch 52.0/42.9), and
+  validation loss rises in 40/40 runs. Its accuracy reproduces the PPAM value exactly
+  (+0.00 pp on both datasets), so the baseline is a genuine early-stopping result.
+- **Independent re-derivation (2026-10-21):** a separate reducer with no import of
+  `analyze_g1.py` or `w0a_energy_memory.py` (bootstrap seed 20261021) reproduces every
+  headline accuracy, pass and energy delta, including the decisive MF-Simul values
+  (−0.86 pp C10, p=0.0003; −0.27 pp C100, p=0.0759). 91/96 cross-checks agree within
+  tolerance; the five flags are ≤0.25 passes and come from the stored table's 1-decimal
+  rounding, not a substantive mismatch (`jpdc_data/verification/`).
 - G1 accuracy verdicts are unaffected by all of the above (accuracy never depended on logs).
 
 ## Implications
@@ -74,5 +87,5 @@ M0 contributes nothing to any prediction (phase 2 never reads it; evaluation use
    controls bound the cost levers.
 
 Sources: `PREREG.md` §10 (amendments), `g1_per_seed.csv`, `jpdc_data/g1/w0a/`,
-`w0b_summary.md`, `w0c_summary.md`, `w0e_per_seed.csv`; jobs
-3372435/3373251/3373266/3376200/3376703.
+`w0b_summary.md`, `w0c_summary.md`, `w0d_summary.md`, `w0e_per_seed.csv`,
+`jpdc_data/verification/`; jobs 3372435/3373251/3373266/3376200/3376703.

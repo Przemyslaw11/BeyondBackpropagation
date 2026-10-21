@@ -1,6 +1,6 @@
 # ERRATA_PPAM.md — corrections owed by the JPDC extension to the PPAM record
 
-Status: draft, 2026-10-17. Scope: statements in the PPAM paper record (README "Key Results",
+Status: draft, 2026-10-21. Scope: statements in the PPAM paper record (README "Key Results",
 AUDIT-verified ladders) that the JPDC extension's G1 experiment changes. The PPAM paper's
 **measured numbers are not retracted**; what moves is the attribution one of them carries — and
 one claim is genuinely inverted. All corrections cite `PREREG.md` §10 (2026-10-17 amendment),
@@ -23,6 +23,11 @@ one claim is genuinely inverted. All corrections cite `PREREG.md` §10 (2026-10-
 - `analyze_g1.py` as cited in `PREREG.md` §10 carries the 2026-10-17 amendment: passes from run
   JSON `epochs_completed`, energy strictly from each run's own `monitoring_csv_path` (no glob
   fallback).
+- **2026-10-21 verification:** an independent reducer (no import of the production analysis
+  code, different bootstrap seed) reproduces all headline accuracy/pass/energy deltas, including
+  the decisive MF-Simul differences. The BP baseline is not cap-truncated: W0d shows a full
+  19-epoch patience tail and rising validation loss in 40/40 runs, with accuracy matching the
+  PPAM value exactly. No row in this errata changes as a result.
 
 ## Required follow-ups before publication
 

@@ -15,13 +15,41 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - Phase 1 MF-Simul implementation: DONE -> `src/baselines/bp_ds.py` (`detach_between_layers`
   flag, `train/evaluate_mf_simul_model`), registered in `src/algorithms|baselines/__init__.py`,
   config `configs/mf_simul/cifar10_mlp_3x2000.yaml`, tests `tests/test_mf_simul.py`
-  (3 tests) + fairness invariants extended. All 78 repo tests pass locally; CPU smoke
-  run (MNIST, 3 epochs) finished at 94.76% test accuracy.
+  (3 tests) + fairness invariants extended. Latest suite: 90 passed, 13 skipped.
 - PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
-  unit tests, drift controls, amendments log). Freeze at the decisive commit + record
-  hashes before inspecting decisive results.
-- Next: pilot n=5 (seeds 42-46, CIFAR-10) -> one-page author summary; then decisive runs
-  n=20 (seeds 42-61, both datasets) -> `analyze_g1.py` -> G1 verdict (due 8 Nov 2026).
+  unit tests, drift controls, amendments log). G1 is complete; verdict B (schedule
+  artifact). W1 is pre-registered (`PREREG-phase2.md`) and queued; see below.
+
+## 2026-10-21 zero-GPU work package (no GPU-hours consumed)
+- **W0b/W0c/W0d/W0e resolved.** M0 is dead compute: 3.99 Wh / 22.9% (C10) and
+  3.57 Wh / 22.8% (C100) of MF-Seq energy; W1_M1 is cap-bound 90%/55%; per-stage
+  sums equal JSON 40/40. BP is not cap-truncated (full 19-epoch tail, val loss
+  rises 40/40, accuracy = PPAM +0.00 pp). Era drift is power + seconds-per-pass,
+  no co-tenancy: C100 energy gaps +8.3% BP, +4.1% MF-Joint, +6.9% MF-Seq; BP C10
+  is −2.2%. See `jpdc_data/g1/{w0b,w0c,w0d,w0e}/`.
+- **Independent G1 verification:** separate reducer, different bootstrap seed, no
+  imports from the production analysis; all headline accuracy/pass/energy deltas
+  reproduce. 91/96 checks within tolerance; 5 flags are ≤0.25 passes from stored
+  1-decimal rounding. `jpdc_data/verification/`.
+- **DSS Pareto data:** `jpdc_data/dss/` has Protocol A (all four arms, G1) and
+  Protocol B (PPAM BP + MF-Seq only; MF-Joint/MF-Simul explicitly not measured).
+  Protocol B reproduces −19.9%/−12.5% energy and −27.5%/−24.6% memory.
+- **W4 power model:** fit on 892 pre-G1 traces only, P = 51.97 [51.33, 52.61] +
+  1.085 [1.036, 1.133]·u, R²=0.684. It under-predicts every G1 arm by 3–7%
+  (MAE 4.9%, run-level R² 0.317) — the era shift again. No absolute cross-era use.
+- **W3 byte accounting:** hooks on the exact BP/MF-Simul/MF-Seq graphs; BP 69.1 GB
+  per pass (C10), MF-Simul 70.6, MF-Seq 25.1–37.6 by stage; bytes-to-stopping
+  ratios 1.13× (MF-Simul C10), 0.86× (C100), 1.70×/1.90× (MF-Seq). M0 = 20.0% of
+  MF-Seq bytes (22.9% energy); cached-prefix bound saves 11–12% total / 13–14%
+  activation-only (augmentation makes the canonical cache invalid).
+- **Queue/account audit:** jobs 3386582/3386586 are on
+  `plglscclass26-gpu-a100` (fairshare 0.000, 44/48 A100 nodes unavailable).
+  `plgoncotherapy2-gpu-a100` exists (fairshare 0.728, 0 usage); `--test-only`
+  estimates 12 Nov vs 19 Nov for a 4 h GPU job; `plgrid-now` (1 h cap) estimates
+  tonight. Proposal, no submission: `QUEUE_RISK_W1.md`.
+- **W1 manifest confirmed:** 14 configs = 6 main arms × 2 datasets + BP-long
+  control × 2; 280 tasks; cap-300 not in the array. `PREREG-phase2.md` §9 records
+  this and the separate `PREREG-W2-W3.md` draft. No W1 protocol change.
 
 ## Headline numbers (canonical Protocol A, 20 seeds)
 - MF/BP unit-epoch multiplier: CIFAR-10 4.07, CIFAR-100 4.46, MNIST 3.67, Fashion 4.32.
@@ -57,7 +85,7 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 4. ~~Decisive runs n=20~~ DONE (jobs 3372435/3373251/3373266/3376200; 160/160 valid run
    JSONs, seeds 42-61, four arms both datasets, one commit). Reduced with
    `scripts/jpdc/analyze_g1.py` (@ `328b573`) -> **G1 verdict = B (schedule artifact)**:
-   - C100: MF-Simul - BP = **-0.27 pp** [-0.50, -0.03], p=0.076; passes ratio R=0.88;
+   - C100: MF-Simul - BP = **-0.27 pp** [-0.50, -0.03], p=0.076; passes ratio R=0.81;
      contemporaneous MF-Seq - BP = **+5.04 pp** [+4.82, +5.25], p<0.001.
    - C10 (secondary): MF-Simul - BP = -0.86 pp [-1.16, -0.56]; MF-Seq +3.90 pp.
    - MF-Joint C100 = +1.86 pp over BP => staging (not detachment) carries the whole
@@ -78,18 +106,29 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
    W0c cap anatomy (`w0c_cap_anatomy.py`, new): MF-Seq W1_M1 cap-bound 90% C10 / 55%
    C100 (PPAM 90%/50%), M0 23.4%/23.2% of passes, per-stage sums = JSON in 40/40 runs.
    W0e refreshed against the same tree; one-pager/errata updated.
-8. **NOW (queued 2026-10-21, partition priority wait):**
+8. **QUEUED (2026-10-21, no GPU-hours consumed):**
    - Seq-Global tuning: job **3386582** (2 tasks, 50 trials each, 24 h wall; studies
      `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`). On completion: read the
      `*_best_params.yaml`, freeze lr/wd into `configs/mf_global/*`, record the study
      results + commit hash in `PREREG-phase2.md` §9.
    - H-W1cap Step 1: job **3386586** (5 tasks, C100 cap-300 seeds 42-46). Reduce with
      `scripts/jpdc/summarize_cap_pilot.py` (frozen trigger, unit-tested).
+   - Both charge `plglscclass26-gpu-a100`, pending `ReqNodeNotAvail` with 44/48 A100
+     nodes unavailable. `--test-only` estimates 19 Nov (class) vs 12 Nov (oncology
+     account) for a 4 h GPU job; `plgrid-now` 1 h estimates tonight. Account scope
+     must be approved before switching. Full evidence + segmentation/fallback plan:
+     `QUEUE_RISK_W1.md` (no job submitted for it).
    - Then submit `scripts/slurm_scripts/w1_family.slurm` (280 tasks = 6 main arms +
      BP-long, 14 configs x 20 seeds) at the frozen commit; archive of G1 lives in
      cluster `results/archive_g1_20261021/`.
 9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
    (already written; mirror `analyze_g1` structure with H-W1a..d as decision blocks).
+10. Queue decision by 2026-10-22: confirm whether BBP may charge
+    `plgoncotherapy2-gpu-a100`; if yes, cancel/resubmit the two pending arrays there.
+11. Approve/edit the time-triggered HPO fallback wording in `QUEUE_RISK_W1.md` §4
+    before 2026-10-28 12:00 Europe/Warsaw; do not let it depend on W1 outcomes.
+12. DSS data are ready in `jpdc_data/dss/`; build the figure after W1, keeping
+    Protocol A and B on separate axes (era drift is real).
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -188,6 +227,13 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   for the repair-script header. `G1_ATTRIBUTION_SUMMARY.md`/`ERRATA_PPAM.md` refreshed.
   Note: 56 of the 160 decisive task `.out` files were lost when the quota watchdog killed
   job 3372435 (buffers not flushed) — passes/energy never depended on them.
+- 2026-10-21 (zero-GPU package): W0e drift decomposition finalized (power + sec/pass, no
+  co-tenancy); W0d BP audit added; independent G1 reducer agrees on every headline number;
+  DSS Protocol A/B Pareto data generated; W4 pre-G1-only power fit under-predicts G1 by
+  3–7%; W3 hook accounting completed (M0 20% of bytes, cache bound 11–12%); Athena
+  account/queue audit found 44/48 nodes unavailable and a second allocation. W1 manifest
+  (14 configs/280 tasks) confirmed; `PREREG-W2-W3.md` draft + `QUEUE_RISK_W1.md` memo added.
+  No GPU jobs submitted.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.
