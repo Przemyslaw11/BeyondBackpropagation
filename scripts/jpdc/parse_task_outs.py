@@ -32,6 +32,8 @@ from pathlib import Path
 import pandas as pd
 
 CONFIG_RE = re.compile(r"Config \((\d+)\): (\S+)")
+# The artifact-repair sbatch prints its own header: "Config: <path>   Seed: N".
+CONFIG_PLAIN_RE = re.compile(r"^Config: (\S+)")
 SEED_RE = re.compile(r"Seed: (\d+)")
 M0_RE = re.compile(r"Finished training for Layer_M0 after (\d+) epochs\.")
 STAGE_ES_RE = re.compile(r"Layer_(W\d_M\d): Early Stopping at Epoch (\d+)")
@@ -55,9 +57,9 @@ def parse_out(path: Path) -> dict | None:
             m = TS_RE.match(line)
             if m:
                 start = m.group(1)
-        m = CONFIG_RE.search(line)
+        m = CONFIG_RE.search(line) or CONFIG_PLAIN_RE.search(line)
         if m and config is None:
-            config = m.group(2)
+            config = m.group(m.lastindex or 1)
         m = SEED_RE.search(line)
         if m and seed is None:
             seed = int(m.group(1))

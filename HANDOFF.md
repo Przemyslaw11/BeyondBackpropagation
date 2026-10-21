@@ -1,6 +1,6 @@
 # HANDOFF — JPDC extension (Phase 0 + Phase 1 start)
 
-Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
+Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
 
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
@@ -69,16 +69,20 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 6. Budget mapping: ~**28.7 A100-GPU-hours** for the whole G1 chain (tuning 2x50 trials,
    pilot 20, decisive 160 + incident reruns 112; sacct 2026-10-17). NVML Wh per run in
    `g1_per_seed.csv` (C100: BP 4.48, MF-Joint 5.07, MF-Simul 3.55, MF-Seq 16.52 Wh).
-7. **NOW (blocked on Athena login access):** (a) pull results of repair job 3376703,
-   re-run `analyze_g1` + `w0a` against `results/` on the new artifacts, refresh
-   `jpdc_data/g1/{g1_*,w0a/w0a_*}`; (b) confirm W0c cap anatomy from the pulled
-   `BBP_G1*.out` set with `parse_task_outs.py` (PPAM baseline: W1_M1 cap 90% C10 / 50%
-   C100; cap-300 pilot n=5 queued behind PREREG-phase2 §3 H-W1cap); (c) decide §5 HPO
-   question (inherit vs tune Seq-Global) and record it in `PREREG-phase2.md` §9;
-   (d) then submit the W1 family (6 arms x 2 datasets x 20 seeds) with the g1_repair
-   hygiene pattern; W0d BP-long control rides along.
-8. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py` (to be
-   written; mirror `analyze_g1` structure with H-W1a..d as decision blocks).
+7. ~~Pull repair job 3376703 + refresh G1 tables~~ DONE (2026-10-21, login nodes restored):
+   all 12 repaired runs were complete (Oct 17 14:34-14:47, before the lockout). Pulled
+   160/160 JSONs + 160 monitoring CSVs + 248 task `.out` files. `analyze_g1` and `w0a`
+   regenerated: **160/160 energies first-party** (`trace_from = json` in all cells),
+   accuracy verdict unchanged (B). Final paired C100 energies: MF-Joint +0.62
+   [+0.47, +0.79], MF-Simul -0.93 [-1.13, -0.71], MF-Seq +12.18 [+11.69, +12.69] Wh.
+   W0c cap anatomy (`w0c_cap_anatomy.py`, new): MF-Seq W1_M1 cap-bound 90% C10 / 55%
+   C100 (PPAM 90%/50%), M0 23.4%/23.2% of passes, per-stage sums = JSON in 40/40 runs.
+   W0e refreshed against the same tree; one-pager/errata updated.
+8. **NOW:** decide §5 HPO question (inherit vs tune Seq-Global) and record it in
+   `PREREG-phase2.md` §9; then submit the W1 family (6 arms x 2 datasets x 20 seeds) with
+   the `g1_repair` hygiene pattern; cap-300 pilot n=5 (H-W1cap) and W0d BP-long ride along.
+9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
+   (already written; mirror `analyze_g1` structure with H-W1a..d as decision blocks).
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -169,6 +173,14 @@ Updated: 2026-10-17. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   `ERRATA_PPAM.md`. **Incident: Athena login nodes restricted** (site security patch,
   admin notice 2026-10-17 evening) — 3376703 keeps running on compute nodes; pulls and
   new submissions blocked until access returns.
+- 2026-10-21: Athena login restored (no jobs lost). Repair job 3376703 had finished Oct 17
+  14:47, before the lockout; pulled it plus all stored `BBP_G1*.out` (248 files). Fresh
+  reduction: 160/160 runs with their own NVML trace; G1 verdict B unchanged; C100 energy
+  deltas -0.93/+0.62/+12.18 Wh. New `w0c_cap_anatomy.py`: MF-Seq cap anatomy (90%/55%
+  W1_M1, M0 ~23%) matches PPAM; 40/40 stage sums equal JSON. `parse_task_outs` extended
+  for the repair-script header. `G1_ATTRIBUTION_SUMMARY.md`/`ERRATA_PPAM.md` refreshed.
+  Note: 56 of the 160 decisive task `.out` files were lost when the quota watchdog killed
+  job 3372435 (buffers not flushed) — passes/energy never depended on them.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.

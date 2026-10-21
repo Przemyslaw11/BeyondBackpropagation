@@ -27,9 +27,9 @@ artifact)**. Detachment is not where the accuracy comes from; the staged schedul
 | arm | passes | energy (Wh) | wall (s) | peak alloc (MiB) |
 |---|---|---|---|---|
 | BP | 43.9 | 4.48 | 220 | 302 |
-| MF-Joint | 50.2 (×1.14) | +0.69 [+0.54, +0.87] | +33 | +16 |
+| MF-Joint | 50.2 (×1.14) | +0.62 [+0.47, +0.79] | +30 | +16 |
 | MF-Simul | 35.7 (**×0.81**) | **−0.93** [−1.13, −0.71] | **−40** | +16 |
-| MF-Seq | 191.3 (×4.36) | +12.15 | +737 | **−74** |
+| MF-Seq | 191.3 (×4.36) | +12.18 [+11.69, +12.69] | +731 | **−74** |
 
 - C10 is the cautionary dataset: MF-Simul there costs **+5.3 passes and +0.50 Wh (+9%)** for
   −0.86 pp. The energy saving of the unstaged MF is C100-specific, not a general property.
@@ -54,6 +54,10 @@ M0 contributes nothing to any prediction (phase 2 never reads it; evaluation use
 - **Drift audit (W0e):** G1 vs PPAM-era is machine-state level only — no co-tenancy on any GPU
   (max compute_processes = 1 in all 1,000+ traces), power/temp deltas ≤ ±5% and arm-specific;
   log-decomposition shows the small energy drift is power+throughput, not schedule.
+- **Cap anatomy (W0c):** per-task stdout reproduces the PPAM stage profile: MF-Seq's W1_M1
+  early stop is cap-bound in **90% (C10) / 55% (C100)** of runs (PPAM 90%/50%), M0 owns
+  23.4%/23.2% of passes, and per-stage sums equal the JSON `epochs_completed` in **40/40**
+  runs. The decisive reruns are faithful re-executions, not a different schedule regime.
 - G1 accuracy verdicts are unaffected by all of the above (accuracy never depended on logs).
 
 ## Implications
@@ -70,4 +74,5 @@ M0 contributes nothing to any prediction (phase 2 never reads it; evaluation use
    controls bound the cost levers.
 
 Sources: `PREREG.md` §10 (amendments), `g1_per_seed.csv`, `jpdc_data/g1/w0a/`,
-`w0b_summary.md`, `w0e_per_seed.csv`; jobs 3372435/3373251/3373266/3376200/3376703.
+`w0b_summary.md`, `w0c_summary.md`, `w0e_per_seed.csv`; jobs
+3372435/3373251/3373266/3376200/3376703.
