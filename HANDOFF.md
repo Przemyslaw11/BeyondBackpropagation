@@ -1,6 +1,6 @@
 # HANDOFF — JPDC extension (Phase 0 + Phase 1 start)
 
-Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
+Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
 
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
@@ -15,7 +15,7 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - Phase 1 MF-Simul implementation: DONE -> `src/baselines/bp_ds.py` (`detach_between_layers`
   flag, `train/evaluate_mf_simul_model`), registered in `src/algorithms|baselines/__init__.py`,
   config `configs/mf_simul/cifar10_mlp_3x2000.yaml`, tests `tests/test_mf_simul.py`
-  (3 tests) + fairness invariants extended. Latest suite: 90 passed, 13 skipped.
+  (3 tests) + fairness invariants extended. Latest suite: 97 passed, 13 skipped.
 - PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
   unit tests, drift controls, amendments log). G1 is complete; verdict B (schedule
   artifact). W1 is pre-registered (`PREREG-phase2.md`) and queued; see below.
@@ -57,18 +57,19 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   `w3_stage0_audit.md`.
 - **Queue/account audit:** jobs 3386582/3386586 are on
   `plglscclass26-gpu-a100` (fairshare 0.000, 44/48 A100 nodes unavailable).
-  `plgoncotherapy2-gpu-a100` exists (fairshare 0.728, 0 usage); `--test-only`
-  estimates 12 Nov vs 19 Nov for a 4 h GPU job; `plgrid-now` (1 h cap) estimates
-  tonight but is **not used** because its published policy is interactive-only.
-  Proposal, no submission: `QUEUE_RISK_W1.md`.
-- **W1 manifest revised (2026-10-21, controls only):** core six arms = 240 tasks
-  (`w1_family.slurm`), controls = 160 tasks (`w1_family_controls.slurm`: BP-long,
-  BP-bestval, MF-Seq Protocol B, nom0 Protocol B), BP-sched = 40 tasks
-  (`w1_bp_sched.slurm`, after its 50-trial study). **Base total 440 tasks**;
-  cap-300 remains conditional. Equal disclosed tuning: Seq-Global and BP-sched
-  each 100 trials (50/dataset); other controls inherit. Estimated ~58 GPU-h
-  confirm + ~51 GPU-h tuning; details `W1_MANIFEST_ADDITIONS.md`. No W1 protocol
-  or threshold change; all controls outside Holm.
+  `plgoncotherapy2-gpu-a100` is authorized for new W1 submissions (team
+  `plggfastsim`; fairshare 0.728, 0 usage); `--test-only` estimates 12 Nov vs
+  19 Nov for a 4 h GPU job. Existing class-account jobs are not migrated.
+  `plgrid-now` (1 h cap) is **not used** because its published policy is
+  interactive-only. No submission: `QUEUE_RISK_W1.md`, `W1_CRITICAL_PATH.md`.
+- **W1 manifest split (2026-10-22):** frozen core = 200 tasks
+  (`w1_family.slurm`: BP, MF-Joint, MF-Simul, MF-Seq, nom0); frozen controls =
+  80 tasks (`w1_family_controls.slurm`: BP-long, BP-bestval); Seq-Global = 40
+  (`w1_seqglobal.slurm`); Protocol B = 80 (`w1_controls_protocol_b.slurm`);
+  BP-sched = 40 (`w1_bp_sched.slurm`). **Base total 440**; cap-300 conditional.
+  HPO fallback is in PREREG §9 (Seq 4 Nov, BP-sched 11 Nov, ≥20/dataset else
+  MF-Seq lr/wd; commit `f877b92`). Estimated ~58 GPU-h confirm + ~51 tuning;
+  details `W1_MANIFEST_ADDITIONS.md`, `W1_CRITICAL_PATH.md`. No threshold change.
 
 ## Headline numbers (canonical Protocol A, 20 seeds)
 - MF/BP unit-epoch multiplier: CIFAR-10 4.07, CIFAR-100 4.46, MNIST 3.67, Fashion 4.32.
@@ -125,33 +126,25 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
    W0c cap anatomy (`w0c_cap_anatomy.py`, new): MF-Seq W1_M1 cap-bound 90% C10 / 55%
    C100 (PPAM 90%/50%), M0 23.4%/23.2% of passes, per-stage sums = JSON in 40/40 runs.
    W0e refreshed against the same tree; one-pager/errata updated.
-8. **QUEUED (2026-10-21, no GPU-hours consumed):**
-   - Seq-Global tuning: job **3386582** (2 tasks, 50 trials each, 24 h wall; studies
-     `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`). On completion: read the
-     `*_best_params.yaml`, freeze lr/wd into `configs/mf_global/*`, record the study
-     results + commit hash in `PREREG-phase2.md` §9.
-   - H-W1cap Step 1: job **3386586** (5 tasks, C100 cap-300 seeds 42-46). Reduce with
-     `scripts/jpdc/summarize_cap_pilot.py` (frozen trigger, unit-tested).
-   - Both charge `plglscclass26-gpu-a100`, pending `ReqNodeNotAvail` with 44/48 A100
-     nodes unavailable. `--test-only` estimates 19 Nov (class) vs 12 Nov (oncology
-     account) for a 4 h GPU job. Account scope must be approved before switching.
-     Full evidence + segmentation/fallback plan: `QUEUE_RISK_W1.md` (no job
-     submitted for it).
-   - Submission is now three arrays: core 240 (`w1_submit.sh core`), controls 160
-     (`w1_submit.sh controls`), BP-sched 40 (`w1_submit.sh sched`). The one account
-     line is in `scripts/slurm_scripts/w1_submit.sh`; default stays class. Archive
-     of G1 lives in cluster `results/archive_g1_20261021/`.
+8. **QUEUED (2026-10-22, no GPU-hours consumed):**
+   - Seq-Global tuning: job **3386582** (2 tasks, 50 trials each, 24 h wall;
+     studies `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`). If it runs
+     before 4 Nov, freeze the best trial with ≥20 completed per dataset; otherwise
+     use the MF-Seq fallback. Record the branch in §9 and commit.
+   - H-W1cap Step 1: job **3386586** (5 tasks, C100 cap-300 seeds 42-46).
+   - Both remain on `plglscclass26-gpu-a100`, pending `ReqNodeNotAvail`; they are
+     not migrated. New W1 work uses `plgoncotherapy2-gpu-a100` (team `plggfastsim`).
+   - W1 is split: `w1_submit.sh core` (200), `controls` (80), `seqglobal` (40),
+     `protocolb` (80), `sched` (40). No W1 job submitted; author gate applies.
 9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
-   (updated with the four control contrasts; H-W1a..d decision blocks unchanged).
-10. Queue decision by 2026-10-22: confirm whether BBP may charge
-    `plgoncotherapy2-gpu-a100`; if yes, cancel/resubmit the two pending arrays there.
-    Do not switch before written approval.
-11. Approve/edit the time-triggered HPO fallback wording in `QUEUE_RISK_W1.md` §4
-    before 2026-10-28 12:00 Europe/Warsaw; do not let it depend on W1 outcomes.
-    Insert it into `PREREG-phase2.md` §9 only after author confirmation.
-12. Seq-Global tuning chain is prepared as 4×5 h resumable segments
-    (`submit_mfglobal_segments.sh`, `--target-trials 50`); `plgrid-now` is **not**
-    used because its published policy is interactive-only. No chain submitted yet.
+   (controls and median reporting included; H-W1a..d unchanged).
+10. Account decision done (2026-10-22): new W1 submissions use
+    `plgoncotherapy2-gpu-a100`; existing pending jobs stay on the class account.
+    Do not cancel or migrate them.
+11. HPO fallback approved and committed (`f877b92`); Seq deadline 4 Nov,
+    BP-sched deadline 11 Nov. Do not insert any different fallback wording.
+12. Queue starts 12/19/26 Nov are mapped in `W1_CRITICAL_PATH.md`; cut order:
+    W3 comms first, W4 second, **never W1 core**. No `plgrid-now`.
 13. DSS data are ready in `jpdc_data/dss/`; build the figure after W1, keeping
     Protocol A and B on separate axes (era drift is real).
 
@@ -267,6 +260,19 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   (Wilcoxon p=0.0759 vs paired-t CI [-0.525,-0.008], p=0.0437); W4 reframed as a calibrated
   ratio model; submission variants and 4×5 h resumable tuning chain prepared, not submitted.
   `plgrid-now` rejected on policy (interactive-only). No GPU jobs submitted or cancelled.
+
+- 2026-10-22 (pre-submission continuation): fallback HPO rule added to
+  `PREREG-phase2.md` §9 at commit `f877b92` before any tuning trial completed
+  (Seq 4 Nov / BP-sched 11 Nov; ≥20 trials/dataset else MF-Seq lr/wd; disclose).
+  W1 split into five independent arrays: frozen core 200, frozen controls 80,
+  Seq-Global 40, Protocol B 80, BP-sched 40; `w1_submit.sh` modes
+  `core|controls|seqglobal|protocolb|sched`. Author authorized
+  `plgoncotherapy2-gpu-a100` (team `plggfastsim`) for new W1 work; the two pending
+  class-account jobs were not migrated. `W1_CRITICAL_PATH.md` maps 12/19/26 Nov
+  starts (cut W3 comms first, W4 second, never W1 core). W3 per-cut and stage-0
+  numbers and W4 ratio reframing are confirmed in `STATUS_2026-10-22.md`. W6 toy
+  CPU numerics are exploratory only (`scripts/jpdc/w6_toy_sim.py`,
+  `jpdc_data/g1/w6_toy/`). No W1 job submitted.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.

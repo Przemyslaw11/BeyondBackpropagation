@@ -1,10 +1,11 @@
 #!/bin/bash
-# W1 core confirmatory family (PREREG-phase2.md §5): one commit, paired seeds
-# 42-61, both datasets, six main arms = 240 tasks.
+# W1 core confirmatory family (PREREG-phase2.md §5): frozen-parameter arms,
+# paired seeds 42-61, both datasets, five arms = 200 tasks.
 #
-# Main arms: BP, MF-Joint, MF-Simul, MF-Seq, Seq-Global, MF-Seq-nom0.
-# Controls are in w1_family_controls.slurm (BP-long, BP-bestval, Protocol B);
-# BP-sched is in w1_bp_sched.slurm after its tuning study freezes.
+# Arms: BP, MF-Joint, MF-Simul, MF-Seq, MF-Seq-nom0.
+# Seq-Global is split into w1_seqglobal.slurm (waits on the HPO deadline/fallback).
+# Frozen controls are in w1_family_controls.slurm; Protocol B is in
+# w1_controls_protocol_b.slurm (budget freezes after core BP).
 # Conditional (not in this array): MF-Seq cap-300 full arm, only if H-W1cap
 # Step 1 triggers; submit separately with the same hygiene.
 #
@@ -18,11 +19,11 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48000M
 #SBATCH --time=01:00:00
-#SBATCH -A plglscclass26-gpu-a100
+#SBATCH -A plgoncotherapy2-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-240
+#SBATCH --array=1-200
 
 CONFIG_FILES=(
     "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml"
@@ -33,8 +34,6 @@ CONFIG_FILES=(
     "configs/mf_simul/cifar100_mlp_3x2000.yaml"
     "configs/mf/cifar10_mlp_3x2000.yaml"
     "configs/mf/cifar100_mlp_3x2000.yaml"
-    "configs/mf_global/cifar10_mlp_3x2000.yaml"
-    "configs/mf_global/cifar100_mlp_3x2000.yaml"
     "configs/mf_nom0/cifar10_mlp_3x2000.yaml"
     "configs/mf_nom0/cifar100_mlp_3x2000.yaml"
 )

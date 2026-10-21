@@ -1,15 +1,13 @@
 #!/bin/bash
-# W1 controls (PREREG-phase2.md §5/§9): four controls x 2 datasets x 20 seeds
-# = 160 tasks. Submit only after the six core arms are launched; one commit.
+# W1 frozen controls (PREREG-phase2.md §5/§9): BP-long and BP-bestval only,
+# 2 controls x 2 datasets x 20 seeds = 80 tasks. These parameters are frozen
+# independently of Seq-Global and BP-sched tuning.
 #
-# Controls:
 #   BP-long          H-W1d, max_epochs 300, otherwise core BP.
 #   BP-bestval       in-memory best-val-accuracy restore, no disk checkpoints.
-#   MF-Seq-ProtoB    Protocol B, S=4, per-stage ceil(Ebar_BP/4).
-#   nom0-ProtoB      Protocol B, S=3, per-stage ceil(Ebar_BP/3).
 #
-# BP-sched is separate (w1_bp_sched.slurm) because it waits on its own 50-trial
-# tuning study. BP under Protocol B is the core BP arm (not rerun).
+# Protocol B (MF-Seq/nom0) is in w1_controls_protocol_b.slurm because its budget
+# is frozen from the actual core-BP mean after core BP finishes, not now.
 #
 #SBATCH --job-name=BBP_W1Ctl
 #SBATCH --nodes=1
@@ -18,21 +16,17 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48000M
 #SBATCH --time=01:00:00
-#SBATCH -A plglscclass26-gpu-a100
+#SBATCH -A plgoncotherapy2-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-160
+#SBATCH --array=1-80
 
 CONFIG_FILES=(
     "configs/bp_long/cifar10_mlp_3x2000.yaml"
     "configs/bp_long/cifar100_mlp_3x2000.yaml"
     "configs/bp_bestval/cifar10_mlp_3x2000.yaml"
     "configs/bp_bestval/cifar100_mlp_3x2000.yaml"
-    "configs/mf_protocol_b/cifar10_mlp_3x2000.yaml"
-    "configs/mf_protocol_b/cifar100_mlp_3x2000.yaml"
-    "configs/mf_nom0_protocol_b/cifar10_mlp_3x2000.yaml"
-    "configs/mf_nom0_protocol_b/cifar100_mlp_3x2000.yaml"
 )
 SEEDS=(42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61)
 
@@ -74,7 +68,7 @@ export WANDB_DIR="$SCRATCH/bbp_wandb"
 
 EXP_NAME=$(python3 -c "import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))['experiment_name'])" "$CONFIG_FILE")
 RUN_LOG="results/${EXP_NAME}/${EXP_NAME}_seed${EXPERIMENT_SEED}_run.log"
-TMP_CONFIG="/tmp/w1ctl_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.yaml"
+TMP_CONFIG="/tmp/w1fctl_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.yaml"
 python3 - "$CONFIG_FILE" "$TMP_CONFIG" "$RUN_LOG" <<'EOF'
 import sys, yaml
 src, dst, log_file = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -84,7 +78,7 @@ yaml.safe_dump(config, open(dst, "w"), sort_keys=False)
 EOF
 
 echo "#####################################################################"
-echo "W1 control run $SLURM_ARRAY_TASK_ID / ${NUM_JOBS}"
+echo "W1 frozen-control run $SLURM_ARRAY_TASK_ID / ${NUM_JOBS}"
 echo "Config (${CONFIG_INDEX}): $CONFIG_FILE"
 echo "Seed: $EXPERIMENT_SEED"
 echo "Run log: $RUN_LOG"
@@ -96,9 +90,9 @@ EXIT_CODE=$?
 rm -f "$TMP_CONFIG"
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "W1 control run $SLURM_ARRAY_TASK_ID finished successfully."
+    echo "W1 frozen-control run $SLURM_ARRAY_TASK_ID finished successfully."
 else
-    echo "W1 control run $SLURM_ARRAY_TASK_ID failed (Exit Code: $EXIT_CODE)."
+    echo "W1 frozen-control run $SLURM_ARRAY_TASK_ID failed (Exit Code: $EXIT_CODE)."
 fi
 date
 exit $EXIT_CODE

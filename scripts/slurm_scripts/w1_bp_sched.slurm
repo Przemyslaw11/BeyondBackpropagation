@@ -1,8 +1,9 @@
 #!/bin/bash
 # W1 control (a): BP with tuned cosine schedule, fixed 100-epoch budget.
-# 2 datasets x 20 seeds = 40 tasks. Submit only after both 50-trial BP-sched
-# studies have frozen their lr/wd into configs/bp_sched/* and the values are
-# recorded in PREREG-phase2.md §9.
+# 2 datasets x 20 seeds = 40 tasks. Submit only after the 2026-11-11 23:59 CET
+# branch is recorded in PREREG-phase2.md §9: either the best trial with >=20
+# completed per dataset, or the MF-Seq fallback. Replace both lr/wd values,
+# commit, and then submit.
 #
 # This script refuses to run while any configs/bp_sched/*.yaml still contains
 # the literal "PLACEHOLDER". Replace both lr/wd lines and commit the configs
@@ -15,7 +16,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48000M
 #SBATCH --time=01:00:00
-#SBATCH -A plglscclass26-gpu-a100
+#SBATCH -A plgoncotherapy2-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err

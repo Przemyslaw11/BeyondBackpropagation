@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48000M
 #SBATCH --time=05:00:00
-#SBATCH -A plglscclass26-gpu-a100
+#SBATCH -A plgoncotherapy2-gpu-a100
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err

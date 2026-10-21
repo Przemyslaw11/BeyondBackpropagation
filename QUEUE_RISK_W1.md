@@ -34,9 +34,9 @@ only a handful of `mix`/`alloc` nodes.
 | `plgoncotherapy2-gpu-a100` | 0 | 0.00009 | **0.727783** | normal |
 
 - Current jobs are charged to **`plglscclass26-gpu-a100`**.
-- A second allocation, **`plgoncotherapy2-gpu-a100`**, is active and unused. It is a
-  different project account (oncology); using it for BBP requires the grant owner's
-  approval. It is not a technical question — `sbatch --test-only` accepts it.
+- **`plgoncotherapy2-gpu-a100`** is authorized for new W1 submissions (author
+  decision 2026-10-22; team `plggfastsim`). Existing jobs 3386582/3386586 remain on
+  the class account; they are not cancelled or migrated.
 - `8k3-gpu` / `8k3-gpu-r1` are **not** accessible with either account
   (`Access/permission denied`).
 - `plgrid-now` is accessible with both accounts; it has a hard **1 h** limit.
@@ -58,13 +58,13 @@ only a handful of `mix`/`alloc` nodes.
 These are estimates from a degraded partition, not guarantees. The relative signal
 is still useful: the oncology account is roughly a week earlier. The `plgrid-now`
 line is a scheduler estimate only; the policy check above says it must not be used
-for batch tuning. Note that moving accounts means cancelling and resubmitting
-(age/priority is only ~2 h, so the loss is small).
+for batch tuning. New W1 submissions use the oncology account; the two existing
+pending jobs stay on the class account (no cancel/resubmit).
 
-**Recommendation:** ask the grant owner today whether BBP may be charged to
-`plgoncotherapy2-gpu-a100`. If yes, resubmit the two pending arrays there and keep
-the class account for the paper's accounting statement. If no, stay on the class
-account; the root cause is the node outage, not the account.
+**Decision (2026-10-22):** new W1 submissions use `plgoncotherapy2-gpu-a100`
+(team `plggfastsim`). Existing jobs 3386582/3386586 stay on
+`plglscclass26-gpu-a100`; no cancellation or migration. The class account remains
+the historical record for the already-submitted tuning/pilot jobs.
 
 ## 3. Segmentation plan (prepared, not submitted)
 
@@ -100,46 +100,43 @@ Athena's docs do not publish an exemption for validation-only tuning. A tuning
 trial is still a batch job whether or not NVML is enabled. Do not use it without
 written helpdesk confirmation; no `plgrid-now` chain is prepared as a fallback.
 
-### 3.3 W1 family: core first, then controls
+### 3.3 W1 family: frozen core first; HPO-gated arms separate
 
-The frozen submission is three arrays, not one 280-task array:
+The 440-task base is five independently submittable arrays, not one array:
 
-- `w1_family.slurm`: six core arms, 240 tasks, 1 h, 8 CPU/48 GB.
-- `w1_family_controls.slurm`: BP-long, BP-bestval, MF-Seq Protocol B, nom0
-  Protocol B, 160 tasks, 1 h.
-- `w1_bp_sched.slurm`: BP-sched, 40 tasks, 1 h, only after its tuning freezes.
+- `w1_family.slurm`: frozen core five arms, 200 tasks, 1 h, 8 CPU/48 GB.
+- `w1_family_controls.slurm`: BP-long and BP-bestval, 80 tasks, 1 h.
+- `w1_seqglobal.slurm`: Seq-Global, 40 tasks, 1 h, after the 4 Nov branch.
+- `w1_controls_protocol_b.slurm`: MF-Seq and nom0 Protocol B, 80 tasks, 1 h,
+  after the core-BP `Ebar_BP` freeze.
+- `w1_bp_sched.slurm`: BP-sched, 40 tasks, 1 h, after the 11 Nov branch and
+  placeholder replacement.
 
 All use the same commit and seeds. 1 h is >2× the slowest observed task; a task
 that needs more is a bug and should fail rather than occupy a node for 6 h. The
-account switch is one line in `scripts/slurm_scripts/w1_submit.sh`; default remains
-the class grant. See `W1_MANIFEST_ADDITIONS.md` for the 440-task count and ~109
-GPU-hour estimate.
+account switch is one line in `scripts/slurm_scripts/w1_submit.sh`; new W1
+submissions default to `plgoncotherapy2-gpu-a100` (team `plggfastsim`). See
+`W1_MANIFEST_ADDITIONS.md` for the 440-task count and ~109 GPU-hour estimate, and
+`W1_CRITICAL_PATH.md` for the 12/19/26 Nov queue scenarios.
 
-## 4. Pre-declared HPO fallback (proposed; not yet in §9)
+## 4. Pre-registered HPO fallback (approved 2026-10-22)
 
-The trigger is **time only** and never looks at W1 outcomes. Operational definition
-of "not started": **no trial has completed** in the study (a started-but-killed trial
-does not count).
+The author-approved rule is now in `PREREG-phase2.md` §9 and is time-triggered,
+never W1-outcome-triggered:
 
-> **Queue contingency (2026-10-21, time-triggered).** If by **2026-10-28 12:00
-> Europe/Warsaw** neither Seq-Global tuning study has completed at least one trial,
-> cancel job 3386582 and freeze both `configs/mf_global/*` to the inherited MF-Seq
-> lr/wd: CIFAR-10 `lr=2.1536491821693216e-4`, `wd=1.606438244272842e-6`; CIFAR-100
-> `lr=2.7089684419387227e-4`, `wd=7.204725563819985e-5`. If a study has completed
-> 1–19 trials, use the best completed trial only if at least 10 trials are complete;
-> otherwise use the inherited values. If ≥20 trials are complete, freeze the
-> best-so-far at the deadline rather than wait for 50. Record the study name, trial
-> number, objective, best params and commit hash in `PREREG-phase2.md` §9, then
-> submit the W1 family at that commit. This rule uses wall-clock only and does not
-> depend on any W1 result.
+- **Seq-Global:** 4 Nov 2026 23:59 CET.
+- **BP-sched:** 11 Nov 2026 23:59 CET.
+- At each deadline, freeze the best-validation trial among completed trials if
+  **≥20 trials are completed per dataset**; otherwise reuse MF-Seq's tuned lr/wd
+  for that dataset.
+- Disclose the branch used, per dataset and per arm. The rule changes no W1
+  outcome, threshold, seed, or Holm family.
 
-Why 10 trials: with 50-trial TPE on a 2-D lr/wd space, 10 trials is a weak but
-non-degenerate search; below 10 the "best" is mostly sampler noise. The inherited
-values are the published MF-Seq tuned values, so the fallback is still a defensible
-Seq-Global arm (it differs from MF-Seq only in the schedule).
-
-**Status:** this wording is a proposal for approval. It must be inserted into §9
-before 28 Oct to be genuinely pre-registered; no PREREG file has been edited for it.
+The fallback values are the published MF-Seq values already present in
+`configs/mf/*`; `configs/mf_global/*` currently carries them. BP-sched must have
+its `PLACEHOLDER` lr/wd replaced before submission. Because the 12/19/26 Nov queue
+starts are after both deadlines, the schedule assumes fallback unless a tuning
+job runs earlier and meets the 20-trial bar.
 
 ## 5. Parallel workers? No.
 
@@ -156,10 +153,12 @@ not a second worker on the same study.
 
 | date | decision |
 |---|---|
-| 2026-10-22 | Ask grant owner about charging BBP to `plgoncotherapy2-gpu-a100`; decide account. Do not switch before approval. |
+| 2026-10-22 | Account decision: new W1 submissions use `plgoncotherapy2-gpu-a100` (team `plggfastsim`). Existing jobs stay on the class account; no migration. |
 | 2026-10-24 | Review whether tuning has started; if not, keep the 5 h segment chain ready. Do not use `plgrid-now`. |
-| **2026-10-28 12:00** | **HPO fallback trigger**; freeze Seq-Global and submit W1 core |
-| 2026-11-05 | If W1 core has not started, escalate node outage to Cyfronet; arrays are already split into 1 h core/control blocks |
+| **2026-11-04 23:59 CET** | **Seq-Global HPO deadline**; record tuned/fallback branch. |
+| 2026-11-05 | If W1 core has not started, escalate node outage to Cyfronet; arrays are already split into 1 h core/control blocks. |
+| **2026-11-11 23:59 CET** | **BP-sched HPO deadline**; record tuned/fallback branch. |
+| 2026-11-12 / 19 / 26 | Queue-start scenarios; see `W1_CRITICAL_PATH.md`. |
 | 2026-11-15 | DSS figure data (already generated from G1 + PPAM; see `jpdc_data/dss/`) |
 | 2026-12-20 | G2 scope gate |
 
@@ -167,8 +166,8 @@ not a second worker on the same study.
 
 1. **Node outage dominates.** No scheduling trick fixes 44/48 unavailable nodes.
    Escalate to Cyfronet support; keep `--test-only` probes as evidence.
-2. **Account scope.** `plgoncotherapy2-gpu-a100` is technically valid but belongs to
-   another project. Do not switch without written approval.
+2. **Account scope resolved.** `plgoncotherapy2-gpu-a100` is authorized for new W1
+   submissions; pending jobs remain on the class account. Do not migrate them.
 3. **SQLite on kill.** Chained segments reduce exposure; Optuna completed trials are
    durable. Back up the `.db` after each segment (`cp` to a timestamped file).
 4. **W1 overwrites G1 directories.** G1 archive already exists at
@@ -182,8 +181,9 @@ not a second worker on the same study.
 
 ## 8. Next three actions
 
-1. Get the account-scope answer; if yes, cancel/resubmit 3386582/3386586 to
-   `plgoncotherapy2-gpu-a100` (test-only estimate 12 Nov vs 19 Nov).
-2. Approve (or edit) the §9 fallback wording above before 28 Oct.
-3. If tuning is still pending on 25 Oct, keep the 4×5 h segment chain ready; do
-   not launch `plgrid-now`. Re-probe `sinfo`/`--test-only` before any resubmit.
+1. Do not submit W1 until the author says so. If authorized, submit
+   `w1_submit.sh core` (200 tasks) first, then the frozen controls; Seq-Global and
+   BP-sched wait for their §9 branch commits.
+2. Record the Seq-Global branch by 4 Nov and the BP-sched branch by 11 Nov.
+3. Keep the 4×5 h segment chain ready but do not launch `plgrid-now`. Re-probe
+   `sinfo`/`--test-only` before any resubmission; do not migrate 3386582/3386586.
