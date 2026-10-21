@@ -1,0 +1,55 @@
+experiment_name: "mf_cap300_cifar10_mlp_3x2000"
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00021536491821693216
+  weight_decay: 1.606438244272842e-06
+  log_interval: 9999
+  activation_cache: recompute
+
+# H-W1cap: same arm as MF-Seq, only the per-unit epoch cap changes (100 -> 300).
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 20
+  max_epochs: 300
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: false
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
