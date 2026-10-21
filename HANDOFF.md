@@ -78,9 +78,16 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
    W0c cap anatomy (`w0c_cap_anatomy.py`, new): MF-Seq W1_M1 cap-bound 90% C10 / 55%
    C100 (PPAM 90%/50%), M0 23.4%/23.2% of passes, per-stage sums = JSON in 40/40 runs.
    W0e refreshed against the same tree; one-pager/errata updated.
-8. **NOW:** decide §5 HPO question (inherit vs tune Seq-Global) and record it in
-   `PREREG-phase2.md` §9; then submit the W1 family (6 arms x 2 datasets x 20 seeds) with
-   the `g1_repair` hygiene pattern; cap-300 pilot n=5 (H-W1cap) and W0d BP-long ride along.
+8. **NOW (queued 2026-10-21, partition priority wait):**
+   - Seq-Global tuning: job **3386582** (2 tasks, 50 trials each, 24 h wall; studies
+     `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`). On completion: read the
+     `*_best_params.yaml`, freeze lr/wd into `configs/mf_global/*`, record the study
+     results + commit hash in `PREREG-phase2.md` §9.
+   - H-W1cap Step 1: job **3386586** (5 tasks, C100 cap-300 seeds 42-46). Reduce with
+     `scripts/jpdc/summarize_cap_pilot.py` (frozen trigger, unit-tested).
+   - Then submit `scripts/slurm_scripts/w1_family.slurm` (280 tasks = 6 main arms +
+     BP-long, 14 configs x 20 seeds) at the frozen commit; archive of G1 lives in
+     cluster `results/archive_g1_20261021/`.
 9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
    (already written; mirror `analyze_g1` structure with H-W1a..d as decision blocks).
 
