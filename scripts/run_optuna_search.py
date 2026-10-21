@@ -17,6 +17,7 @@ from src.tuning.optuna_objective_bpds import objective_bpds
 from src.tuning.optuna_objective_cafo import objective_cafo
 from src.tuning.optuna_objective_ff import objective_ff
 from src.tuning.optuna_objective_mf import objective_mf
+from src.tuning.optuna_objective_mfglobal import objective_mfglobal
 from src.tuning.optuna_objective_mfjoint import objective_mfjoint
 from src.tuning.optuna_objective_mfsimul import objective_mfsimul
 from src.utils.config_parser import load_config
@@ -32,8 +33,8 @@ def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description=(
-            "Run Optuna hyperparameter search for BP, BP-DS, MF-Joint, MF-Simul, MF, CaFo, "
-            "or FF algorithms."
+            "Run Optuna hyperparameter search for BP, BP-DS, MF-Joint, MF-Simul, Seq-Global, "
+            "MF, CaFo, or FF algorithms."
         )
     )
     parser.add_argument(
@@ -101,6 +102,9 @@ def main() -> None:
     elif algorithm_name == "MF_SIMUL":
         objective_func = objective_mfsimul
         logger.info("Selected detached joint-gradient Mono-Forward (MF-Simul) objective.")
+    elif algorithm_name == "MF_GLOBAL":
+        objective_func = objective_mfglobal
+        logger.info("Selected trainable-prefix staged Mono-Forward (Seq-Global) objective.")
     elif algorithm_name == "CAFO":
         objective_func = objective_cafo
         logger.info("Selected Cascaded Forward (CaFo) Optuna objective.")
@@ -110,7 +114,7 @@ def main() -> None:
     else:
         logger.error(
             f"Unsupported algorithm '{algorithm_name}' for Optuna tuning. "
-            "Supported: BP, BP_DS, MF_JOINT, MF_SIMUL, MF, CaFo, FF."
+            "Supported: BP, BP_DS, MF_JOINT, MF_SIMUL, MF_GLOBAL, MF, CaFo, FF."
         )
         return
 
@@ -141,7 +145,11 @@ def main() -> None:
     storage_path = f"sqlite:///{os.path.join(output_dir, f'{study_name}.db')}"
     sampler_type = tuning_config.get("sampler", "TPE").upper()
     pruner_type = tuning_config.get("pruner", "Median").upper()
-    if algorithm_name in ["MF", "CAFO", "FF", "BP_DS", "MF_JOINT", "MF_SIMUL"] and pruner_type != "NONE":
+    if (
+        algorithm_name
+        in ["MF", "CAFO", "FF", "BP_DS", "MF_JOINT", "MF_SIMUL", "MF_GLOBAL"]
+        and pruner_type != "NONE"
+    ):
         logger.warning(
             f"{algorithm_name} Optuna objective reports only final metric. Pruner "
             f"'{pruner_type}' might not be effective. Consider 'NONE'."
@@ -218,7 +226,7 @@ def main() -> None:
             best_config_update["optimizer"]["type"] = config.get("optimizer", {}).get(
                 "type", "AdamW"
             )
-        elif algorithm_name == "MF":
+        elif algorithm_name in ["MF", "MF_GLOBAL"]:
             best_config_update = {"algorithm_params": {}}
             update_section_name = "algorithm_params"
             for key, value in params_to_log.items():

@@ -126,3 +126,4 @@ be pilots.
 | date | change | by |
 |---|---|---|
 | 2026-10-17 | PREREG-phase2 drafted (W1 attribution ladder: Seq-Global implemented + unit-tested; mf_nom0 configs added; CPU smoke of Seq-Global OK). No W1 run scheduled yet | agent |
+| 2026-10-21 | §5 HPO decision recorded: **option (b)**, parity-maximizing. Seq-Global gets its own 50-trial ladder-Optuna study per dataset before any confirmatory run (`configs/tuning/mfglobal_*`, studies `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`); search space is the MF-family breadth lr/wd (no auxiliary weight exists — each stage has its own local loss). Best params frozen into `configs/mf_global/*`; the tuning commit hash and best-params YAMLs are recorded here when the studies finish. | agent |
