@@ -68,7 +68,7 @@ Updated: 2026-10-21. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
    `ERRATA_PPAM.md` (claim-level corrections).
 6. Budget mapping: ~**28.7 A100-GPU-hours** for the whole G1 chain (tuning 2x50 trials,
    pilot 20, decisive 160 + incident reruns 112; sacct 2026-10-17). NVML Wh per run in
-   `g1_per_seed.csv` (C100: BP 4.48, MF-Joint 5.07, MF-Simul 3.55, MF-Seq 16.52 Wh).
+   `g1_per_seed.csv` (final C100: BP 4.48, MF-Joint 5.11, MF-Simul 3.55, MF-Seq 16.67 Wh).
 7. ~~Pull repair job 3376703 + refresh G1 tables~~ DONE (2026-10-21, login nodes restored):
    all 12 repaired runs were complete (Oct 17 14:34-14:47, before the lockout). Pulled
    160/160 JSONs + 160 monitoring CSVs + 248 task `.out` files. `analyze_g1` and `w0a`
