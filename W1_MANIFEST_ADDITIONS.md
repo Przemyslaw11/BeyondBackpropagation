@@ -74,7 +74,7 @@ not wall time; the 1 h arrays can backfill, the tuning needs 5 h segments.
 
 BP-long is costed at the observed BP stopping point (~53/44 passes). If its
 patience never fires and it runs to the 300-epoch cap, that block rises from
-2.7 to ~15.1 GPU-h; the overall estimate is then ~122 GPU-h. The cap-300
+2.7 to ~16.7 GPU-h; the overall estimate is then ~123 GPU-h. The cap-300
 conditional arm is not included in either number.
 
 ## Submission order and account
