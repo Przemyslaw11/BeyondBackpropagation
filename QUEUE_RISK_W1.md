@@ -63,7 +63,7 @@ for batch tuning. Note that moving accounts means cancelling and resubmitting
 the class account for the paper's accounting statement. If no, stay on the class
 account; the root cause is the node outage, not the account.
 
-## 3. Segmentation plan (proposal, not submitted)
+## 3. Segmentation plan (prepared, not submitted)
 
 ### 3.1 Tuning: 4 × 5-hour resumable segments instead of one 24 h job
 
@@ -156,7 +156,7 @@ not a second worker on the same study.
 | 2026-10-22 | Ask grant owner about charging BBP to `plgoncotherapy2-gpu-a100`; decide account. Do not switch before approval. |
 | 2026-10-24 | Review whether tuning has started; if not, keep the 5 h segment chain ready. Do not use `plgrid-now`. |
 | **2026-10-28 12:00** | **HPO fallback trigger**; freeze Seq-Global and submit W1 core |
-| 2026-11-05 | If W1 family has not started, split arrays / escalate node outage to Cyfronet |
+| 2026-11-05 | If W1 core has not started, escalate node outage to Cyfronet; arrays are already split into 1 h core/control blocks |
 | 2026-11-15 | DSS figure data (already generated from G1 + PPAM; see `jpdc_data/dss/`) |
 | 2026-12-20 | G2 scope gate |
 
