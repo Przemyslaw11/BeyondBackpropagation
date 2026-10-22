@@ -36,6 +36,13 @@ export WANDB_DIR="${SCRATCH:-$HOME}/bbp_wandb"
 mkdir -p "$WANDB_DIR"
 export BBP_DISABLE_CHECKPOINTS=1
 
+# HOME quota guard: a full HOME kills the run and wastes a GPU allocation.
+USED_MB=$(quota -s | awk '/net\/people/ {getline; gsub(/M/,"",$1); print $1}')
+if [ -z "${USED_MB:-}" ] || [ "${USED_MB}" -ge 9500 ]; then
+    echo "HOME quota at ${USED_MB:-unknown}M >= 9500M; refusing to run."
+    exit 1
+fi
+
 module purge
 module load Python/3.10.4
 module load CUDA/12.4.0

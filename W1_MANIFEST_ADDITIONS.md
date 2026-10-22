@@ -105,7 +105,8 @@ fixed-epoch run and its 11.2 GPU-h is directly derived from the BP-sched
    commit, then `w1_submit.sh protocolb` (80 tasks, 1 h).
 4. Seq-Global: record the 25 Nov branch (tuned trial or MF-Seq fallback), commit,
    then `w1_submit.sh seqglobal` (40 tasks, 1 h).
-5. BP-sched/BP-fixed: record the 2 Dec branch (tuned trial or core-BP fallback),
+5. BP-sched tuning: after the go-ahead, `w1_submit.sh schedtune` (2 tasks, 8 h);
+   record the array ID. After the 2 Dec branch (tuned trial or core-BP fallback),
    replace `PLACEHOLDER` in `configs/bp_sched/*` with the chosen lr/wd, commit,
    then `w1_submit.sh sched` (40 tasks, 1 h) and `w1_submit.sh fixed` (40 tasks, 1 h).
 

@@ -39,7 +39,7 @@ case "${1:-}" in
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_bp_sched.slurm
     ;;
   *)
-    echo "Usage: $0 {core|seqglobal|controls|fixed|protocolb|sched}" >&2
+    echo "Usage: $0 {core|seqglobal|controls|fixed|protocolb|sched|schedtune}" >&2
     echo "ACCOUNT currently: $ACCOUNT (team $TEAM)" >&2
     exit 2
     ;;

@@ -34,6 +34,7 @@ bash -n scripts/slurm_scripts/w1_bp_fixed.slurm
 bash -n scripts/slurm_scripts/w1_controls_protocol_b.slurm
 bash -n scripts/slurm_scripts/w1_seqglobal.slurm
 bash -n scripts/slurm_scripts/w1_bp_sched.slurm
+bash -n scripts/slurm_scripts/bp_sched_tune.slurm
 FROZEN_COMMIT=$(git rev-parse HEAD)
 echo "FROZEN_COMMIT=$FROZEN_COMMIT"
 ```
@@ -133,6 +134,18 @@ ssh athena 'cd "$HOME/BeyondBackpropagation" && ./scripts/slurm_scripts/w1_submi
 ```bash
 ssh athena 'cd "$HOME/BeyondBackpropagation" && ./scripts/slurm_scripts/w1_submit.sh seqglobal'
 ```
+
+### Block E0 — BP-sched tuning (2 tasks; after the author go-ahead, no placeholder gate)
+
+This is the 50-trial-per-dataset study. It does not use `configs/bp_sched/*`; it
+writes the Optuna studies named in `scripts/slurm_scripts/bp_sched_tune.slurm`.
+
+```bash
+ssh athena 'cd "$HOME/BeyondBackpropagation" && ./scripts/slurm_scripts/w1_submit.sh schedtune'
+```
+
+Record the array ID. The confirm arrays in Block E remain blocked until the
+2 Dec branch is recorded.
 
 ### Block E — BP-sched and BP-fixed (40 + 40 tasks; ONLY after the 2 Dec branch is recorded)
 
