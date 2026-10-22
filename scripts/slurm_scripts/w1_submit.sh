@@ -38,6 +38,12 @@ case "${1:-}" in
     # Gated on the 2026-12-02 HPO deadline/fallback and placeholder removal.
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_bp_sched.slurm
     ;;
+  schedtune)
+    # BP-sched HPO study (2 tasks, 50 trials per dataset). Reads
+    # configs/tuning/bp_sched_* only; configs/bp_sched/* placeholders are not
+    # involved, so this path has no placeholder gate.
+    sbatch --account="$ACCOUNT" scripts/slurm_scripts/bp_sched_tune.slurm
+    ;;
   *)
     echo "Usage: $0 {core|seqglobal|controls|fixed|protocolb|sched|schedtune}" >&2
     echo "ACCOUNT currently: $ACCOUNT (team $TEAM)" >&2

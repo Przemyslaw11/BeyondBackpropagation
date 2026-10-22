@@ -52,6 +52,7 @@ echo "#####################################################################"
 echo "BP-sched tuning task ${SLURM_ARRAY_TASK_ID}/2"
 echo "Config: $CONFIG_FILE"
 echo "Study:  $STUDY_NAME"
+echo "Node: ${SLURMD_NODENAME:-$(hostname)}   Start: $(date -Is)"
 echo "Host: $(hostname)   GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 

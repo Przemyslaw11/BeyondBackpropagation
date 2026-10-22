@@ -42,8 +42,11 @@ if [ $INDEX -lt 0 ] || [ $INDEX -ge $NUM_JOBS ]; then
     echo "Error: Invalid SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID)." >&2
     exit 1
 fi
-CONFIG_INDEX=$((INDEX / NUM_SEEDS))
-SEED_INDEX=$((INDEX % NUM_SEEDS))
+# Seed-major order (2026-10-22 amendment): both datasets of one seed are
+# adjacent in index order, so paired runs start together under the array
+# throttle. Mapping only; no config, seed, arm or task-count change.
+SEED_INDEX=$((INDEX / NUM_CONFIGS))
+CONFIG_INDEX=$((INDEX % NUM_CONFIGS))
 CONFIG_FILE=${CONFIG_FILES[$CONFIG_INDEX]}
 export EXPERIMENT_SEED=${SEEDS[$SEED_INDEX]}
 
@@ -82,6 +85,7 @@ echo "W1 frozen-control run $SLURM_ARRAY_TASK_ID / ${NUM_JOBS}"
 echo "Config (${CONFIG_INDEX}): $CONFIG_FILE"
 echo "Seed: $EXPERIMENT_SEED"
 echo "Run log: $RUN_LOG"
+echo "Node: ${SLURMD_NODENAME:-$(hostname)}   Start: $(date -Is)"
 echo "Host: $(hostname)   GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 
