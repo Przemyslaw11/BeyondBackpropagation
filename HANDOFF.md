@@ -100,6 +100,28 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   After the arrays run, `scontrol show job <id>` and `.out` `Node:/GPU UUID:` lines give
   the node and physical GPU per task.
 
+## Zero-GPU work while queued (2026-10-22, no W1 outcome read)
+
+- **Analysis table shells.** `scripts/jpdc/w1_table_shells.py` builds the synthetic
+  fixture tree from `tests/test_analyze_w1.py`, runs the **frozen** reducer on it, and
+  writes header-only shells to `analysis/w1_table_shells/`: 14 CSVs (one per reducer
+  table), `w1_summary_shell.md` (headings only) and `SCHEMA.md` (columns, fixture row
+  count, source hash). `scripts/jpdc/analyze_w1.py` was not modified; its SHA-256 before
+  and after generation is `c424a0eebe81e8e48ec3e3ad5371e9343e6a7650e0ca9d4221c04c74a5a61ff1`.
+- **DSS figure set.** `plots/dss_g1_pareto.py` reads only `jpdc_data/dss/pareto_protocol_{a,b}.csv`
+  and `jpdc_data/g1/w0b/w0b_stage_energy.csv` (G1 2026-10 and PPAM 2026-09). It writes
+  `analysis/dss_figures/dss_fig1_protocol_a_energy`, `dss_fig2_protocol_a_passes` and
+  `dss_fig3_protocol_b_energy` (PDF + PNG) plus `README.md` with input hashes. Every
+  ex-M0 point is drawn as an open diamond and labelled **ESTIMATE**; Protocol A's
+  estimate applies the PPAM-era M0 share (22.9% / 22.8%) to G1 energy and is marked
+  era-mixed, Protocol B's is same-era. No ex-M0 pass estimate is drawn (G1 lacks
+  per-stage epoch counts). The script aborts on any input path containing `w1` or
+  `results/runs`.
+- **Health (not outcomes).** Core tasks 1–12: `COMPLETED`, exit `0:0`, max elapsed
+  16:14, nodes t0003/t0004/t0014/t0020. From 13 onward the array is 2:00:00. All
+  remaining arrays were `PENDING (ReqNodeNotAvail)` at the last check; HOME monitoring
+  directory still 94 MiB.
+
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
   mismatch documented; fairness matrix; open items).
