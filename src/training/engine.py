@@ -20,6 +20,7 @@ from src.algorithms import (
 )
 from src.architectures import FF_MLP, MF_MLP, CaFo_CNN
 from src.data_utils.datasets import get_dataloaders
+from src.training.secondary_endpoints import compute_secondary_endpoints
 from src.utils.backend_policy import get_execution_backend
 from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.helpers import format_time, set_seed
@@ -461,6 +462,7 @@ def _finalize_run(
     # CaFo the count is summed over stages, i.e. optimiser epochs of actual work.
     epochs = config.get("_run_stats", {}).get("epochs_completed")
     results["epochs_completed"] = epochs if epochs else float("nan")
+    results["stage_epochs"] = config.get("_run_stats", {}).get("stage_epochs", [])
     if epochs:
         results["gpu_energy_wh_per_epoch"] = (
             results.get("total_gpu_energy_wh", float("nan")) / epochs
@@ -644,6 +646,32 @@ def run_training(
             f"Test Set Results: Acc: {results.get('test_accuracy', 'N/A'):.2f}%, "
             f"Loss: {results.get('test_loss', 'N/A'):.4f}"
         )
+
+        # Diagnostic only, and deliberately after the NVML monitor has stopped
+        # (the training context manager closes before the test pass).  A failure
+        # here must never invalidate a completed training run.
+        try:
+            secondary = compute_secondary_endpoints(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
+                config=config,
+                device=device,
+                algo_name=algo_name,
+                input_adapter=input_adapter,
+                test_loss=results.get("test_loss"),
+                test_accuracy=results.get("test_accuracy"),
+            )
+            results.update(secondary)
+        except Exception as secondary_error:
+            logger.warning(
+                "Secondary endpoint evaluation failed; training results remain "
+                "valid: %s",
+                secondary_error,
+                exc_info=True,
+            )
+            results["secondary_eval_error"] = str(secondary_error)
 
     except Exception as e:
         logger.critical(f"Experiment Failed: {e}", exc_info=True)

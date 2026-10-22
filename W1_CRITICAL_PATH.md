@@ -11,30 +11,34 @@ Account decision: new W1 submissions use `plgoncotherapy2-gpu-a100`
 
 The author-approved fallback (PREREG-phase2.md §9, 2026-10-22) is:
 
-- Seq-Global deadline **4 Nov 2026 23:59 CET**;
-- BP-sched deadline **11 Nov 2026 23:59 CET**;
+- Seq-Global deadline **25 Nov 2026 23:59 CET**;
+- BP-sched deadline **2 Dec 2026 23:59 CET**;
 - freeze the best-validation trial among completed trials if **≥20 completed
   per dataset**, otherwise reuse MF-Seq's tuned lr/wd; disclose the branch.
 
-All three candidate queue starts (12, 19, 26 Nov) are **after both deadlines**.
-Therefore the baseline plan at each scenario is the fallback branch, unless a
-tuning job actually ran earlier and met the ≥20-per-dataset bar. The branch must
-be recorded in §9 and committed before the corresponding confirm array is
-submitted.
+The deadlines were moved on 2026-10-22 for the A100 outage, not for data; no
+tuning trial had completed. The 12 and 19 Nov starts can still run the tuning
+arrays before the Seq-Global deadline if the queue cooperates; the 26 Nov start
+sees the Seq-Global deadline already passed. The BP-sched deadline is 2 Dec, so
+all three starts can run its tuning in parallel with the frozen core. The
+baseline if tuning has not met the ≥20-per-dataset bar by the deadline is the
+fallback branch. The branch must be recorded in §9 and committed before the
+corresponding confirm array is submitted.
 
 This makes the frozen core independent of both tuning studies:
 
 | block | tasks | tuning dependency | submit condition |
 |---|---:|---|---|
 | Frozen core: BP, MF-Joint, MF-Simul, MF-Seq, nom0 | 200 | none | author says submit |
-| Frozen controls: BP-long, BP-bestval | 80 | none | author says submit |
-| Seq-Global | 40 | 4 Nov branch recorded | fallback or tuned config committed |
-| BP-sched | 40 | 11 Nov branch recorded | placeholders replaced and committed |
+| Frozen controls: BP-bestval | 40 | none | author says submit |
+| Seq-Global | 40 | 25 Nov branch recorded | fallback or tuned config committed |
+| BP-fixed | 40 | BP-sched branch recorded | placeholders replaced and committed; same lr/wd |
+| BP-sched | 40 | 2 Dec branch recorded | placeholders replaced and committed |
 | Protocol B: MF-Seq, nom0 | 80 | none after core BP | actual `Ebar_BP` budgets frozen/committed |
 | cap-300 conditional | 40 | none | cap pilot triggers H-W1cap step 2; outside 440 |
 
-`w1_submit.sh` exposes these as `core`, `controls`, `seqglobal`, `protocolb`,
-and `sched`. No mode submits the whole 440-task base at once.
+`w1_submit.sh` exposes these as `core`, `controls`, `fixed`, `seqglobal`,
+`protocolb`, and `sched`. No mode submits the whole 440-task base at once.
 
 ## 2. Queue-start scenarios
 
@@ -44,11 +48,13 @@ A100s. The estimates are ordering aids, not queue predictions.
 ### Start 12 Nov
 
 1. Submit **core 200** immediately; this is the only never-cut GPU block.
-2. Submit **frozen controls 80** alongside the core.
-3. Record the Seq-Global branch (fallback, unless ≥20 trials/dataset completed
-   before 4 Nov) and submit **Seq-Global 40**.
-4. Record the BP-sched branch. If fallback, replace both `PLACEHOLDER` lr/wd
-   lines with the MF-Seq values, commit, submit **BP-sched 40**.
+2. Submit **frozen controls 40** (BP-bestval) alongside the core.
+3. Let the Seq-Global tuning array run; at the 25 Nov deadline record either
+   the tuned branch (≥20 completed per dataset) or the fallback, commit, then
+   submit **Seq-Global 40**.
+4. Let the BP-sched tuning array run; at the 2 Dec deadline record either the
+   tuned branch or the fallback, replace both `PLACEHOLDER` lr/wd lines, commit,
+   then submit **BP-sched 40** and **BP-fixed 40** (same lr/wd, fixed epochs).
 5. Once core BP has produced its seed set, compute `Ebar_BP`, freeze the
    Protocol-B integers, commit, submit **Protocol B 80**.
 6. Expected finish: late Nov with normal throughput; December is buffer for
@@ -57,23 +63,27 @@ A100s. The estimates are ordering aids, not queue predictions.
 ### Start 19 Nov
 
 1. Submit **core 200** first; do not wait for Seq-Global or BP-sched.
-2. Submit **frozen controls 80** if slots exist; otherwise queue them next.
+2. Submit **frozen controls 40** if slots exist; otherwise queue them next.
 3. Freeze Protocol B from the core-BP mean and submit **Protocol B 80**.
-4. Submit **Seq-Global 40** and **BP-sched 40** with the recorded fallback
-   values. They are independent and cheap; run them in any spare slots.
-5. If throughput is tight, defer BP-sched to the 26 Nov wave, not the core.
+4. Seq-Global tuning can still run to its 25 Nov deadline. Record the branch and
+   submit **Seq-Global 40** on 25–26 Nov.
+5. BP-sched tuning can run to 2 Dec. Record the branch, submit **BP-sched 40**
+   and **BP-fixed 40**; if throughput is tight, defer these to the next wave,
+   never the core.
 
 ### Start 26 Nov
 
 1. Submit **core 200** immediately.
 2. Submit **Protocol B 80** after the core-BP budget freeze; submit **frozen
-   controls 80** in parallel.
-3. Submit **Seq-Global 40** and **BP-sched 40** with the recorded fallback.
+   controls 40** (BP-bestval) in parallel.
+3. The Seq-Global deadline has passed: record the branch and submit
+   **Seq-Global 40**. BP-sched can run to 2 Dec; record the branch and submit
+   **BP-sched 40** plus **BP-fixed 40**.
 4. The GPU work is ~440 one-hour blocks; with even modest concurrency it can
    finish before the 8 Jan 2027 experiment freeze. The binding constraint is
    queue availability, not compute.
 5. If only one wave is possible, the order is core → Protocol B → controls →
-   Seq-Global → BP-sched. The last two may be reported with fallback HPO and a
+   Seq-Global → BP-sched/BP-fixed. The last two may be reported with fallback HPO and a
    disclosed reduced tuning budget; they are never replaced by a new arm.
 
 ## 3. Scope-cut order under deadline pressure
@@ -95,8 +105,9 @@ artifacts.
 ## 4. Hard gates
 
 - Do not submit any W1 array before the author says so.
-- Do not submit Seq-Global before the 4 Nov branch is recorded.
-- Do not submit BP-sched while `configs/bp_sched/*.yaml` contains `PLACEHOLDER`.
+- Do not submit Seq-Global before the 25 Nov branch is recorded.
+- Do not submit BP-sched or BP-fixed while `configs/bp_sched/*.yaml` contains
+  `PLACEHOLDER`, or before the 2 Dec branch is recorded.
 - Do not submit Protocol B before the core-BP `Ebar_BP` freeze is committed.
 - Do not migrate the two pending class-account jobs to the oncology account.
 - Sync the cluster checkout to the frozen local commit immediately before the

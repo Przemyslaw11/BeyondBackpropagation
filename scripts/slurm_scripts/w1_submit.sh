@@ -19,23 +19,27 @@ case "${1:-}" in
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_family.slurm
     ;;
   seqglobal)
-    # Gated on the 2026-11-04 HPO deadline/fallback.
+    # Gated on the 2026-11-25 HPO deadline/fallback.
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_seqglobal.slurm
     ;;
   controls)
-    # Frozen controls BP-long and BP-bestval, independent of HPO.
+    # Frozen BP-bestval control only, independent of HPO (40 tasks).
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_family_controls.slurm
+    ;;
+  fixed)
+    # H-W1d BP-fixed; shares the frozen BP-sched lr/wd (40 tasks).
+    sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_bp_fixed.slurm
     ;;
   protocolb)
     # Gated on the actual core-BP Ebar_BP and a frozen budget commit.
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_controls_protocol_b.slurm
     ;;
   sched)
-    # Gated on the 2026-11-11 HPO deadline/fallback and placeholder removal.
+    # Gated on the 2026-12-02 HPO deadline/fallback and placeholder removal.
     sbatch --account="$ACCOUNT" scripts/slurm_scripts/w1_bp_sched.slurm
     ;;
   *)
-    echo "Usage: $0 {core|seqglobal|controls|protocolb|sched}" >&2
+    echo "Usage: $0 {core|seqglobal|controls|fixed|protocolb|sched}" >&2
     echo "ACCOUNT currently: $ACCOUNT (team $TEAM)" >&2
     exit 2
     ;;

@@ -102,21 +102,23 @@ written helpdesk confirmation; no `plgrid-now` chain is prepared as a fallback.
 
 ### 3.3 W1 family: frozen core first; HPO-gated arms separate
 
-The 440-task base is five independently submittable arrays, not one array:
+The 440-task base is six independently submittable arrays, not one array:
 
 - `w1_family.slurm`: frozen core five arms, 200 tasks, 1 h, 8 CPU/48 GB.
-- `w1_family_controls.slurm`: BP-long and BP-bestval, 80 tasks, 1 h.
-- `w1_seqglobal.slurm`: Seq-Global, 40 tasks, 1 h, after the 4 Nov branch.
+- `w1_family_controls.slurm`: BP-bestval, 40 tasks, 1 h.
+- `w1_bp_fixed.slurm`: BP-fixed, 40 tasks, 1 h, after the BP-sched branch;
+  same frozen lr/wd, fixed 211/191 epochs, no early stopping.
+- `w1_seqglobal.slurm`: Seq-Global, 40 tasks, 1 h, after the 25 Nov branch.
 - `w1_controls_protocol_b.slurm`: MF-Seq and nom0 Protocol B, 80 tasks, 1 h,
   after the core-BP `Ebar_BP` freeze.
-- `w1_bp_sched.slurm`: BP-sched, 40 tasks, 1 h, after the 11 Nov branch and
+- `w1_bp_sched.slurm`: BP-sched, 40 tasks, 1 h, after the 2 Dec branch and
   placeholder replacement.
 
 All use the same commit and seeds. 1 h is >2× the slowest observed task; a task
 that needs more is a bug and should fail rather than occupy a node for 6 h. The
 account switch is one line in `scripts/slurm_scripts/w1_submit.sh`; new W1
 submissions default to `plgoncotherapy2-gpu-a100` (team `plggfastsim`). See
-`W1_MANIFEST_ADDITIONS.md` for the 440-task count and ~109 GPU-hour estimate, and
+`W1_MANIFEST_ADDITIONS.md` for the 440-task count and ~118 GPU-hour estimate, and
 `W1_CRITICAL_PATH.md` for the 12/19/26 Nov queue scenarios.
 
 ## 4. Pre-registered HPO fallback (approved 2026-10-22)
@@ -124,8 +126,8 @@ submissions default to `plgoncotherapy2-gpu-a100` (team `plggfastsim`). See
 The author-approved rule is now in `PREREG-phase2.md` §9 and is time-triggered,
 never W1-outcome-triggered:
 
-- **Seq-Global:** 4 Nov 2026 23:59 CET.
-- **BP-sched:** 11 Nov 2026 23:59 CET.
+- **Seq-Global:** 25 Nov 2026 23:59 CET.
+- **BP-sched:** 2 Dec 2026 23:59 CET.
 - At each deadline, freeze the best-validation trial among completed trials if
   **≥20 trials are completed per dataset**; otherwise reuse MF-Seq's tuned lr/wd
   for that dataset.
@@ -133,10 +135,12 @@ never W1-outcome-triggered:
   outcome, threshold, seed, or Holm family.
 
 The fallback values are the published MF-Seq values already present in
-`configs/mf/*`; `configs/mf_global/*` currently carries them. BP-sched must have
-its `PLACEHOLDER` lr/wd replaced before submission. Because the 12/19/26 Nov queue
-starts are after both deadlines, the schedule assumes fallback unless a tuning
-job runs earlier and meets the 20-trial bar.
+`configs/mf/*`; `configs/mf_global/*` currently carries them. BP-sched and
+BP-fixed must have the `PLACEHOLDER` lr/wd replaced before submission. The 12/19
+Nov starts can still run Seq-Global tuning before its 25 Nov deadline; the 26 Nov
+start sees that deadline passed. All three starts can run BP-sched tuning before
+2 Dec. The schedule assumes fallback only if the 20-trial bar is not met by the
+deadline.
 
 ## 5. Parallel workers? No.
 
@@ -155,11 +159,11 @@ not a second worker on the same study.
 |---|---|
 | 2026-10-22 | Account decision: new W1 submissions use `plgoncotherapy2-gpu-a100` (team `plggfastsim`). Existing jobs stay on the class account; no migration. |
 | 2026-10-24 | Review whether tuning has started; if not, keep the 5 h segment chain ready. Do not use `plgrid-now`. |
-| **2026-11-04 23:59 CET** | **Seq-Global HPO deadline**; record tuned/fallback branch. |
 | 2026-11-05 | If W1 core has not started, escalate node outage to Cyfronet; arrays are already split into 1 h core/control blocks. |
-| **2026-11-11 23:59 CET** | **BP-sched HPO deadline**; record tuned/fallback branch. |
 | 2026-11-12 / 19 / 26 | Queue-start scenarios; see `W1_CRITICAL_PATH.md`. |
 | 2026-11-15 | DSS figure data (already generated from G1 + PPAM; see `jpdc_data/dss/`) |
+| **2026-11-25 23:59 CET** | **Seq-Global HPO deadline**; record tuned/fallback branch. |
+| **2026-12-02 23:59 CET** | **BP-sched HPO deadline**; record tuned/fallback branch; then BP-sched and BP-fixed. |
 | 2026-12-20 | G2 scope gate |
 
 ## 7. Risks
@@ -182,8 +186,8 @@ not a second worker on the same study.
 ## 8. Next three actions
 
 1. Do not submit W1 until the author says so. If authorized, submit
-   `w1_submit.sh core` (200 tasks) first, then the frozen controls; Seq-Global and
-   BP-sched wait for their §9 branch commits.
-2. Record the Seq-Global branch by 4 Nov and the BP-sched branch by 11 Nov.
+   `w1_submit.sh core` (200 tasks) first, then the frozen BP-bestval controls;
+   Seq-Global and BP-sched/BP-fixed wait for their §9 branch commits.
+2. Record the Seq-Global branch by 25 Nov and the BP-sched branch by 2 Dec.
 3. Keep the 4×5 h segment chain ready but do not launch `plgrid-now`. Re-probe
    `sinfo`/`--test-only` before any resubmission; do not migrate 3386582/3386586.

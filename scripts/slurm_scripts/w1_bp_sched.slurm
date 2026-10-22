@@ -1,6 +1,6 @@
 #!/bin/bash
 # W1 control (a): BP with tuned cosine schedule, fixed 100-epoch budget.
-# 2 datasets x 20 seeds = 40 tasks. Submit only after the 2026-11-11 23:59 CET
+# 2 datasets x 20 seeds = 40 tasks. Submit only after the 2026-12-02 23:59 CET
 # branch is recorded in PREREG-phase2.md §9: either the best trial with >=20
 # completed per dataset, or the MF-Seq fallback. Replace both lr/wd values,
 # commit, and then submit.

@@ -9,7 +9,8 @@ SLURM = ROOT / "scripts" / "slurm_scripts"
 EXPECTED = {
     "w1_family.slurm": (10, 200),
     "w1_seqglobal.slurm": (2, 40),
-    "w1_family_controls.slurm": (4, 80),
+    "w1_family_controls.slurm": (2, 40),
+    "w1_bp_fixed.slurm": (2, 40),
     "w1_controls_protocol_b.slurm": (4, 80),
     "w1_bp_sched.slurm": (2, 40),
 }
@@ -32,7 +33,23 @@ def test_new_w1_launchers_use_authorized_account():
 
 def test_submit_helper_exposes_split_modes():
     text = (SLURM / "w1_submit.sh").read_text()
-    for mode in ("core", "controls", "seqglobal", "protocolb", "sched"):
+    for mode in ("core", "controls", "fixed", "seqglobal", "protocolb", "sched"):
         assert f"  {mode})" in text
     assert 'ACCOUNT="${ACCOUNT:-plgoncotherapy2-gpu-a100}"' in text
     assert 'TEAM="${TEAM:-plggfastsim}"' in text
+
+
+def test_bp_fixed_is_derived_from_bp_sched_and_gated():
+    text = (SLURM / "w1_bp_fixed.slurm").read_text()
+    assert "FIXED_EPOCHS=(211 191)" in text
+    assert 'configs/bp_sched/cifar10_mlp_3x2000.yaml' in text
+    assert 'configs/bp_sched/cifar100_mlp_3x2000.yaml' in text
+    assert 'grep -q "PLACEHOLDER"' in text
+    assert 'config.setdefault("early_stopping", {})["enabled"] = False' in text
+    assert 'config["early_stopping"]["max_epochs"] = int(epochs)' in text
+
+
+def test_bp_long_is_not_in_the_frozen_control_array():
+    text = (SLURM / "w1_family_controls.slurm").read_text()
+    assert "bp_long" not in text
+    assert "bp_bestval" in text

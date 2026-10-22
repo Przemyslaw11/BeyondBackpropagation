@@ -1,3 +1,5 @@
+# DEPRECATED 2026-10-22: BP-long retired (BP never reaches the 100-epoch cap).
+# H-W1d uses BP-fixed via scripts/slurm_scripts/w1_bp_fixed.slurm.
 experiment_name: bp_long_cifar10_mlp_3x2000
 algorithm:
   name: BP

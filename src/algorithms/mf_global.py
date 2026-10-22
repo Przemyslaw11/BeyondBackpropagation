@@ -110,6 +110,7 @@ def train_mf_global_model(
 
     peak_mem_train = 0.0
     total_epochs_trained_all_layers = 0
+    stage_epochs: List[Dict[str, Any]] = []
 
     logger.debug("Freezing all model parameters initially.")
     for p in model.parameters():
@@ -142,6 +143,15 @@ def train_mf_global_model(
         )
         total_epochs_trained_all_layers += epochs_trained_m0
         peak_mem_train = max(peak_mem_train, m0_peak_mem)
+        stage_epochs.append(
+            {
+                "stage": "M0",
+                "epochs": epochs_trained_m0,
+                "stopping_epoch": epochs_trained_m0,
+                "max_epochs": epochs_per_layer,
+                "stopped_early": epochs_trained_m0 < epochs_per_layer,
+            }
+        )
         model.get_projection_matrix(0).requires_grad_(False)
         if checkpoint_dir:
             save_checkpoint(
@@ -285,6 +295,15 @@ def train_mf_global_model(
 
         total_epochs_trained_all_layers += epochs_trained_this_layer
         peak_mem_train = max(peak_mem_train, peak_mem_layer_train)
+        stage_epochs.append(
+            {
+                "stage": log_prefix,
+                "epochs": epochs_trained_this_layer,
+                "stopping_epoch": epochs_trained_this_layer,
+                "max_epochs": epochs_per_layer,
+                "stopped_early": epochs_trained_this_layer < epochs_per_layer,
+            }
+        )
         for p in params_to_optimize:
             p.requires_grad_(False)
         model.eval()
@@ -298,9 +317,12 @@ def train_mf_global_model(
                 checkpoint_dir=checkpoint_dir,
             )
 
-    config.setdefault("_run_stats", {})[
-        "epochs_completed"
-    ] = total_epochs_trained_all_layers
+    config.setdefault("_run_stats", {}).update(
+        {
+            "epochs_completed": total_epochs_trained_all_layers,
+            "stage_epochs": stage_epochs,
+        }
+    )
     logger.info(
         f"Finished all Seq-Global stages. Total Epochs (Sum): "
         f"{total_epochs_trained_all_layers}"

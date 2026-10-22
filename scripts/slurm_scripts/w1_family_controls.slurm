@@ -1,11 +1,13 @@
 #!/bin/bash
-# W1 frozen controls (PREREG-phase2.md §5/§9): BP-long and BP-bestval only,
-# 2 controls x 2 datasets x 20 seeds = 80 tasks. These parameters are frozen
+# W1 frozen controls (PREREG-phase2.md §5/§9): BP-bestval only,
+# 1 control x 2 datasets x 20 seeds = 40 tasks. These parameters are frozen
 # independently of Seq-Global and BP-sched tuning.
 #
-#   BP-long          H-W1d, max_epochs 300, otherwise core BP.
 #   BP-bestval       in-memory best-val-accuracy restore, no disk checkpoints.
 #
+# H-W1d is now BP-fixed, which shares the BP-sched hyperparameters and is
+# launched by w1_bp_fixed.slurm only after that HPO branch is frozen. BP-long
+# was retired on 2026-10-22 because BP never reached its 100-epoch cap.
 # Protocol B (MF-Seq/nom0) is in w1_controls_protocol_b.slurm because its budget
 # is frozen from the actual core-BP mean after core BP finishes, not now.
 #
@@ -20,11 +22,9 @@
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-80
+#SBATCH --array=1-40
 
 CONFIG_FILES=(
-    "configs/bp_long/cifar10_mlp_3x2000.yaml"
-    "configs/bp_long/cifar100_mlp_3x2000.yaml"
     "configs/bp_bestval/cifar10_mlp_3x2000.yaml"
     "configs/bp_bestval/cifar100_mlp_3x2000.yaml"
 )

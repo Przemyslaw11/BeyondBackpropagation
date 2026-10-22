@@ -605,24 +605,154 @@ def main() -> None:
                 energy_mult=float(seq.energy_wh.mean() / bp.energy_wh.mean()),
                 passes_mult=float(seq.passes.mean() / bp.passes.mean()),
                 time_mult=float(seq.duration_sec.mean() / bp.duration_sec.mean()),
-                ex_m0_energy_mult=float(
+                ex_m0_energy_mult_estimate=float(
                     (seq.energy_wh.mean() - e0) / bp.energy_wh.mean()
                 ),
-                ex_m0_passes_mult=float(
+                ex_m0_passes_mult_estimate=float(
                     (seq.passes.mean() - m0_epochs) / bp.passes.mean()
                 ),
-                ex_m0_time_mult=float(
+                ex_m0_time_mult_estimate=float(
                     (seq.duration_sec.mean() - s0) / bp.duration_sec.mean()
                 ),
                 dead_forward_flop_share=float(dead_frac),
                 dead_forward_energy_lower_bound_wh=float(dead_wh),
-                ex_dead_forward_energy_mult=float(
+                ex_dead_forward_energy_mult_estimate=float(
                     (seq.energy_wh.mean() - dead_wh) / bp.energy_wh.mean()
                 ),
             )
         )
     ex = pd.DataFrame(ex_rows)
     ex.to_csv(args.out_dir / "w3_cut_ex_m0.csv", index=False)
+
+    # H-W3d pilot: report the sign of Spearman rho, with a cell bootstrap and an
+    # explicit small-n caveat.  There is deliberately no one-sided threshold.
+    energy_by_cell = (
+        g1.groupby(["dataset", "arm"], as_index=False).energy_wh.mean()
+    )
+    pilot = summary[summary.arm.isin(["bp", "mf_simul", "mf_seq"])][
+        ["dataset", "arm", "gb_mean", "passes_mean"]
+    ].merge(energy_by_cell, on=["dataset", "arm"], how="left")
+    pilot = pilot.dropna(subset=["gb_mean", "energy_wh"])
+
+    def _bootstrap_rho_cells(frame: pd.DataFrame, seed: int = 42, n_boot: int = 10000):
+        """Cell bootstrap; used only for the descriptive sensitivity row."""
+        rng = np.random.default_rng(seed)
+        values = []
+        x = frame.gb_mean.to_numpy(float)
+        y = frame.energy_wh.to_numpy(float)
+        for _ in range(n_boot):
+            idx = rng.integers(0, len(frame), len(frame))
+            if len(np.unique(x[idx])) < 2 or len(np.unique(y[idx])) < 2:
+                continue
+            rho, _ = stats.spearmanr(x[idx], y[idx])
+            if np.isfinite(rho):
+                values.append(float(rho))
+        if not values:
+            return float("nan"), float("nan")
+        return float(np.percentile(values, 2.5)), float(np.percentile(values, 97.5))
+
+    def _bootstrap_rho_seeds(
+        gb_by_seed: pd.DataFrame,
+        energy_by_seed: pd.DataFrame,
+        seed: int = 42,
+        n_boot: int = 10000,
+    ):
+        """Paired seed bootstrap: resample seeds, recompute each arm's cell mean."""
+        rng = np.random.default_rng(seed)
+        values = []
+        n_seeds = len(gb_by_seed)
+        for _ in range(n_boot):
+            idx = rng.integers(0, n_seeds, n_seeds)
+            x = gb_by_seed.iloc[idx].mean(axis=0).to_numpy(float)
+            y = energy_by_seed.iloc[idx].mean(axis=0).to_numpy(float)
+            if len(np.unique(x)) < 2 or len(np.unique(y)) < 2:
+                continue
+            rho, _ = stats.spearmanr(x, y)
+            if np.isfinite(rho):
+                values.append(float(rho))
+        if not values:
+            return float("nan"), float("nan")
+        return float(np.percentile(values, 2.5)), float(np.percentile(values, 97.5))
+
+    pilot_seed = (
+        per_seed[per_seed.arm.isin(["bp", "mf_simul", "mf_seq"])]
+        .groupby(["dataset", "arm", "seed"], as_index=False).gb.sum()
+        .merge(
+            g1[["dataset", "arm", "seed", "energy_wh"]],
+            on=["dataset", "arm", "seed"],
+            how="inner",
+        )
+    )
+    gb_by_seed = pilot_seed.pivot(
+        index="seed", columns=["dataset", "arm"], values="gb"
+    )
+    energy_by_seed = pilot_seed.pivot(
+        index="seed", columns=["dataset", "arm"], values="energy_wh"
+    )
+    rho, p_value = stats.spearmanr(pilot.gb_mean, pilot.energy_wh)
+    rho_lo, rho_hi = _bootstrap_rho_seeds(gb_by_seed, energy_by_seed)
+    rho_cell_lo, rho_cell_hi = _bootstrap_rho_cells(pilot)
+    h_rows = [
+        dict(
+            scope="pilot_three_arms_x_two_datasets",
+            n_cells=len(pilot),
+            spearman_rho=float(rho),
+            p_descriptive=float(p_value),
+            rho_boot_lo=rho_lo,
+            rho_boot_hi=rho_hi,
+            bootstrap_method="paired seed bootstrap within fixed cells",
+            caveat=(
+                "small n; two datasets share the same seed block; cells are not "
+                "independent; sign only, no threshold; seed CI is degenerate "
+                "because rescaling all cells preserves their ordering"
+            ),
+        ),
+        dict(
+            scope="pilot_cell_bootstrap_sensitivity",
+            n_cells=len(pilot),
+            spearman_rho=float(rho),
+            p_descriptive=float(p_value),
+            rho_boot_lo=rho_cell_lo,
+            rho_boot_hi=rho_cell_hi,
+            bootstrap_method="cell bootstrap (sensitivity)",
+            caveat=(
+                "six non-independent cells; this interval is not a confirmatory "
+                "uncertainty statement"
+            ),
+        ),
+    ]
+    as_impl = summary[summary.arm == "mf_seq_as_implemented"].copy()
+    if not as_impl.empty:
+        as_impl = as_impl.merge(
+            energy_by_cell[energy_by_cell.arm == "mf_seq"][
+                ["dataset", "energy_wh"]
+            ],
+            on="dataset",
+            how="left",
+        )
+        sensitivity = pd.concat(
+            [pilot, as_impl[["dataset", "arm", "gb_mean", "passes_mean", "energy_wh"]]],
+            ignore_index=True,
+        )
+        rho_s, p_s = stats.spearmanr(sensitivity.gb_mean, sensitivity.energy_wh)
+        rho_s_lo, rho_s_hi = _bootstrap_rho_cells(sensitivity)
+        h_rows.append(
+            dict(
+                scope="sensitivity_include_as_implemented",
+                n_cells=len(sensitivity),
+                spearman_rho=float(rho_s),
+                p_descriptive=float(p_s),
+                rho_boot_lo=rho_s_lo,
+                rho_boot_hi=rho_s_hi,
+                bootstrap_method="cell bootstrap",
+                caveat=(
+                    "as-implemented rows reuse MF-Seq energy and are not "
+                    "independent; descriptive sensitivity only"
+                ),
+            )
+        )
+    h_w3d = pd.DataFrame(h_rows)
+    h_w3d.to_csv(args.out_dir / "w3_cut_h_w3d.csv", index=False)
 
     # Markdown.
     lines = ["# W3 — cut-boundary communication (redone)", ""]
@@ -730,18 +860,19 @@ def main() -> None:
         "invalid for canonical runs; it is a bound only."
     )
     lines.append("")
-    lines.append("## Stage-0 forward waste and ex-M0 multipliers")
+    lines.append("## Stage-0 forward waste and ex-M0 multipliers (ESTIMATES)")
     lines.append("")
     lines.append(
-        "| dataset | M0 energy Wh | dead-forward FLOP share | dead-forward energy lower bound Wh | MF-Seq/BP energy | ex-M0 energy | MF-Seq/BP passes | ex-M0 passes | MF-Seq/BP time | ex-M0 time |"
+        "| dataset | M0 energy Wh | dead-forward FLOP share | dead-forward energy lower bound Wh | MF-Seq/BP energy | ex-M0 energy (est.) | MF-Seq/BP passes | ex-M0 passes (est.) | MF-Seq/BP time | ex-M0 time (est.) |"
     )
     lines.append("|---|---|---|---|---|---|---|---|---|---|")
     for _, r in ex.iterrows():
         lines.append(
             f"| {r.dataset} | {r.m0_energy_wh:.2f} | {100*r.dead_forward_flop_share:.1f}% | "
             f"{r.dead_forward_energy_lower_bound_wh:.2f} | {r.energy_mult:.2f}× | "
-            f"{r.ex_m0_energy_mult:.2f}× | {r.passes_mult:.2f}× | "
-            f"{r.ex_m0_passes_mult:.2f}× | {r.time_mult:.2f}× | {r.ex_m0_time_mult:.2f}× |"
+            f"{r.ex_m0_energy_mult_estimate:.2f}× | {r.passes_mult:.2f}× | "
+            f"{r.ex_m0_passes_mult_estimate:.2f}× | {r.time_mult:.2f}× | "
+            f"{r.ex_m0_time_mult_estimate:.2f}× |"
         )
     lines.append("")
     lines.append(
@@ -752,8 +883,32 @@ def main() -> None:
         "M0 energy this is a lower bound of 3.97 / 3.43 Wh of pure waste. The exact "
         "joule split is not observable without sub-stage NVML, so this is a "
         "FLOP-based bound, not a measured energy decomposition. Ex-M0 multipliers "
-        "remove the whole stage (the conservative, implementation-independent "
-        "version) and are the ones to quote."
+        "are **ESTIMATES**: they subtract the whole M0 stage under the current "
+        "implementation and are not a production-pipeline measurement. Quote them "
+        "with the estimate label, never as measured multipliers."
+    )
+    lines.append("")
+    lines.append("## H-W3d pilot: cut bytes vs energy (sign only; no threshold)")
+    lines.append("")
+    lines.append(
+        "| scope | cells | Spearman rho | descriptive p | bootstrap 95% CI | method | caveat |"
+    )
+    lines.append("|---|---:|---:|---:|---|---|---|")
+    for _, r in h_w3d.iterrows():
+        lines.append(
+            f"| {r.scope} | {int(r.n_cells)} | {r.spearman_rho:+.3f} | "
+            f"{r.p_descriptive:.3f} | [{r.rho_boot_lo:+.3f}, {r.rho_boot_hi:+.3f}] | "
+            f"{r.bootstrap_method} | {r.caveat} |"
+        )
+    lines.append("")
+    lines.append(
+        "The pilot rho is negative: higher cut bytes do not track higher energy, "
+        "because MF-Seq has the smallest useful cut bill but the largest measured "
+        "energy. This is the expected direction for H-W3d, but the cell count is "
+        "small and the two datasets share seeds. The seed bootstrap is degenerate "
+        "because a common seed rescaling preserves the six-cell ordering; the "
+        "cell bootstrap is shown only as a sensitivity. Report the sign and "
+        "magnitude, not a one-sided test; no confirmatory p-value is attached."
     )
     lines.append("")
     lines.append("## Reading")

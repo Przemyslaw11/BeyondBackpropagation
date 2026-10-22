@@ -15,7 +15,7 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - Phase 1 MF-Simul implementation: DONE -> `src/baselines/bp_ds.py` (`detach_between_layers`
   flag, `train/evaluate_mf_simul_model`), registered in `src/algorithms|baselines/__init__.py`,
   config `configs/mf_simul/cifar10_mlp_3x2000.yaml`, tests `tests/test_mf_simul.py`
-  (3 tests) + fairness invariants extended. Latest suite: 97 passed, 13 skipped.
+  (3 tests) + fairness invariants extended. Latest suite: 106 passed, 13 skipped.
 - PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
   unit tests, drift controls, amendments log). G1 is complete; verdict B (schedule
   artifact). W1 is pre-registered (`PREREG-phase2.md`) and queued; see below.
@@ -52,9 +52,12 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   `scripts/jpdc/w3_cut_communication.py`, `jpdc_data/g1/w3_cut/`.
 - **Stage-0 audit:** production `train_mf_matrix_only` calls W1..WL in train and
   validation although M0 reads only a_0. The dead forward is 99.6%/96.0% of M0
-  FLOPs, ≥3.97/3.43 Wh of waste. Ex-M0 multipliers: energy 2.69×/2.92×,
+  FLOPs, ≥3.97/3.43 Wh of waste. Ex-M0 multipliers are **ESTIMATES** (remove
+  the whole stage under the current implementation): energy 2.69×/2.92×,
   passes 3.05×/3.35×, time 3.03×/3.35×; `ERRATA_PPAM.md` row 6,
-  `w3_stage0_audit.md`.
+  `w3_stage0_audit.md`. H-W3d pilot: Spearman **ρ = −0.543** over 6 cells,
+  bootstrap 95% CI [−1.000, +0.800], descriptive p=0.266; sign only, small-n
+  caveat, no threshold. Output `w3_cut_h_w3d.csv`.
 - **Queue/account audit:** jobs 3386582/3386586 are on
   `plglscclass26-gpu-a100` (fairshare 0.000, 44/48 A100 nodes unavailable).
   `plgoncotherapy2-gpu-a100` is authorized for new W1 submissions (team
@@ -63,13 +66,30 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   `plgrid-now` (1 h cap) is **not used** because its published policy is
   interactive-only. No submission: `QUEUE_RISK_W1.md`, `W1_CRITICAL_PATH.md`.
 - **W1 manifest split (2026-10-22):** frozen core = 200 tasks
-  (`w1_family.slurm`: BP, MF-Joint, MF-Simul, MF-Seq, nom0); frozen controls =
-  80 tasks (`w1_family_controls.slurm`: BP-long, BP-bestval); Seq-Global = 40
-  (`w1_seqglobal.slurm`); Protocol B = 80 (`w1_controls_protocol_b.slurm`);
-  BP-sched = 40 (`w1_bp_sched.slurm`). **Base total 440**; cap-300 conditional.
-  HPO fallback is in PREREG §9 (Seq 4 Nov, BP-sched 11 Nov, ≥20/dataset else
-  MF-Seq lr/wd; commit `f877b92`). Estimated ~58 GPU-h confirm + ~51 tuning;
-  details `W1_MANIFEST_ADDITIONS.md`, `W1_CRITICAL_PATH.md`. No threshold change.
+  (`w1_family.slurm`: BP, MF-Joint, MF-Simul, MF-Seq, nom0); frozen control =
+  40 tasks (`w1_family_controls.slurm`: BP-bestval); BP-fixed = 40
+  (`w1_bp_fixed.slurm`: BP-sched lr/wd, 211/191 epochs, no early stopping);
+  Seq-Global = 40 (`w1_seqglobal.slurm`); Protocol B = 80
+  (`w1_controls_protocol_b.slurm`); BP-sched = 40 (`w1_bp_sched.slurm`).
+  **Base total 440**; cap-300 conditional. HPO fallback is in PREREG §9
+  (Seq **25 Nov**, BP-sched **2 Dec**, ≥20/dataset else MF-Seq lr/wd; commit
+  `f877b92`, deadline amendment 2026-10-22). Estimated ~66.5 GPU-h confirm +
+  ~51 tuning; details `W1_MANIFEST_ADDITIONS.md`, `W1_CRITICAL_PATH.md`.
+  No threshold change. BP-long retired because BP never reaches the 100-epoch cap.
+- **W2 (redesigned 2026-10-22):** four-GPU training superseded by a zero-GPU
+  link-rate model (`scripts/jpdc/w2_link_rate_model.py`, output
+  `jpdc_data/g1/w2_link/`) at 100 Mbit/s, 1 Gbit/s, 10 Gbit/s, using measured
+  passes, per-step compute time, per-run energy and cut bytes, plus a short 1 MB
+  NCCL P2P diagnostic (`scripts/jpdc/nccl_p2p_benchmark.py`,
+  `scripts/slurm_scripts/w2_nccl_p2p.slurm`; prepared, not submitted).
+  Pilot: MF-Seq/BP total time is 0.36×/0.39× at 100 Mbit/s and 2.99×/3.30× at
+  10 Gbit/s (C10/C100); the slow-link ordering reverses. Seq-Global is flagged
+  as a planning proxy until W1. No 4-GPU budget.
+- **W6 budget-confound audit (2026-10-22):** headline MF-Seq 205.8× BP is
+  confounded (BP gets 420 updates/layer, MF-Seq 420 total = 140/stage).
+  Controls: BP-140 103.2×, MF-Seq-1260 **1.71×** (clean 420/layer control),
+  Seq-Global-1260 **0.23×** (not clean: 420–1260 cumulative updates/layer).
+  The toy remains exploratory and must not be used to argue staging helps.
 
 ## Headline numbers (canonical Protocol A, 20 seeds)
 - MF/BP unit-epoch multiplier: CIFAR-10 4.07, CIFAR-100 4.46, MNIST 3.67, Fashion 4.32.
@@ -129,24 +149,30 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 8. **QUEUED (2026-10-22, no GPU-hours consumed):**
    - Seq-Global tuning: job **3386582** (2 tasks, 50 trials each, 24 h wall;
      studies `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`). If it runs
-     before 4 Nov, freeze the best trial with ≥20 completed per dataset; otherwise
-     use the MF-Seq fallback. Record the branch in §9 and commit.
+     before 25 Nov, freeze the best trial with ≥20 completed per dataset;
+     otherwise use the MF-Seq fallback. Record the branch in §9 and commit.
    - H-W1cap Step 1: job **3386586** (5 tasks, C100 cap-300 seeds 42-46).
    - Both remain on `plglscclass26-gpu-a100`, pending `ReqNodeNotAvail`; they are
      not migrated. New W1 work uses `plgoncotherapy2-gpu-a100` (team `plggfastsim`).
-   - W1 is split: `w1_submit.sh core` (200), `controls` (80), `seqglobal` (40),
-     `protocolb` (80), `sched` (40). No W1 job submitted; author gate applies.
+   - W1 is split: `w1_submit.sh core` (200), `controls` (40 BP-bestval),
+     `fixed` (40 BP-fixed), `seqglobal` (40), `protocolb` (80), `sched` (40).
+     No W1 job submitted; author gate applies.
 9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
    (controls and median reporting included; H-W1a..d unchanged).
 10. Account decision done (2026-10-22): new W1 submissions use
     `plgoncotherapy2-gpu-a100`; existing pending jobs stay on the class account.
     Do not cancel or migrate them.
-11. HPO fallback approved and committed (`f877b92`); Seq deadline 4 Nov,
-    BP-sched deadline 11 Nov. Do not insert any different fallback wording.
+11. HPO fallback approved and committed (`f877b92`); deadlines amended on
+    2026-10-22 to Seq **25 Nov** and BP-sched **2 Dec** (outage, not data).
+    Do not insert any different fallback wording.
 12. Queue starts 12/19/26 Nov are mapped in `W1_CRITICAL_PATH.md`; cut order:
     W3 comms first, W4 second, **never W1 core**. No `plgrid-now`.
 13. DSS data are ready in `jpdc_data/dss/`; build the figure after W1, keeping
     Protocol A and B on separate axes (era drift is real).
+14. Pre-W1 freeze package: secondary endpoints + stage epochs, BP-fixed, HPO
+    deadline amendment, W2 link model, H-W3d sign/caveat, W6 budget audit, and
+    `W1_SYNC_AND_SUBMIT.md`. The cluster checkout is still at `813430e`; sync to
+    the final frozen commit before any submission.
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -255,7 +281,8 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - 2026-10-21 (six-item package): W3 redone as cut-boundary communication (BP 2.16 GB/pass,
   old 69.1 GB/pass relabelled memory traffic); stage-0 production path audited (dead forward
   99.6%/96.0% of M0 FLOPs; ex-M0 multipliers 2.69×/2.92× energy); W1 controls added
-  (BP-sched, BP-bestval, Protocol-B MF-Seq/nom0; base 440 tasks, ~109 GPU-h) with an
+  (BP-sched, BP-bestval, Protocol-B MF-Seq/nom0; base 440 tasks, ~109 GPU-h; later
+  superseded by BP-fixed and ~118 GPU-h) with an
   in-memory best-state restore and scheduler-aware BP tuning; C100 test provenance fixed
   (Wilcoxon p=0.0759 vs paired-t CI [-0.525,-0.008], p=0.0437); W4 reframed as a calibrated
   ratio model; submission variants and 4×5 h resumable tuning chain prepared, not submitted.
@@ -264,15 +291,28 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - 2026-10-22 (pre-submission continuation): fallback HPO rule added to
   `PREREG-phase2.md` §9 at commit `f877b92` before any tuning trial completed
   (Seq 4 Nov / BP-sched 11 Nov; ≥20 trials/dataset else MF-Seq lr/wd; disclose).
-  W1 split into five independent arrays: frozen core 200, frozen controls 80,
-  Seq-Global 40, Protocol B 80, BP-sched 40; `w1_submit.sh` modes
-  `core|controls|seqglobal|protocolb|sched`. Author authorized
+  W1 split into independent arrays; `w1_submit.sh` modes
+  `core|controls|fixed|seqglobal|protocolb|sched`. Author authorized
   `plgoncotherapy2-gpu-a100` (team `plggfastsim`) for new W1 work; the two pending
   class-account jobs were not migrated. `W1_CRITICAL_PATH.md` maps 12/19/26 Nov
   starts (cut W3 comms first, W4 second, never W1 core). W3 per-cut and stage-0
   numbers and W4 ratio reframing are confirmed in `STATUS_2026-10-22.md`. W6 toy
   CPU numerics are exploratory only (`scripts/jpdc/w6_toy_sim.py`,
   `jpdc_data/g1/w6_toy/`). No W1 job submitted.
+- 2026-10-22 (pre-W1 freeze package, this commit): the HPO deadlines were moved
+  to **25 Nov / 2 Dec** for the outage (not data). BP-long was retired and
+  replaced by **BP-fixed** (`w1_bp_fixed.slurm`, BP-sched lr/wd, fixed
+  211/191 epochs, no early stopping); frozen controls are 40 BP-bestval and
+  BP-fixed is a separate 40-task array, so the base is 440 and confirm cost is
+  ~66.5 GPU-h. The freeze instrumentation (`secondary_endpoints.py` + stage
+  epochs) is integrated after the NVML window and unit-tested to leave final
+  weights unchanged. W2 was redesigned as the zero-GPU link-rate model plus a
+  1 MB NCCL P2P diagnostic (prepared, not submitted). H-W3d now reports the sign
+  of rho with a small-n caveat and ex-M0 multipliers are labelled estimates.
+  The W6 toy has budget-confound controls: MF-Seq-1260 is 1.71× BP-420 (clean
+  equal-update), so the headline 205.8× is not a staging effect. `W1_SYNC_AND_SUBMIT.md`
+  contains the bundle sync and one-command blocks; none executed. Tests 106
+  passed, 13 skipped; Ruff and `bash -n` clean.
 
 ## Rules of engagement (unchanged)
 - Label claims [Paper]/[KB]/[Planning]/[Verified]/[Assumption]; never invent numbers.

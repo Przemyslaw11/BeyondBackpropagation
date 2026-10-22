@@ -63,11 +63,14 @@ the consistency check. Nothing here can retroactively change G1's verdict.
   `max_epochs: 300`. If the pilot shows a mean accuracy gain ≥ +0.5 pp on C100 or mean W1_M1
   epochs > 130, run the full n=20 cap-300 arm (Step 2) and report the head-to-head; otherwise
   the 100-epoch cap stands and the cap-sensitivity table (W0c) is reported as the defense.
-- **H-W1d (strong-BP control):** BP with `max_epochs: 300` (same protocol otherwise). If
-  BP-long − MF-Seq ≥ −1.0 pp on C100 at ≤2× the passes of MF-Seq, the "compute-advantage"
-  framing of MF is retired. Expected defensible outcome [prior]: BP-long does not close the
-  gap; BP never hits the 100-epoch cap in any existing run [Verified, W0d], so this control
-  is about time-to-accuracy, not truncation.
+- **H-W1d (strong-BP control, amended 2026-10-22; §9):** **BP-fixed**, using the
+  BP-sched lr/wd and a cosine schedule over the fixed budget, no early stopping, and a fixed budget of
+  **211 epochs (CIFAR-10) / 191 epochs (CIFAR-100)** = `round(mean MF-Seq total passes per
+  dataset from G1)`; final weights are scored. If BP-fixed − MF-Seq ≥ −1.0 pp on C100 at
+  ~1× the passes of MF-Seq, the "compute-advantage" framing of MF is retired. BP-long
+  (`max_epochs: 300`, early stopping) is retired because BP never reaches the 100-epoch cap
+  [Verified, W0d], so it duplicated core BP. This control is now a same-pass accuracy check,
+  not a truncation check.
 
 Thresholds for A/B-style readings are the ones above; intermediate outcomes are reported as
 intermediate with both readings and no third relabeling of G1.
@@ -80,6 +83,14 @@ intermediate with both readings and no third relabeling of G1.
   `monitoring_csv_path`), wall-clock. Per-arm means with 95% CI; paired-by-seed differences
   with Wilcoxon + 10k bootstrap, Holm within the family {H-W1a, H-W1b, H-W1c}; H-W1cap and
   H-W1d are reported with raw CIs (controls).
+- **Secondary (diagnostic only; never in a decision rule):** final full-train loss/accuracy
+  in eval mode, final validation loss/accuracy, per-stage epochs and stopping epoch,
+  per-layer linear-probe test accuracy on `a_1..a_L`, local-head test accuracy where heads
+  exist, and entropy effective rank of each `a_i` on a fixed 5,000-row probe set. The probe
+  is fitted on the validation split (no augmentation) and scored on the first 5,000 test
+  rows; the same ridge procedure is used for every arm. These evaluations run after the
+  NVML monitor has stopped, record their own seconds in the run JSON, and must not change
+  final weights. They do not enter the Holm family or any W1 verdict.
 - **Analysis source of truth:** per-run JSON + own trace; the shared append-only run log is
   never used for numbers (2026-10-17 amendment, `PREREG.md` §10).
 
@@ -136,6 +147,9 @@ be pilots.
 | 2026-10-21 | **W4 reframed as within-session ratio prediction** (`scripts/jpdc/w4_power_extrapolation.py`, `jpdc_data/g1/w4_ratio/`). Absolute cross-era energy predictions are retired. The pre-G1 slope is combined with a one-point intercept calibration on BP seed 42 per dataset; the endpoint is the paired E_arm/E_BP ratio. C10 mean ratio bias ≤1.1% but per-seed MAE 4.0–4.7%; C100 bias +3.5 to +4.4%, MAE 5.4–6.4%. Calibration-seed sensitivity is reported. Do not use across eras without a fresh same-session BP calibration. | agent |
 | 2026-10-21 | **Queue/account preparation, no W1 submission.** Default account remains `plglscclass26-gpu-a100`; account change is one line in `scripts/slurm_scripts/w1_submit.sh`. Prepared core/controls/BP-sched arrays and 5-hour resumable Seq-Global tuning segments. `plgrid-now` is **not** used: the published Cyfronet definition restricts it to interactive jobs (1 h, 1 job), not batch tuning; Athena's current docs do not document a separate policy. No job was submitted or cancelled under this amendment. | agent |
 | 2026-10-22 | **Fallback HPO rule, approved by the author before any tuning trial completed.** Seq-Global tuning deadline: **4 Nov 2026 23:59 CET**. BP-sched tuning deadline: **11 Nov 2026 23:59 CET**. At each deadline, freeze the best-validation trial among completed trials if **≥20 trials are completed per dataset**; otherwise reuse MF-Seq's tuned lr/wd for that dataset. Disclose which branch was used, per dataset and per arm. This rule changes no W1 outcome, threshold, seed, or Holm family. Job 3386582 had consumed 0 GPU-hours and no tuning trial had completed when this row was committed. | author |
-| 2026-10-22 | **W1 manifest split for independent submission (no threshold/Holm change).** Frozen core = BP, MF-Joint, MF-Simul, MF-Seq, MF-Seq-nom0 (200 tasks, `w1_family.slurm`); frozen controls = BP-long, BP-bestval (80, `w1_family_controls.slurm`); Seq-Global (40, `w1_seqglobal.slurm`) waits on the 4 Nov HPO branch; Protocol B = MF-Seq + nom0 (80, `w1_controls_protocol_b.slurm`) waits on the actual core-BP `Ebar_BP`; BP-sched (40, `w1_bp_sched.slurm`) waits on the 11 Nov HPO branch. Base total remains 440; cap-300 remains conditional. `w1_submit.sh` exposes `core|controls|seqglobal|protocolb|sched`. | agent |
+| 2026-10-22 | **W1 manifest split for independent submission (no threshold/Holm change).** Frozen core = BP, MF-Joint, MF-Simul, MF-Seq, MF-Seq-nom0 (200 tasks, `w1_family.slurm`); frozen controls = BP-long, BP-bestval (80, `w1_family_controls.slurm`); Seq-Global (40, `w1_seqglobal.slurm`) waits on the 4 Nov HPO branch; Protocol B = MF-Seq + nom0 (80, `w1_controls_protocol_b.slurm`) waits on the actual core-BP `Ebar_BP`; BP-sched (40, `w1_bp_sched.slurm`) waits on the 11 Nov HPO branch. Base total remains 440; cap-300 remains conditional. `w1_submit.sh` exposes `core|controls|seqglobal|protocolb|sched`. **Superseded later on the same date by the BP-fixed and HPO-deadline rows below** (controls 40 BP-bestval + 40 BP-fixed; Seq 25 Nov; BP-sched 2 Dec). | agent |
 | 2026-10-22 | **Account decision by the author.** New W1 submissions use `plgoncotherapy2-gpu-a100` (team `plggfastsim`). Existing pending jobs 3386582/3386586 remain on `plglscclass26-gpu-a100`; they are not cancelled or migrated. No W1 job was submitted. | author |
 | 2026-10-22 | **W6 toy numerics scoped as exploratory.** A CPU-only deep-linear toy compares BP, MF-Simul, MF-Seq and Seq-Global on one synthetic task (`scripts/jpdc/w6_toy_sim.py`, output `jpdc_data/g1/w6_toy/`). No W6 preregistration exists; results are labelled exploratory and are not pooled with W1–W4 or used as a hypothesis test. | agent |
+| 2026-10-22 | **Freeze-commit instrumentation (diagnostic only; no threshold, seed, or Holm change).** Every W1 run JSON now also records, as exploratory secondary endpoints: final full-train loss/accuracy in eval mode with the eval transform; final validation loss/accuracy; the primary test loss/accuracy; per-layer linear-probe test accuracy on frozen `a_1..a_L` (ridge probe fitted on the fixed 5,000-row validation split, scored on the first 5,000 test rows); local-head test accuracy for every existing `M_i`; per-stage epochs and stopping epoch; and the entropy effective rank of each `a_i` on the fixed 5,000-row probe set. The computation runs after the NVML monitor has stopped, records its own seconds, and is unit-tested not to change training weights (same seed, same final state). | agent |
+| 2026-10-22 | **H-W1d amended before any W1 result: BP-long is replaced by BP-fixed.** BP-long duplicated core BP because BP never reaches the 100-epoch cap. BP-fixed uses the BP-sched hyperparameters/cosine schedule, no early stopping, and fixed epochs **211 (C10) / 191 (C100)** = `round(mean MF-Seq total passes per dataset from G1)`; final weights are scored. Task count is unchanged: frozen controls are now BP-bestval only (40, `w1_family_controls.slurm`), BP-fixed is 40 (`w1_bp_fixed.slurm`), and the 440-task base is unchanged. BP-fixed is gated on the same BP-sched HPO branch and refuses to run while `configs/bp_sched/*` contains `PLACEHOLDER`. | agent |
+| 2026-10-22 | **HPO deadlines moved for the A100 outage, not for data (before any tuning trial completed).** Seq-Global deadline: **25 Nov 2026 23:59 CET**. BP-sched deadline: **2 Dec 2026 23:59 CET**. The ≥20-completed-trials-per-dataset rule and the MF-Seq lr/wd fallback are unchanged; the branch must be recorded here and committed before the corresponding confirm array. Reason: jobs 3386582/3386586 remained `PENDING` with 0 GPU-hours and `ReqNodeNotAvail`; no trial had completed. This row supersedes the 4 Nov/11 Nov dates in the earlier fallback row. | author |

@@ -1,6 +1,6 @@
 #!/bin/bash
 # W1 Seq-Global arm (PREREG-phase2.md §5/§9). Two datasets x 20 seeds = 40 tasks.
-# Do not submit before the 2026-11-04 23:59 CET HPO deadline resolves: freeze
+# Do not submit before the 2026-11-25 23:59 CET HPO deadline resolves: freeze
 # either the best trial with >=20 completed per dataset or the MF-Seq fallback,
 # record the branch in §9, and commit. Configs currently carry the MF-Seq values.
 # This array is independent of the frozen core arms in w1_family.slurm.

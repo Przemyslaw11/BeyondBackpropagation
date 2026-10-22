@@ -385,7 +385,20 @@ def train_deep_supervised_model(
             )
             break
 
-    config.setdefault("_run_stats", {})["epochs_completed"] = epoch + 1
+    config.setdefault("_run_stats", {}).update(
+        {
+            "epochs_completed": epoch + 1,
+            "stage_epochs": [
+                {
+                    "stage": "joint",
+                    "epochs": epoch + 1,
+                    "stopping_epoch": epoch + 1,
+                    "max_epochs": epochs,
+                    "stopped_early": (epoch + 1) < epochs,
+                }
+            ],
+        }
+    )
     logger.info(
         f"{log_prefix} training finished in {format_time(time.time() - start_time)}."
     )

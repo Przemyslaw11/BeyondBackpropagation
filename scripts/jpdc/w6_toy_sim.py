@@ -163,6 +163,19 @@ def main() -> None:
             "mf_simul_test_mse": run_mf_simul(seed, x, y, xt, yt, args.d, args.h, args.steps),
             "mf_seq_test_mse": run_mf_seq(seed, x, y, xt, yt, args.d, args.h, args.steps),
             "seq_global_test_mse": run_seq_global(seed, x, y, xt, yt, args.d, args.h, args.steps),
+            # Budget-confound controls. BP and MF-Simul update every layer
+            # args.steps times; MF-Seq/Seq-Global split the same budget across
+            # three stages. These controls match either total steps (140) or
+            # per-layer updates (420) and are exploratory.
+            "bp_140_test_mse": run_bp(
+                seed, x, y, xt, yt, args.d, args.h, max(1, args.steps // 3)
+            ),
+            "mf_seq_1260_test_mse": run_mf_seq(
+                seed, x, y, xt, yt, args.d, args.h, args.steps * 3
+            ),
+            "seq_global_1260_test_mse": run_seq_global(
+                seed, x, y, xt, yt, args.d, args.h, args.steps * 3
+            ),
         }
         rows.append(row)
     per_seed = pd.DataFrame(rows)
@@ -188,6 +201,36 @@ def main() -> None:
         "median": float(np.median(cos)),
         "sd": float(np.std(cos, ddof=1)),
     }
+    # Budget-confound audit: the headline comparison gives BP 3x the per-layer
+    # updates of MF-Seq.  Report both total-step and per-layer-matched controls.
+    budget_rows = []
+    per_stage = max(1, args.steps // 3)
+    controls = [
+        ("bp_420", "bp_test_mse", args.steps, "every layer", args.steps, args.steps),
+        ("bp_140", "bp_140_test_mse", per_stage, "every layer", per_stage, per_stage),
+        ("mf_simul_420", "mf_simul_test_mse", args.steps, "every layer", args.steps, args.steps),
+        ("mf_seq_420", "mf_seq_test_mse", args.steps, "per stage", per_stage, per_stage),
+        ("mf_seq_1260", "mf_seq_1260_test_mse", args.steps * 3, "per stage", args.steps, args.steps),
+        ("seq_global_420", "seq_global_test_mse", args.steps, "cumulative stages", per_stage, args.steps),
+        ("seq_global_1260", "seq_global_1260_test_mse", args.steps * 3, "cumulative stages", args.steps, args.steps * 3),
+    ]
+    bp_420 = float(per_seed.bp_test_mse.mean())
+    for label, column, total_steps, scope, min_layer, max_layer in controls:
+        values = per_seed[column].to_numpy(float)
+        budget_rows.append(
+            {
+                "control": label,
+                "column": column,
+                "total_steps": int(total_steps),
+                "update_scope": scope,
+                "min_layer_updates": int(min_layer),
+                "max_layer_updates": int(max_layer),
+                "mean_test_mse": float(np.mean(values)),
+                "median_test_mse": float(np.median(values)),
+                "ratio_to_bp_420": float(np.mean(values) / bp_420) if bp_420 > 0 else float("nan"),
+            }
+        )
+    summary["budget_audit"] = budget_rows
     (args.out_dir / "w6_toy_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     lines = [
@@ -212,12 +255,37 @@ def main() -> None:
     g = summary["gradient_cosine_global_local"]
     lines += [
         "",
+        "## Budget-confound check (exploratory)",
+        "",
+        "The headline table gives BP/MF-Simul 420 updates to every layer, while "
+        "MF-Seq/Seq-Global split 420 total updates across three stages (140 each). "
+        "The controls below separate total compute from per-layer updates; they are "
+        "not a replacement for the headline comparison. MF-Seq-1260 is the clean "
+        "equal-update control (420 updates per layer). Seq-Global-1260 gives the "
+        "prefix 420–1260 cumulative updates, so its 0.23× is not a clean "
+        "equal-update estimate.",
+        "",
+        "| control | total steps | update scope | layer updates (min–max) | mean MSE | median MSE | ratio to BP-420 |",
+        "|---|---:|---|---:|---:|---:|---:|",
+    ]
+    for row in summary["budget_audit"]:
+        lines.append(
+            f"| {row['control']} | {row['total_steps']} | {row['update_scope']} | "
+            f"{row['min_layer_updates']}–{row['max_layer_updates']} | "
+            f"{row['mean_test_mse']:.3e} | {row['median_test_mse']:.3e} | "
+            f"{row['ratio_to_bp_420']:.3f}× |"
+        )
+    lines += [
+        "",
         f"Gradient diagnostic at initialisation: cosine(global BP, first local head) "
         f"= {g['mean']:.3f} mean, {g['median']:.3f} median, SD {g['sd']:.3f}.",
         "",
         "Reading: this only checks whether a local/global gap is visible on a toy; it "
-        "does not establish a mechanism. A confirmatory W6 addendum, if the author wants one, "
-        "must specify the task family, seeds, metric, and thresholds before running it.",
+        "does not establish a mechanism. The budget controls above show whether the "
+        "MF-Seq gap survives equal per-layer updates; until that is checked, the toy "
+        "must not be used to argue that staging itself helps. A confirmatory W6 addendum, "
+        "if the author wants one, must specify the task family, seeds, metric, and "
+        "thresholds before running it.",
     ]
     (args.out_dir / "w6_toy_summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))

@@ -1,7 +1,7 @@
 # PREREG-W2-W3.md — JPDC extension, communication and byte accounting
 
-**Status: draft, 2026-10-21. Not frozen. No confirmatory W2/W3 run has been
-scheduled.** This is a separate addendum to `PREREG-phase2.md`, as required by
+**Status: draft, revised 2026-10-22. Not frozen. No confirmatory W2/W3 run has
+been scheduled.** This is a separate addendum to `PREREG-phase2.md`, as required by
 its §7 ("W2–W6 have their own prereg addenda before their confirmatory runs").
 It does not alter W1's hypotheses, arms, thresholds, or freeze.
 
@@ -18,92 +18,130 @@ Amendments to this addendum go in its §5 log, dated, before the affected run.
 ### W2.1 Question
 
 Does the credit-assignment structure that produces MF-Seq's accuracy edge also
-change the **inter-worker communication** bill when the 3×2000 MLP is split
-across GPUs? W1 varies locality on one GPU; W2 asks whether locality is a
-communication advantage, an accuracy advantage, or both.
+change the **cut-boundary communication** bill enough to alter the time or energy
+ranking at a given link rate? W1 varies locality on one GPU; W2 asks whether
+locality is a communication advantage, an accuracy advantage, or both.
 
-This is not a scaling study. It is a controlled accounting experiment at the
-smallest distribution that exposes every layer boundary (3–4 ranks).
+This is not a scaling study. It is a link-rate accounting model over the measured
+W1/G1 runs, plus one short NCCL latency diagnostic. The old four-rank training
+experiment is superseded (§5, 2026-10-22).
 
-### W2.2 Design
+### W2.2 Design (revised 2026-10-22; old design superseded)
 
-- **Deployment:** layer-parallel pipeline, one hidden layer per rank:
-  rank 0 holds the input adapter + W1, rank 1 W2, rank 2 W3, rank 3 the readout
-  head. Activations are sent forward between ranks; gradients are sent backward
-  only where the graph requires them. Micro-batch = 128; one optimizer step per
-  micro-batch; no activation checkpointing.
-- **Arms:** BP, MF-Simul, MF-Seq, Seq-Global. Same configs as W1, same seeds.
-- **Datasets:** CIFAR-10 and CIFAR-100.
-- **Instrumentation:** (i) analytic hook counts from the W3 counter, mapped onto
-  rank boundaries; (ii) measured NCCL point-to-point/all-reduce bytes from
-  `torch.distributed` counters; (iii) CUDA-event communication time and total
-  step time. The analytic and measured bills must agree within 5%; if they do
-  not, the measured bill is authoritative and the discrepancy is reported.
-- **Runs:** n=20 seeds per arm × dataset for accuracy and bytes-to-accuracy;
-  communication microbenchmarks repeated 5× per seed and summarised by median.
-  Total 160 training runs, 4-GPU jobs. A n=5 pilot (seeds 42–46) is exploratory.
+The old design — four ranks, 160 layer-parallel training runs, measured NCCL
+counters — is **superseded** and retained only in §5 as a planning record. It
+was too expensive for the queue and answered a scale question the paper does not
+need. W2 is now a **link-rate accounting model plus one short latency
+diagnostic**:
+
+**(a) Link-rate model (zero GPU; primary W2 evidence).** For BP, MF-Simul,
+MF-Seq and Seq-Global, use the measured G1/W1 per-seed artifacts:
+
+- measured total passes from each run JSON `epochs_completed`;
+- measured per-step compute time = `training_duration_sec / (passes × 352)`;
+- measured GPU energy from each run's own NVML trace;
+- cut-byte bill from the W3 cut-boundary counter (useful cuts; the dead M0
+  forward is excluded);
+- link rates **100 Mbit/s, 1 Gbit/s, 10 Gbit/s**.
+
+The model serializes compute and communication:
+
+```
+T_to_final_accuracy = T_compute + B_cut / R_link
+E_to_final_accuracy = E_GPU + P_idle × (B_cut / R_link) + E_NIC
+```
+
+where `B_cut` is cut bytes to the run's stopping point and `P_idle` is the W4
+measured intercept (51.97 W). `E_NIC` is reported at 1 pJ/bit with a 0 W port
+default and a sensitivity for a nonzero port power; at these byte counts the
+pJ/bit term is negligible while the idle-GPU term is not. The target is each
+arm's **own measured final test accuracy**, because G1 did not log a per-epoch
+test trajectory; this is a time/energy-to-final-accuracy frontier, not a
+common-threshold crossing. Seed uncertainty is propagated by computing every
+quantity per seed and reporting paired means, medians and 95% CIs.
+
+Seq-Global has not run in G1. Until W1 produces it, the model emits an explicit
+**planning proxy**: MF-Seq passes and accuracy, BP per-pass compute/energy, and
+the analytic Seq-Global cut bill (W1 0, W2 0.72, W3 1.44 GB/pass, reflecting
+forward plus backward across the trainable prefix). Proxy rows are marked in
+the output and are never presented as measurements.
+
+**(b) NCCL point-to-point microbenchmark (short diagnostic).** One 2-rank job
+on two A100s exchanges a 1 MB float32 tensor in a ping-pong loop (20 warm-up,
+200 timed iterations). It reports one-way latency and achieved bandwidth. This
+is the latency floor for the 10 Gbit/s end of the model, not a confirmatory W2
+run and not a substitute for a distributed training experiment.
+
+**(c) Optional n=3 layer-parallel demo.** If a reviewer or author wants a
+concrete pipeline sanity check, run a **three-rank, n=3 seed** demo of the
+existing `MF_MLP` with forward activations and backward gradients across cuts.
+It is descriptive only, is not pooled with W1, and cannot support a scaling or
+accuracy claim. It is not scheduled.
 
 ### W2.3 Hypotheses and frozen decision rules
 
-All thresholds on CIFAR-100; CIFAR-10 is the consistency check. Bytes are
-inter-worker bytes per optimizer step, summed over the run; "matched passes"
-means both arms use their own Protocol A stopping, and the comparison is also
-repeated at BP's realised pass count.
+CIFAR-100 is primary; CIFAR-10 is the consistency check. All quantities are
+per-seed model outputs from (a), paired by seed. No new 4-GPU training runs are
+required for W2.
 
-- **H-W2a (locality lowers communication):** at matched passes, BP's
-  inter-worker bytes are ≥2.0× MF-Seq's, with the 95% CI lower bound >1.5×.
-  Reading: frozen prefixes remove backward traffic across layer boundaries and
-  are a genuine communication lever, not only an accuracy lever.
-- **H-W2b (communication-adjusted edge):** MF-Seq reaches BP's final CIFAR-100
-  accuracy with **no more** total inter-worker bytes than BP spent to reach its
-  own final accuracy (ratio ≤1.0, CI upper bound <1.2). Reading: even after
-  paying 3.5–4.5× the passes, the per-pass communication saving offsets the
-  pass count; if the ratio is >1.2, the accuracy edge is communication-expensive
-  and must be reported as such.
-- **H-W2c (scale boundary):** at 4 ranks and this width, communication time is
-  <20% of step time for every arm (CI upper bound <25%). Reading: at the paper's
-  scale, single-GPU energy/pass results are not communication-limited; W2 is a
-  boundary statement, not a multi-node scaling claim. If the share is ≥25% for
-  any arm, that arm's W2 numbers are reported descriptively and no scale-free
-  claim is made.
+- **H-W2a (slow-link crossover, time):** at 100 Mbit/s, MF-Seq's total time to
+  its own final accuracy is lower than BP's (mean ratio <1.0, 95% CI upper bound
+  <1.0); at 10 Gbit/s, the ordering reverses (mean ratio >1.0, 95% CI lower
+  bound >1.0). Reading: the cut-byte saving is large enough to matter only when
+  the link is slow; at modern interconnect speeds MF-Seq's extra passes dominate.
+- **H-W2b (slow-link crossover, energy):** the same reversal holds for total
+  energy (compute plus idle-GPU communication energy), with the same CI
+  directions. Reading: if true, the energy ranking is link-dependent and the
+  paper must state the link assumption; if false, MF-Seq's energy cost is robust
+  to the link model.
+- **H-W2c (latency floor, diagnostic):** the measured 1 MB one-way NCCL latency
+  is ≤100 µs and ≤10% of the 1 MB transfer time at 10 Gbit/s (838.9 µs). This
+  is a diagnostic for whether the 10 Gbit/s model is bandwidth- or
+  latency-bound; it is not a confirmatory hypothesis and gets no p-value.
 
-Decision matrix: H-W2a and H-W2b can both hold (locality saves bytes and the
-accuracy edge is cheap); H-W2a without H-W2b means the saving is real but eaten
-by extra passes; neither means communication is not a differentiator at this
-scale. No relabeling of W1.
+Holm is applied within the time family {H-W2a at 100 Mbit/s, H-W2a at 10
+Gbit/s} and within the energy family {H-W2b at 100 Mbit/s, H-W2b at 10 Gbit/s};
+the two families are reported separately. No threshold is moved after seeing the
+model output.
 
 ### W2.4 Endpoints and statistics
 
-- **Primary:** inter-worker bytes per pass and bytes-to-BP-accuracy, measured
-  NCCL counters; paired by seed, Wilcoxon + 10k bootstrap; Holm over
-  {H-W2a, H-W2b}.
-- **Secondary:** communication-time share, step time, NVML energy, wall time,
-  final accuracy; descriptive CIs, no Holm.
-- **Diagnostics:** analytic-vs-measured byte agreement; per-boundary byte
-  breakdown (forward activation, backward gradient, all-reduce); overlap
-  fraction.
-- **Exclusions:** no optimizer-state communication (ZeRO/FSDP is out of scope);
-  no multi-node runs; no CNN.
+- **Primary:** total time and total energy to each arm's own final accuracy at
+  100 Mbit/s and 10 Gbit/s, expressed as a paired ratio to BP; mean, median,
+  95% bootstrap CI over seeds 42–61.
+- **Secondary:** cut bytes, compute seconds, communication seconds, the
+  communication-time share, and the communication-energy share at 1 Gbit/s;
+  descriptive only.
+- **Diagnostic:** the 1 MB NCCL one-way latency/bandwidth and its comparison
+  with the 10 Gbit/s transfer time.
+- **Exclusions:** no optimizer-state communication (ZeRO/FSDP), no multi-node
+  scaling, no CNN, no overlap model. Compute and communication are serialized;
+  any overlap would only reduce the communication penalty, so the model is
+  conservative for slow links.
+- **Source of truth:** per-run JSON for passes and `training_duration_sec`;
+  each run's own NVML trace for energy; W3 cut accounting for bytes; no shared
+  log.
 
 ### W2.5 Materials and run plan
 
-- Implementation: a `src/distributed/` layer-parallel wrapper around the
-  existing `MF_MLP`; one process per GPU, `torch.distributed` NCCL, no
-  checkpointing (same `BBP_DISABLE_CHECKPOINTS=1` hygiene).
-- First deliverable is the analytic bill on CPU (no GPU): map W3's per-layer
-  tensor traffic onto the 4-rank cut and publish the predicted boundary bytes.
-  Only if the analytic bill shows a ≥1.5× separation is the GPU experiment
-  worth scheduling.
-- GPU stage: n=5 pilot; freeze this addendum and the wrapper commit; then n=20.
-- Budget/gate: W2 enters the JPDC claims only if the G2 scope gate (20 Dec 2026)
-  selects it and 4-GPU time is available. Otherwise it is reported as a
-  boundary calculation with the analytic bill only.
+- CPU model: `scripts/jpdc/w2_link_rate_model.py`; outputs in
+  `jpdc_data/g1/w2_link/` (`w2_link_per_seed.csv`, `w2_link_summary.csv`,
+  `w2_link_summary.json`, `w2_link_summary.md`). This is the primary W2
+  deliverable and needs no GPU.
+- NCCL diagnostic: `scripts/jpdc/nccl_p2p_benchmark.py` and
+  `scripts/slurm_scripts/w2_nccl_p2p.slurm`; one short job, prepared but not
+  submitted.
+- Optional demo: design only; not implemented and not in the W1/W2 budget.
+- No 4-GPU training budget. The old 160-run plan is retired; W2 cannot consume
+  W1 core GPU hours.
 
 ### W2.6 What W2 will not claim
 
-- No multi-node scaling efficiency, no interconnect comparison, no FSDP/ZeRO.
-- No claim that communication causes the MF-Seq accuracy edge; W2 measures cost,
+- No measured multi-GPU training result, no scaling efficiency, no interconnect
+  comparison, no FSDP/ZeRO.
+- No claim that communication causes the MF-Seq accuracy edge; W2 models cost,
   W1 measures attribution.
+- No claim that the Seq-Global proxy is a measurement.
 - No CNN or transformer results; those are W5.
 
 ---
@@ -142,9 +180,11 @@ for confirmatory p-values.
   separately; include it only in the "as implemented" total.
 - **Per pass** = one epoch over 45,000 training samples at batch 128 = 352
   batches. **Bytes-to-stopping** = per-pass bytes × measured passes: JSON
-  `epochs_completed` for BP/MF-Simul, per-stage stdout epochs for MF-Seq (a
-  missing W1_M1 early-stopping line means the 100-epoch cap; the stage sum is
-  asserted against JSON).
+  `epochs_completed` for BP/MF-Simul. For W1 MF-Seq/Seq-Global, per-stage epochs
+  come from the run JSON `stage_epochs` added by the 2026-10-22 instrumentation;
+  G1's frozen artifacts fall back to per-stage stdout (a missing W1_M1
+  early-stopping line means the 100-epoch cap; the stage sum is asserted against
+  JSON). Never infer a pass count from the shared log.
 - **Cached prefix:** canonical config is `activation_cache: recompute`; CIFAR
   random crop/flip makes cached frozen activations stale. The counterfactual is
   one fill per stage (0.36, 0.72 GB for W2/W3) plus one cached a_{k-1} read per
@@ -182,20 +222,31 @@ does not add accuracy p-values.
   first-order and must be discussed as such. The pilot is 25.3% (C100) and
   22.1% (C10). The canonical CIFAR run cannot use this cache because random
   crop/flip makes stale prefixes; the counterfactual is reported separately.
-- **H-W3d (cut bytes are not an energy proxy):** across the 12 arm×dataset
-  cells, arm-level cut bytes-to-stopping and energy-to-stopping have Spearman
-  ρ < 0.5. If ρ ≥ 0.8, cut bytes are a useful energy proxy and the paper says
-  so; 0.5–0.8 is intermediate. This hypothesis is deliberately the opposite of
-  the old total-memory-traffic hypothesis: cut bytes exclude parameter reads
-  and dead M0 work, which are exactly the terms that make MF-Seq expensive.
+- **H-W3d (cut bytes are not an energy proxy; descriptive, no threshold):**
+  across the available arm×dataset cells, report the **sign and magnitude** of
+  Spearman ρ between arm-level cut bytes-to-stopping and energy-to-stopping,
+  with a paired seed bootstrap 95% CI and both mean and median inputs. The seed
+  bootstrap conditions on the fixed six cells; because a common seed rescaling
+  can preserve the cell ordering, a cell bootstrap is also reported as a
+  sensitivity. There is **no one-sided threshold** and no "ρ < 0.5" decision
+  rule. With 12 cells at most
+  (six arms × two datasets), and with two datasets sharing the same seed block,
+  the effective sample is small and the cells are not independent; the result is
+  a descriptive check, not a confirmatory test. A negative sign means higher cut
+  bytes do not track higher energy — the expected direction, because MF-Seq has
+  the smallest cut bill but the largest energy. The pilot (three arms × two
+  datasets, n=6) gives ρ = −0.543; this is a pilot value only and is not used for
+  a p-value.
 
 ### W3.4 Endpoints and statistics
 
 - **Primary:** useful and as-implemented bytes-to-stopping, per-pass bytes by
   cut k=1..L and by MF-Seq stage, and stage shares; arm means with 95%
   bootstrap CIs; paired-by-seed ratios where arms share seeds.
-- **Secondary:** M0 dead-forward share, cached-prefix saving, and Spearman ρ
-  between cut bytes and measured energy.
+- **Secondary:** M0 dead-forward share, cached-prefix saving, and the **sign of
+  Spearman ρ** between cut bytes and measured energy, with a small-n caveat. The
+  W1 panel has at most 12 cells and only two datasets, so ρ is descriptive; no
+  one-sided threshold, no confirmatory p-value.
 - **Legacy cross-check:** the old total-memory-traffic table is retained under
   an explicit "memory traffic, not communication" heading; it is never mixed
   with cut bytes. Parameter reads, parameter-gradient reads, optimizer state
@@ -204,9 +255,10 @@ does not add accuracy p-values.
   engineering checks (BP 2.16 GB/pass; MF-Simul 1.08; MF-Seq useful 0.36 per
   prefix cut; M0 1.08; cache saving 22–25%); they may be cited as pilot values
   only, never as confirmatory p-values.
-- **Source of truth:** W1 per-run JSON + own trace for passes/energy; W1 stage
-  stdout for per-stage epochs; `scripts/jpdc/w3_cut_communication.py` (commit
-  hash recorded at freeze) for cut bytes.
+- **Source of truth:** W1 per-run JSON + own trace for passes/energy; W1 run
+  JSON `stage_epochs` for per-stage epochs (G1 stdout only as the frozen
+  fallback); `scripts/jpdc/w3_cut_communication.py` (commit hash recorded at
+  freeze) for cut bytes.
 
 ### W3.5 Materials and run plan
 
@@ -235,11 +287,13 @@ does not add accuracy p-values.
 
 ## 4. Open decisions for the author (before freeze)
 
-1. **W2 rank map:** 4 ranks (input+W1 / W2 / W3 / head) vs 3 ranks (W1 / W2 /
-   W3+head). Default in this draft: 4 ranks, so every boundary is explicit.
-2. **W2 baseline:** include a data-parallel BP baseline as a reference, or only
-   the layer-parallel arms? Default: layer-parallel only; data-parallel is a
-   different question.
+1. **W2 target:** use each arm's own final measured accuracy (current default)
+   or wait for a common-threshold trace that G1 does not contain. A common
+   threshold would require per-epoch test evaluation and is out of scope for the
+   frozen W1 runs.
+2. **W2 overlap assumption:** serialized compute/communication (current
+   conservative default) vs an overlap fraction. Overlap is not measured at this
+   scale; any overlap would only reduce the slow-link communication penalty.
 3. **W3 optimizer sensitivity:** add a one-off sensitivity that includes Adam
    state traffic (≈6× parameter bytes per step), or keep it excluded? Default:
    excluded from the primary, reported as a single sensitivity number.
@@ -253,3 +307,7 @@ does not add accuracy p-values.
 |---|---|---|
 | 2026-10-21 | Draft created; no confirmatory W2/W3 run scheduled. W3 G1 accounting labelled exploratory pilot. | agent |
 | 2026-10-21 | **W3 redefined as cut-boundary communication** (0.36 GB per epoch per direction per cut; BP 2.16 GB/pass, MF-Simul 1.08, MF-Seq useful 0.36 per prefix cut, M0 dead forward 1.08). The old 69.1 GB/pass is relabelled **memory traffic** and retained only as a legacy table. Hypotheses H-W3a–d rewritten for cut bytes; H-W3d now predicts cut bytes are *not* an energy proxy. Cached-prefix case separated; CIFAR augmentation makes it a counterfactual. Pilot outputs `jpdc_data/g1/w3_cut/`, script `scripts/jpdc/w3_cut_communication.py`. | agent |
+| 2026-10-22 | **W2 four-GPU training design superseded.** Replaced by (a) the zero-GPU link-rate model `scripts/jpdc/w2_link_rate_model.py` over measured passes, per-step compute time, per-run energy and W3 cut bytes at 100 Mbit/s, 1 Gbit/s and 10 Gbit/s; (b) one short 1 MB NCCL point-to-point diagnostic; (c) an optional n=3 layer-parallel demo that is not scheduled. No 4-GPU training runs, no 160-run W2 budget. Seq-Global is explicitly a planning proxy until W1. Pilot model output: `jpdc_data/g1/w2_link/`. | agent |
+| 2026-10-22 | **H-W3d changed before any W1 result** from a one-sided `ρ < 0.5` threshold to reporting the **sign** of Spearman ρ with a 95% bootstrap CI and an explicit small-n caveat (≤12 non-independent arm×dataset cells). Pilot n=6 ρ = −0.543; pilot only. | author |
+| 2026-10-22 | **Ex-M0 multipliers labelled estimates.** The stage-0 audit values (energy 2.69×/2.92×, passes 3.05×/3.35×, time 3.03×/3.35×) are implementation-dependent estimates from the G1 pilot, not measurements of a production pipeline; the W3 output and paper text must say so. | agent |
+| 2026-10-22 | **W3 per-stage source updated before any W1 result.** W1 per-stage epochs are read from the run JSON `stage_epochs` added by the freeze instrumentation, not from stdout. G1's already-frozen artifacts keep their stdout fallback; the sum is still asserted against JSON `epochs_completed`. No outcome or threshold change. | agent |

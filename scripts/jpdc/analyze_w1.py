@@ -6,15 +6,15 @@ Reads per arm x dataset x seed 42-61, exactly like analyze_g1:
 - NVML CSV:  the exact `monitoring_csv_path` stored in that JSON (energy, Wh)
 
 Arms (6 main): bp, mf_joint, mf_simul, mf_seq, mf_global, mf_nom0.
-Controls (descriptive, not in Holm): bp_long (max_epochs 300), bp_bestval,
-bp_sched, mf_seq_protocol_b, mf_nom0_protocol_b, and the conditional
-mf_seq_cap300.
+Controls (descriptive, not in Holm): bp_fixed (BP-sched hyperparameters,
+fixed 211/191 epochs), bp_bestval, bp_sched, mf_seq_protocol_b,
+mf_nom0_protocol_b, and the conditional mf_seq_cap300.
 
 Decision blocks (frozen thresholds, CIFAR-100 primary; CIFAR-10 consistency):
 - H-W1a (locality):      global - seq <= -2.0 pp AND global - simul <= +1.0 pp
 - H-W1b (schedule):      global - seq >= -1.0 pp
 - H-W1c (M0 overhead):   nom0 - seq >= -0.5 pp AND savings >= 15% passes AND >= 15% energy
-- H-W1d (strong BP):     bp_long - seq >= -1.0 pp  (and passes <= 2x seq passes)
+- H-W1d (strong BP):     bp_fixed - seq >= -1.0 pp  (same-pass control)
 Holm: three primary comparisons (global-seq, global-simul, nom0-seq) on C100.
 
 Missing arms are reported as "not run" and their hypotheses left undecided; the
@@ -49,7 +49,7 @@ ARMS = {
     "mf_nom0": "mf_nom0_{dataset}_mlp_3x2000",
 }
 CONTROL_ARMS = {
-    "bp_long": "bp_long_{dataset}_mlp_3x2000",
+    "bp_fixed": "bp_fixed_{dataset}_mlp_3x2000",
     "bp_bestval": "bp_bestval_{dataset}_mlp_3x2000",
     "bp_sched": "bp_sched_{dataset}_mlp_3x2000",
     "mf_seq_protocol_b": "mf_protocol_b_{dataset}_mlp_3x2000",
@@ -248,17 +248,17 @@ def main() -> None:
     else:
         verdicts.append("H-W1c **not run** (mf_nom0 data missing).")
 
-    if arm_present(df, "bp_long", "cifar100") and arm_present(df, "mf_seq", "cifar100"):
-        d_bp_long = paired(df, "bp_long", "mf_seq", "cifar100", "test_accuracy")
+    if arm_present(df, "bp_fixed", "cifar100") and arm_present(df, "mf_seq", "cifar100"):
+        d_bp_fixed = paired(df, "bp_fixed", "mf_seq", "cifar100", "test_accuracy")
         seq_passes = df[(df.arm == "mf_seq") & (df.dataset == "cifar100")].passes.mean()
-        bp_long_passes = df[(df.arm == "bp_long") & (df.dataset == "cifar100")].passes.mean()
+        bp_fixed_passes = df[(df.arm == "bp_fixed") & (df.dataset == "cifar100")].passes.mean()
         verdicts.append(
-            f"H-W1d: BP-long Δ {d_bp_long['mean']:+.2f} pp "
-            f"[{d_bp_long['ci_low']:+.2f}, {d_bp_long['ci_high']:+.2f}] at "
-            f"{bp_long_passes / seq_passes:.2f}× MF-Seq passes."
+            f"H-W1d: BP-fixed Δ {d_bp_fixed['mean']:+.2f} pp "
+            f"[{d_bp_fixed['ci_low']:+.2f}, {d_bp_fixed['ci_high']:+.2f}] at "
+            f"{bp_fixed_passes / seq_passes:.2f}× MF-Seq passes."
         )
     else:
-        verdicts.append("H-W1d **not run** (bp_long data missing).")
+        verdicts.append("H-W1d **not run** (bp_fixed data missing).")
 
     for line in verdicts:
         lines.append(f"- {line}")

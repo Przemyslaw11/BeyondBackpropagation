@@ -93,7 +93,7 @@ M0 contributes nothing to any prediction (phase 2 never reads it; evaluation use
    all-layers-evolving schedule; on C100 it matches BP accuracy at ×0.81 passes and −0.93 Wh —
    a legitimate efficiency story without the accuracy gain.
 3. **W1 ladder (pre-registered, `PREREG-phase2.md`):** Seq-Global (staged, trainable prefix,
-   implemented + unit-tested) isolates schedule vs frozen prefix; MF-Seq-noM0 and cap-300/BP-long
+   implemented + unit-tested) isolates schedule vs frozen prefix; MF-Seq-noM0, BP-fixed and cap-300
    controls bound the cost levers.
 
 Sources: `PREREG.md` §10 (amendments), `g1_per_seed.csv`, `jpdc_data/g1/w0a/`,
