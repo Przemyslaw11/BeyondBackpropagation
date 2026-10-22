@@ -95,6 +95,7 @@ echo "Config (${CONFIG_INDEX}): $CONFIG_FILE"
 echo "Seed: $EXPERIMENT_SEED"
 echo "Run log: $RUN_LOG"
 echo "Node: ${SLURMD_NODENAME:-$(hostname)}   Start: $(date -Is)"
+echo "GPU UUID: $(nvidia-smi --query-gpu=uuid --format=csv,noheader -i "${CUDA_VISIBLE_DEVICES:-0}" 2>/dev/null | paste -sd, -)"
 echo "Host: $(hostname)   GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 

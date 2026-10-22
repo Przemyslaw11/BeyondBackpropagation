@@ -35,6 +35,10 @@ export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
 export WANDB_DIR="${SCRATCH:-$HOME}/bbp_wandb"
 mkdir -p "$WANDB_DIR"
 export BBP_DISABLE_CHECKPOINTS=1
+# Optuna SQLite store off HOME (quota + NFS locking). One writer per study:
+# tasks 1 and 2 own different databases, and continuations are dependency-chained.
+OPTUNA_DIR="${SCRATCH:-$HOME}/bbp_optuna"
+mkdir -p "$OPTUNA_DIR"
 
 # HOME quota guard: a full HOME kills the run and wastes a GPU allocation.
 USED_MB=$(quota -s | awk '/net\/people/ {getline; gsub(/M/,"",$1); print $1}')
@@ -53,12 +57,13 @@ echo "BP-sched tuning task ${SLURM_ARRAY_TASK_ID}/2"
 echo "Config: $CONFIG_FILE"
 echo "Study:  $STUDY_NAME"
 echo "Node: ${SLURMD_NODENAME:-$(hostname)}   Start: $(date -Is)"
+echo "GPU UUID: $(nvidia-smi --query-gpu=uuid --format=csv,noheader -i "${CUDA_VISIBLE_DEVICES:-0}" 2>/dev/null | paste -sd, -)"
 echo "Host: $(hostname)   GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 
 srun python scripts/run_optuna_search.py \
     --config "$CONFIG_FILE" \
-    --output-dir results/optuna \
+    --output-dir "$OPTUNA_DIR" \
     --study-name "$STUDY_NAME" \
     --target-trials 50
 EXIT_CODE=$?
