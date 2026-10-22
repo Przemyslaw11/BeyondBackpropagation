@@ -27,7 +27,9 @@ BP under Protocol B is the core BP arm; it is not duplicated. The earlier
 1. **BP-sched.** `configs/bp_sched/*`; cosine `T_max=100`, no early stopping,
    fixed 100 epochs, lr/wd from a 50-trial-per-dataset study
    (`configs/tuning/bp_sched_*`); at the 2 Dec 2026 23:59 CET deadline, if
-   fewer than 20 trials completed per dataset, reuse the MF-Seq lr/wd per §9.
+   fewer than 20 trials completed per dataset, use **core BP's** tuned lr/wd
+   with the fixed cosine schedule, not MF-Seq's lr/wd (§9). BP-fixed inherits
+   the same branch.
    The BP Optuna objective now honours `training.scheduler`; otherwise tuning
    and confirmation would use different schedules. 40 confirm tasks, 0 new
    trials in the confirm run.
@@ -103,9 +105,9 @@ fixed-epoch run and its 11.2 GPU-h is directly derived from the BP-sched
    commit, then `w1_submit.sh protocolb` (80 tasks, 1 h).
 4. Seq-Global: record the 25 Nov branch (tuned trial or MF-Seq fallback), commit,
    then `w1_submit.sh seqglobal` (40 tasks, 1 h).
-5. BP-sched/BP-fixed: record the 2 Dec branch, replace `PLACEHOLDER` in
-   `configs/bp_sched/*` with the chosen lr/wd, commit, then `w1_submit.sh sched`
-   (40 tasks, 1 h) and `w1_submit.sh fixed` (40 tasks, 1 h).
+5. BP-sched/BP-fixed: record the 2 Dec branch (tuned trial or core-BP fallback),
+   replace `PLACEHOLDER` in `configs/bp_sched/*` with the chosen lr/wd, commit,
+   then `w1_submit.sh sched` (40 tasks, 1 h) and `w1_submit.sh fixed` (40 tasks, 1 h).
 
 `w1_submit.sh` holds the single account line. New W1 submissions use
 `plgoncotherapy2-gpu-a100` (team `plggfastsim`), as authorized on 2026-10-22.

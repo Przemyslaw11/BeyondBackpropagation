@@ -2,8 +2,8 @@
 # W1 control (a): BP with tuned cosine schedule, fixed 100-epoch budget.
 # 2 datasets x 20 seeds = 40 tasks. Submit only after the 2026-12-02 23:59 CET
 # branch is recorded in PREREG-phase2.md §9: either the best trial with >=20
-# completed per dataset, or the MF-Seq fallback. Replace both lr/wd values,
-# commit, and then submit.
+# completed per dataset, or the core-BP fallback (configs/bp_baselines/*),
+# never MF-Seq's lr/wd. Replace both lr/wd values if needed, commit, then submit.
 #
 # This script refuses to run while any configs/bp_sched/*.yaml still contains
 # the literal "PLACEHOLDER". Replace both lr/wd lines and commit the configs

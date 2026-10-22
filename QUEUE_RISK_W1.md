@@ -129,14 +129,16 @@ never W1-outcome-triggered:
 - **Seq-Global:** 25 Nov 2026 23:59 CET.
 - **BP-sched:** 2 Dec 2026 23:59 CET.
 - At each deadline, freeze the best-validation trial among completed trials if
-  **≥20 trials are completed per dataset**; otherwise reuse MF-Seq's tuned lr/wd
-  for that dataset.
+  **≥20 trials are completed per dataset**; otherwise use that arm's fallback.
+- Seq-Global's fallback is MF-Seq's tuned lr/wd (`configs/mf/*`).
+- BP-sched's fallback is **core BP's** tuned lr/wd (`configs/bp_baselines/*`),
+  with the fixed cosine schedule; BP-fixed inherits it. It is not MF-Seq's lr/wd.
 - Disclose the branch used, per dataset and per arm. The rule changes no W1
   outcome, threshold, seed, or Holm family.
 
-The fallback values are the published MF-Seq values already present in
-`configs/mf/*`; `configs/mf_global/*` currently carries them. BP-sched and
-BP-fixed must have the `PLACEHOLDER` lr/wd replaced before submission. The 12/19
+`configs/mf_global/*` currently carries the MF-Seq values; `configs/bp_sched/*`
+currently carries the core-BP fallback values, still marked `PLACEHOLDER` so the
+launchers refuse to submit before the branch is committed. The 12/19
 Nov starts can still run Seq-Global tuning before its 25 Nov deadline; the 26 Nov
 start sees that deadline passed. All three starts can run BP-sched tuning before
 2 Dec. The schedule assumes fallback only if the 20-trial bar is not met by the

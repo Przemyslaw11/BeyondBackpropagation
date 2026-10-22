@@ -246,3 +246,86 @@ def test_secondary_endpoints_preserve_mf_training_and_weights():
         "M_2",
         "M_3",
     }
+
+
+def test_engine_runs_probes_after_monitor_exit(monkeypatch):
+    """The NVML context must close before the test pass and diagnostic probes."""
+    from src.training import engine
+
+    events = []
+
+    class FakeMonitor:
+        def __enter__(self):
+            events.append("monitor_enter")
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            events.append("monitor_exit")
+
+        def stop(self):
+            events.append("monitor_stop_final")
+            return 0.0
+
+    monitor = FakeMonitor()
+    config = {
+        "experiment_name": "monitor_order",
+        "general": {"seed": 42, "device": "cpu"},
+        "algorithm": {"name": "bp"},
+        "data": {"name": "MNIST", "num_classes": 2},
+        "monitoring": {"enabled": False},
+        "profiling": {"enabled": False},
+        "logging": {"wandb": {"use_wandb": False}},
+    }
+
+    monkeypatch.setattr(
+        engine,
+        "_setup_environment_and_wandb",
+        lambda config, wandb_run: (42, torch.device("cpu"), None),
+    )
+    monkeypatch.setattr(
+        engine,
+        "get_dataloaders",
+        lambda **kwargs: (object(), object(), object()),
+    )
+    monkeypatch.setattr(
+        engine,
+        "get_model_and_adapter",
+        lambda config, device: (nn.Linear(4, 2), lambda x: x),
+    )
+    monkeypatch.setattr(engine, "_perform_pre_training_profiling", lambda *a, **k: {})
+    monkeypatch.setattr(
+        engine,
+        "_setup_hardware_monitors",
+        lambda config, device, results: (False, None, monitor, None, None, {}),
+    )
+    monkeypatch.setattr(engine, "log_metrics", lambda *a, **k: None)
+
+    def fake_train(**kwargs):
+        events.append("train")
+        return float("nan")
+
+    def fake_eval(**kwargs):
+        events.append("test")
+        return 0.5, 50.0
+
+    def fake_secondary(**kwargs):
+        events.append("secondary")
+        return {"secondary_eval_seconds": 0.1}
+
+    monkeypatch.setattr(engine, "get_training_function", lambda name: fake_train)
+    monkeypatch.setattr(engine, "get_evaluation_function", lambda name: fake_eval)
+    monkeypatch.setattr(engine, "compute_secondary_endpoints", fake_secondary)
+    monkeypatch.setattr(
+        engine, "_finalize_run", lambda *args, **kwargs: events.append("finalize")
+    )
+
+    engine.run_training(config)
+
+    assert events == [
+        "monitor_enter",
+        "train",
+        "monitor_exit",
+        "test",
+        "secondary",
+        "finalize",
+    ]

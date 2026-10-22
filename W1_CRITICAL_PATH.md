@@ -14,7 +14,9 @@ The author-approved fallback (PREREG-phase2.md §9, 2026-10-22) is:
 - Seq-Global deadline **25 Nov 2026 23:59 CET**;
 - BP-sched deadline **2 Dec 2026 23:59 CET**;
 - freeze the best-validation trial among completed trials if **≥20 completed
-  per dataset**, otherwise reuse MF-Seq's tuned lr/wd; disclose the branch.
+  per dataset**, otherwise use the arm's fallback: Seq-Global → MF-Seq's lr/wd;
+  BP-sched → **core BP's** lr/wd with the cosine schedule (BP-fixed inherits).
+  Disclose the branch.
 
 The deadlines were moved on 2026-10-22 for the A100 outage, not for data; no
 tuning trial had completed. The 12 and 19 Nov starts can still run the tuning

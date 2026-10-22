@@ -15,7 +15,7 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - Phase 1 MF-Simul implementation: DONE -> `src/baselines/bp_ds.py` (`detach_between_layers`
   flag, `train/evaluate_mf_simul_model`), registered in `src/algorithms|baselines/__init__.py`,
   config `configs/mf_simul/cifar10_mlp_3x2000.yaml`, tests `tests/test_mf_simul.py`
-  (3 tests) + fairness invariants extended. Latest suite: 106 passed, 13 skipped.
+  (3 tests) + fairness invariants extended. Latest suite: 112 passed, 13 skipped.
 - PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
   unit tests, drift controls, amendments log). G1 is complete; verdict B (schedule
   artifact). W1 is pre-registered (`PREREG-phase2.md`) and queued; see below.
@@ -72,8 +72,8 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   Seq-Global = 40 (`w1_seqglobal.slurm`); Protocol B = 80
   (`w1_controls_protocol_b.slurm`); BP-sched = 40 (`w1_bp_sched.slurm`).
   **Base total 440**; cap-300 conditional. HPO fallback is in PREREG §9
-  (Seq **25 Nov**, BP-sched **2 Dec**, ≥20/dataset else MF-Seq lr/wd; commit
-  `f877b92`, deadline amendment 2026-10-22). Estimated ~66.5 GPU-h confirm +
+  (Seq **25 Nov**, BP-sched **2 Dec**, ≥20/dataset; Seq fallback = MF-Seq lr/wd,
+  BP-sched fallback = core-BP lr/wd; deadline amendment 2026-10-22). Estimated ~66.5 GPU-h confirm +
   ~51 tuning; details `W1_MANIFEST_ADDITIONS.md`, `W1_CRITICAL_PATH.md`.
   No threshold change. BP-long retired because BP never reaches the 100-epoch cap.
 - **W2 (redesigned 2026-10-22):** four-GPU training superseded by a zero-GPU
@@ -151,14 +151,20 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
      studies `ladder_mfglobal_{cifar10,cifar100}_mlp_3x2000_tune`). If it runs
      before 25 Nov, freeze the best trial with ≥20 completed per dataset;
      otherwise use the MF-Seq fallback. Record the branch in §9 and commit.
+     BP-sched tuning is separate on the 2 Dec deadline; its fallback is core-BP
+     lr/wd, not MF-Seq's.
    - H-W1cap Step 1: job **3386586** (5 tasks, C100 cap-300 seeds 42-46).
    - Both remain on `plglscclass26-gpu-a100`, pending `ReqNodeNotAvail`; they are
      not migrated. New W1 work uses `plgoncotherapy2-gpu-a100` (team `plggfastsim`).
    - W1 is split: `w1_submit.sh core` (200), `controls` (40 BP-bestval),
      `fixed` (40 BP-fixed), `seqglobal` (40), `protocolb` (80), `sched` (40).
      No W1 job submitted; author gate applies.
-9. Commit hash to record at W1 launch: `PREREG-phase2.md` hash + `analyze_w1.py`
-   (controls and median reporting included; H-W1a..d unchanged).
+9. Freeze record to write in `PREREG-phase2.md` §9: code-freeze commit hash,
+   SHA-256 of `scripts/jpdc/analyze_w1.py`, and the frozen-config manifest hash
+   from `scripts/jpdc/w1_config_hash.py` (12 core/BP-bestval configs; HPO-gated
+   configs excluded). The analysis reducer implements the 2x2, H-W1a..d, the
+   C100 Holm family, paired Wilcoxon/10k bootstrap, co-primary costs, and the
+   descriptive probe tables; tests include a planted effect and missing seeds.
 10. Account decision done (2026-10-22): new W1 submissions use
     `plgoncotherapy2-gpu-a100`; existing pending jobs stay on the class account.
     Do not cancel or migrate them.
@@ -170,9 +176,10 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 13. DSS data are ready in `jpdc_data/dss/`; build the figure after W1, keeping
     Protocol A and B on separate axes (era drift is real).
 14. Pre-W1 freeze package: secondary endpoints + stage epochs, BP-fixed, HPO
-    deadline amendment, W2 link model, H-W3d sign/caveat, W6 budget audit, and
-    `W1_SYNC_AND_SUBMIT.md`. The cluster checkout is still at `813430e`; sync to
-    the final frozen commit before any submission.
+    deadline amendment (BP-sched fallback corrected to core-BP lr/wd), W2 link
+    model, H-W3d sign/caveat, W6 budget audit, `analyze_w1.py` + tests, and
+    `INSTRUMENTATION_EVIDENCE.md`. The cluster checkout is still at `813430e`;
+    sync to the final frozen commit before any submission.
 
 ## Resolved questions (author, 2026-10-16)
 1. A100 budget: not a planning constraint for now; still report measured usage per session.
@@ -290,7 +297,8 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 
 - 2026-10-22 (pre-submission continuation): fallback HPO rule added to
   `PREREG-phase2.md` §9 at commit `f877b92` before any tuning trial completed
-  (Seq 4 Nov / BP-sched 11 Nov; ≥20 trials/dataset else MF-Seq lr/wd; disclose).
+  (Seq 4 Nov / BP-sched 11 Nov; ≥20 trials/dataset; the BP-sched fallback was
+  later corrected to core-BP lr/wd, PREREG §9, 2026-10-22; disclose).
   W1 split into independent arrays; `w1_submit.sh` modes
   `core|controls|fixed|seqglobal|protocolb|sched`. Author authorized
   `plgoncotherapy2-gpu-a100` (team `plggfastsim`) for new W1 work; the two pending
@@ -311,7 +319,9 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   of rho with a small-n caveat and ex-M0 multipliers are labelled estimates.
   The W6 toy has budget-confound controls: MF-Seq-1260 is 1.71× BP-420 (clean
   equal-update), so the headline 205.8× is not a staging effect. `W1_SYNC_AND_SUBMIT.md`
-  contains the bundle sync and one-command blocks; none executed. Tests 106
+  contains the bundle sync and one-command blocks; none executed. The W1 reducer
+  and instrumentation evidence are in `scripts/jpdc/analyze_w1.py`,
+  `tests/test_analyze_w1.py`, and `INSTRUMENTATION_EVIDENCE.md`. Tests 112
   passed, 13 skipped; Ruff and `bash -n` clean.
 
 ## Rules of engagement (unchanged)

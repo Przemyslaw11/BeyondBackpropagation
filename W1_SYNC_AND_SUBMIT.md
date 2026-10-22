@@ -20,7 +20,11 @@ commit that will be recorded in `PREREG-phase2.md` §9.
 cd ~/Desktop/BeyondBackpropagation_ready/BeyondBackpropagation
 git status --short --branch
 git log --oneline -3
+git diff --check
+sha256sum scripts/jpdc/analyze_w1.py
+PYTHONPATH=. python3 scripts/jpdc/w1_config_hash.py
 PYTHONPATH=. python3 -m pytest -q
+bash -n scripts/slurm_scripts/w1_submit.sh
 bash -n scripts/slurm_scripts/w1_family.slurm
 bash -n scripts/slurm_scripts/w1_family_controls.slurm
 bash -n scripts/slurm_scripts/w1_bp_fixed.slurm
@@ -31,7 +35,9 @@ FROZEN_COMMIT=$(git rev-parse HEAD)
 echo "FROZEN_COMMIT=$FROZEN_COMMIT"
 ```
 
-If the tree is not clean, stop. Do not bundle an uncommitted tree.
+If the tree is not clean, stop. Do not bundle an uncommitted tree. The
+`analyze_w1.py` SHA-256 and the config-manifest hash printed above must match
+the freeze record in `PREREG-phase2.md` §9 before any block is submitted.
 
 ## 1. Bundle and copy to Athena (one block)
 
@@ -135,8 +141,11 @@ ssh athena 'cd "$HOME/BeyondBackpropagation" && test -z "$(grep -R PLACEHOLDER c
 ```
 
 If the `grep` finds a placeholder, the `&&` chain stops before submitting. Do not
-replace the placeholders with core-BP values by hand; use the recorded HPO branch
-or the MF-Seq fallback and commit it first.
+replace the placeholders by hand without recording the branch. Use the recorded
+BP-sched HPO best trial if the ≥20/dataset bar was met; otherwise use the
+pre-registered **core-BP** fallback (`configs/bp_baselines/*`), commit it, then
+remove the `PLACEHOLDER` markers and commit again. Seq-Global's fallback remains
+MF-Seq's lr/wd.
 
 ## 5. Post-submission checks
 

@@ -1,6 +1,7 @@
 # W1 control (a): BP with a tuned cosine LR schedule and a fixed epoch budget.
-# See configs/bp_sched/cifar10_mlp_3x2000.yaml. Placeholders must be replaced
-# with the frozen CIFAR-100 BP-sched study best params before submission.
+# See configs/bp_sched/cifar10_mlp_3x2000.yaml. Values below are the CIFAR-100
+# core-BP fallback, not MF-Seq's; replace only if the BP-sched study meets the
+# >=20-completed-trials bar. Record the branch in PREREG-phase2.md §9 first.
 
 experiment_name: "bp_sched_cifar100_mlp_3x2000"
 algorithm:
