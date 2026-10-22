@@ -51,6 +51,55 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   or re-read it monthly. The `moved_tree/` copy of the old logs is convenience only; the
   verified tarball is the record.
 
+## 2026-10-22 follow-up: push, archive, time limit, storage
+
+- **Push.** `origin` = `https://github.com/Przemyslaw11/BeyondBackpropagation.git`.
+  `jpdc-extension` pushed at 17:40:11 CEST (`48167a9`), together with tags `w1-freeze`
+  (→ `16ff4c4`) and `w1-launch` (→ `96c9d52`). A later push carries `16a7686` (GPU-UUID
+  logging, Optuna store off HOME) and the metadata commits. Twelve core tasks had already
+  completed before the first push (nodes returned at 17:04); frozen bytes are identical,
+  so no protocol consequence.
+- **Backup archived** to group storage:
+  `/net/pr2/projects/plgrid/plgglscclass/plgspyra_bbp_archive/2026-10-22_w1_pre_submission/`.
+  Destination SHA-256 equals `9807628372b02207916bd6bb44b072b62d13e1c5e0ea90a45eea9c553a1a66d2`;
+  `cmp` identical; 992 entries; 75 MiB apparent; group FS 18 GB free before and after.
+- **Time limit 1 h → 2 h** for 3387663 and 3387664, applied with `scontrol update`
+  (rc=0, no resubmission, queue age kept). Slowest historical core run: 19.99 min
+  (MF-Seq C10, G1 seed 49, node t0018); MF-Seq C100 18.2 min; all others ≤ 5.6 min.
+  Partition MaxTime 48 h; no account/QoS caps. Every pending task shows 2:00:00.
+  Core tasks 1–12 completed under the old 1 h limit (max elapsed 16:14); task 13 onward
+  has 2 h. Watch: any task > 30 min (1.5 × 19.99 min) is a health flag only.
+- **Tuning storage.** `run_optuna_search.py --target-trials 50` runs only the remainder
+  (`max(0, 50 - stored)`), so a continuation cannot exceed 50 trials. Current store for
+  the queued 3387665 is `results/optuna/<study>.db` on **HOME/NFS** (spooled old script);
+  the launcher now writes to `$SCRATCH/bbp_optuna`. Scratch and group storage are both
+  Lustre; HOME is NFS. Only one process ever touches each study DB (one task per dataset,
+  continuations chained with `--dependency=afterany`), which is the locking mitigation.
+  Decision needed: cancel/resubmit 3387665 to move it to scratch, or keep HOME for that
+  one run. No continuation submitted.
+- **Tuning config hashes** (recorded in §9 before any trial):
+  C10 `835799b4…573263f`, C100 `6191f22c…c18ccb1a`. Search space/budget/pruner identical
+  to core BP tuning; only the pre-registered cosine schedule and ES-off differ.
+- **Class-account jobs (inspection only).** 3386582 runs `scripts/slurm_scripts/mfglobal_tune.slurm`
+  (24 h, class account, configs `configs/tuning/mfglobal_*`, output `results/optuna`) and
+  3386586 runs `scripts/slurm_scripts/w1_cap_pilot.slurm` (8 h, config
+  `configs/mf_cap300/cifar100_mlp_3x2000.yaml`). Both still PENDING, never started,
+  submit time 2026-10-21T19:30:23 / earlier. Their spooled scripts are at `813430e`, but
+  at run time they import the launch tree `src/`; the diff is additive bookkeeping and
+  post-training probes only. No required file was in `moved_tree/`. Not touched.
+- **Node-sharing audit query (prepared, not run):**
+  ```bash
+  # per-task node and wall window for a W1 array
+  sacct -j 3387663 --array --format=JobID%16,JobName%20,NodeList%14,Start,End,State,Elapsed -X
+  # every job on the same nodes in the same window (replace NODES/START/END)
+  sacct -a -S START -E END --format=JobID%18,JobName%24,Account%26,NodeList%14,Start,End,State -X \
+    | awk -v n="NODES" '$0 ~ n'
+  # requeue/failure audit
+  sacct -j 3387663,3387664 --format=JobID%16,State,ExitCode,DerivedExitCode,Elapsed,NodeList%14 -X
+  ```
+  After the arrays run, `scontrol show job <id>` and `.out` `Node:/GPU UUID:` lines give
+  the node and physical GPU per task.
+
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
   mismatch documented; fairness matrix; open items).
