@@ -2,6 +2,55 @@
 
 Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `181ecc4`).
 
+## W1 submission (2026-10-22 17:02 CEST)
+
+- **Account gate cleared.** Author confirmed in session that Dzwinel approved charging
+  `plgoncotherapy2-gpu-a100` (team `plggfastsim`) for W1. Recorded in `PREREG-phase2.md`
+  §9 as an administrative note ("author-confirmed in session"). Not a protocol change.
+- **Tags.** `w1-freeze` (annotated) → `16ff4c4` (code-freeze commit). `w1-launch`
+  (annotated) → `96c9d52` (launcher changes + §9 amendments). Cluster checkout is at
+  `73dd784`, a metadata-only child of `w1-launch` (`git diff w1-launch HEAD` touches
+  `PREREG-phase2.md` only).
+- **Hashes on the cluster (verified 2026-10-22, before submission).**
+  `git diff --stat w1-freeze -- src/ scripts/jpdc/analyze_w1.py configs/` empty;
+  `analyze_w1.py` = `c424a0eebe81e8e48ec3e3ad5371e9343e6a7650e0ca9d4221c04c74a5a61ff1`;
+  frozen-config manifest = `76f188472a6fb0ab481185b5446c66c1b047371a1933582b36e6f80e65c39d80`.
+  Identical to §9.
+- **Array order fixed (scheduling-order only).** Core and BP-bestval arrays were
+  arm-major. Commit `7932875` makes the index seed-major and groups CIFAR-10 before
+  CIFAR-100 in the core list: every (seed, dataset) cell is five adjacent indices, every
+  seed a contiguous ten-index block. No config/seed/arm/task-count change. Each task now
+  echoes `SLURMD_NODENAME` and an ISO start timestamp. `schedtune` was missing from
+  `w1_submit.sh` and was added in the same commit. Throttle `%20` added in `e21981d`.
+- **Backup of the dirty cluster tree.** `$SCRATCH/bbp_pre_w1_backup_20261022T165822/`
+  - `untracked_tree.tgz`, 77,996,331 B, SHA-256
+    `9807628372b02207916bd6bb44b072b62d13e1c5e0ea90a45eea9c553a1a66d2`, 992 files
+    (sha256sum -c OK; `tar -tzf` path set identical to the expected set).
+  - `venv` excluded from the tarball and from the move; `venv/bin/pip freeze` (96 lines)
+    and the symlink target are saved beside it. `venv` is untouched and now excluded via
+    `.git/info/exclude` (`/venv`, local-only, not committed).
+  - The 992 files were moved to `moved_tree/` (992 files, 861,204,531 B), then the repo
+    tree was clean. HOME: 7441 MiB → 6616 MiB (it fell, it did not grow).
+- **Dry run** (`sbatch --test-only`, exact submission flags): all three blocks accepted
+  under `plgoncotherapy2-gpu-a100`, partition `plgrid-gpu-a100`, `gres/gpu:1`, 8 CPUs,
+  1 h (core, controls) / 8 h (tuning), arrays 1-200%20 / 1-40%20 / 1-2; start estimate
+  2026-10-24T20:17:39 for all three.
+- **Submitted** (same flags as the dry run): **3387663** `BBP_W1Core` `[1-200%20]`,
+  **3387664** `BBP_W1Ctl` `[1-40%20]`, **3387665** `BBP_BPSchedTune` `[1-2]`; submitted
+  2026-10-22T17:02:35, all `PENDING` (`ReqNodeNotAvail`). Jobs **3386582/3386586** are
+  unchanged (`PENDING`, 0:00 elapsed, class account); they were not cancelled, held,
+  migrated or requeued.
+- **Open gates.** Seq-Global → 25 Nov 2026 branch; BP-sched confirm + BP-fixed → 2 Dec
+  2026 branch (`configs/bp_sched/*` still contains `PLACEHOLDER`); Protocol B → actual
+  core-BP `Ebar_BP`. All remain unsubmitted and unprepared.
+- **Next poll: 2026-10-23** (daily, low frequency). Alert immediately on task failure,
+  node-related requeue, or HOME > 9,000 MiB. Per-task `.out` files are retained, never
+  rotated. No W1 outcome contrasts before the family completes.
+- **Scratch retention.** Athena scratch purges files unused for 30 days; the backup
+  tarball was read on 2026-10-22. If it must outlive 30 days, copy it to the group archive
+  or re-read it monthly. The `moved_tree/` copy of the old logs is convenience only; the
+  verified tarball is the record.
+
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
   mismatch documented; fairness matrix; open items).

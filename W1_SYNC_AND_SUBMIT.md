@@ -1,9 +1,12 @@
-# W1 sync and submission draft — DO NOT RUN YET
+# W1 sync and submission draft
 
-Status: **draft, 2026-10-22. Nothing here has been executed.** The author has not
-approved a W1 submission, and the cluster checkout is still at `813430e`. This
-document is the copy-paste procedure for when that approval arrives. It does not
-submit anything by itself.
+Status: **executed for blocks A (core), B (BP-bestval) and E0 (BP-sched tuning) on
+2026-10-22 17:02 CEST.** Array IDs: `3387663` (core, `1-200%20`), `3387664`
+(BP-bestval, `1-40%20`), `3387665` (BP-sched tuning, `1-2`), all on
+`plgoncotherapy2-gpu-a100` and `PENDING` at submission. Blocks C (Protocol B),
+D (Seq-Global), E (BP-sched confirm + BP-fixed) remain **gated and unsubmitted**.
+This document remains the copy-paste procedure for those blocks; the executed
+steps and hashes are recorded in `PREREG-phase2.md` §9 and `HANDOFF.md`.
 
 The frozen local branch is `jpdc-extension`; the cluster working tree is
 `athena:~/BeyondBackpropagation`. All new W1 work uses
