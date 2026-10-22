@@ -11,10 +11,20 @@ The frozen local branch is `jpdc-extension`; the cluster working tree is
 jobs 3386582/3386586 are **not** touched here; their separate migration draft is
 `RESUBMIT_PENDING_JOBS.md`.
 
+## Known cluster pre-sync blocker (read-only check, 2026-10-22)
+
+The cluster checkout is at `813430e` and has untracked smoke/config/log/venv
+files. The sync preflight refuses a dirty tree, so do **not** delete or
+`git clean` them. After the author go-ahead, preserve them first, e.g. move
+`git ls-files --others --exclude-standard` into
+`~/bbp_untracked_pre_w1_20261022/` (including the smoke `*.slurm`,
+`slurm_logs/`, `venv/`, and smoke configs), then re-run `git status`. Do not
+run that move until the go-ahead.
+
 ## 0. Local preflight (no cluster action)
 
 Run from the repo root. The tree must be clean. The **code-freeze commit**
-recorded in `PREREG-phase2.md` §9 is `5abbf9d97598fe5acf25cedffd3c421b9b62980e`;
+recorded in `PREREG-phase2.md` §9 is `16ff4c44044571006ea977a8fb714a2f76837c85`;
 the §9 record itself is a metadata-only child commit. The `FROZEN_COMMIT` below
 is the branch HEAD that includes that record and has identical code/config
 bytes; the preflight hashes must match §9.
