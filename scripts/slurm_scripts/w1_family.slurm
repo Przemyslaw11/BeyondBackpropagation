@@ -23,7 +23,7 @@
 #SBATCH -p plgrid-gpu-a100
 #SBATCH --output=slurm_logs/%x-%A_%a.out
 #SBATCH --error=slurm_logs/%x-%A_%a.err
-#SBATCH --array=1-200
+#SBATCH --array=1-200%20
 
 CONFIG_FILES=(
     "configs/bp_baselines/cifar10_mlp_3x2000_bp.yaml"
