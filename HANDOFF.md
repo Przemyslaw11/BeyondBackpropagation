@@ -83,8 +83,10 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - **Class-account jobs (inspection only).** 3386582 runs `scripts/slurm_scripts/mfglobal_tune.slurm`
   (24 h, class account, configs `configs/tuning/mfglobal_*`, output `results/optuna`) and
   3386586 runs `scripts/slurm_scripts/w1_cap_pilot.slurm` (8 h, config
-  `configs/mf_cap300/cifar100_mlp_3x2000.yaml`). Both still PENDING, never started,
-  submit time 2026-10-21T19:30:23 / earlier. Their spooled scripts are at `813430e`, but
+  `configs/mf_cap300/cifar100_mlp_3x2000.yaml`). At the 2026-10-22 snapshot both
+  were PENDING and had never started; both later completed on 2026-10-24 without
+  being touched (see the 2026-10-24 section), submit time 2026-10-21T19:30:23 /
+  earlier. Their spooled scripts are at `813430e`, but
   at run time they import the launch tree `src/`; the diff is additive bookkeeping and
   post-training probes only. No required file was in `moved_tree/`. Not touched.
 - **Node-sharing audit query (prepared, not run):**
@@ -143,31 +145,134 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   ran while the 8 h job waited because short jobs backfill into the available windows;
   no reservation explains it. The 2 h core array has since completed 36 tasks, so the
   2 h limit is not blocking tasks a 1 h limit would fit. No limit changed.
-- **Allocation.** `hpc-grants`: `plgoncotherapy2-gpu-a100` has **15,000 h** allocated,
-  **771.19 h consumed → 14,228.81 h remaining**, but the allocation ends
-  **2026-11-23** — before the 25 Nov Seq-Global and 2 Dec BP-sched/BP-fixed branches.
-  Class `plglscclass26-gpu-a100`: 5,000 h, 2,309.47 consumed → 2,690.53 h remaining,
-  active to 2027-03-01. W1 oncology estimate: core ~34 h, BP-bestval ~3 h, BP-sched
-  tuning 16 h (worst case 32 h with the continuation), BP-sched confirm ~6 h,
-  Seq-Global ~4 h, Protocol B ~7 h → **~70 h (worst case ~86 h)**, plus ~20% retries,
-  so no GPU-hour shortfall; the **expiry date**, not hours, is the binding constraint.
+- **Allocation — compute and storage are separate records (corrected 2026-10-24).**
+  `hpc-grants` and the raw bursar `user/grants_info` response give two distinct
+  allocations under grant `plgoncotherapy2`:
+  - **Compute** allocation `plgoncotherapy2-gpu-a100` (resource `gpu-a100`):
+    **15,000 h**, **771.76 h consumed → 14,228.24 h remaining**, start
+    2025-11-27, **end 2026-11-23**.
+  - **Storage** allocation `plgoncotherapy2` (resource `storage`, group
+    `plggfastsim`): **10,000 GB**, start 2025-11-27, **end 2026-11-23**.
+  The two allocation records happen to end on the same date; the earlier wording
+  did not distinguish them. The **compute** allocation ends **2 days before the
+  25 Nov Seq-Global block** and **9 days before the 2 Dec BP-sched/BP-fixed
+  blocks**. Class `plglscclass26-gpu-a100`: 5,000 h, 2,309.47 consumed →
+  2,690.53 h remaining, active to 2027-03-01. W1 oncology estimate: core ~34 h,
+  BP-bestval ~3 h, BP-sched tuning 16 h (worst case 32 h with the continuation),
+  BP-sched confirm ~6 h, Seq-Global ~4 h, Protocol B ~7 h → **~70 h (worst case
+  ~86 h)**, plus ~20% retries, so no GPU-hour shortfall; the **compute expiry
+  date**, not hours, is the binding constraint.
 - **Archive storage.** `hpc-fs`/`hpc-grants`: class `plgglscclass` = **82.20 / 100.00 GiB
   (82.2%, “almost full” warning)**, persistent, grant active to **2027-03-01**; this
-  archive is 3.1 GB and the user has no separate quota. The oncology grant
-  `plgoncotherapy2` **does** have a storage allocation: **10,000 GB**, group
+  archive is 3.17 GiB apparent and the user has no separate quota. The oncology
+  grant `plgoncotherapy2` has a separate storage allocation: **10,000 GB**, group
   `plggfastsim`, mounted at `/net/pr2/projects/plgrid/plggfastsim` (writable;
-  **5.47 / 9.77 TiB used, 4.3 TiB free**, persistent), but it ends **2026-11-23**.
-  Neither allocation is a permanent archive; the end date is the retention horizon.
-  Proposal (not executed): with approval, copy the 3.1 GB W1 archive to
-  `/net/pr2/projects/plgrid/plggfastsim/plgspyra_bbp_archive` (10 TB pool), keep the
-  class copy as the longer-lived copy to 2027-03-01, and mirror to local/institutional
-  storage before the respective end dates. No files moved.
+  **5.47 / 9.77 TiB used, 4.3 TiB free**), ending **2026-11-23**. A temporary extra
+  copy now exists at `/net/pr2/projects/plgrid/plggfastsim/plgspyra_bbp_archive`
+  (227 files, source/destination SHA-256 manifests identical, manifest hash
+  `f6e5772f0103a3e1a379e49976b4de2a567769cec560e4cddd238128f1ed8899`). The class
+  copy remains the primary copy; `plggfastsim` is **not** a retention location and
+  expires 2026-11-23. Tuning-DB copies stay on the class archive, not on
+  `plggfastsim`. Mirror to local/institutional storage before the respective end
+  dates. No source file was deleted.
 - **DSS.** Protocol A energy figure now has measured arms only; the ex-M0 **ESTIMATE**
   remains only in the same-era Protocol B figure. Guard against `w1` paths unchanged.
 - **Poll (2026-10-23).** Core 3387663: **36 COMPLETED**, 0 FAILED/TIMEOUT/CANCELLED,
   0 requeues, array 37-200 pending `ReqNodeNotAvail`; BP-bestval 3387664: 0 completed,
   40 pending; tuning 3388987 pending `Priority`; continuation 3388988 pending
   `Dependency`. No running task; no task over 30 min. HOME **6,706 MiB** (< 9,000).
+
+## 2026-10-24 allocation, terms, locking and copy-out checks
+
+- **Third continuation (decision 1).** Submitted **3389135** with
+  `--dependency=afterany:3388988`, array `1-2`, account
+  `plgoncotherapy2-gpu-a100`, partition `plgrid-gpu-a100`, 8 h. It runs the
+  same COMPLETE-only pre-check and exits before training/CUDA when 50 COMPLETE
+  trials already exist. Chain: `3388987` (first segment) → `3388988` →
+  `3389135`.
+- **Compute vs storage end date (check A).** The raw bursar response returns
+  two separate allocation records; both happen to end on the same date:
+  - Compute `plgoncotherapy2-gpu-a100` (resource `gpu-a100`): 15,000 h,
+    771.76 consumed, 14,228.24 remaining, start 2025-11-27, **end
+    2026-11-23**.
+  - Storage `plgoncotherapy2` (resource `storage`, group `plggfastsim`):
+    10,000 GB, start 2025-11-27, **end 2026-11-23**.
+  The compute allocation therefore ends **before 25 Nov and before 2 Dec**.
+  The earlier wording used "allocation end" without separating the two records;
+  this is corrected here. `hpc-grants` and the API agree. No fallback chosen.
+- **Class-account terms (check B).** The PLGrid guide's Academic grant page says:
+  > "PLGrid computing grants offer also includes Academic grants, intended for
+  > student classes and teaching purpose. An Academic grant may be applied for
+  > by a user with the affiliation Academic unit employee."
+  Source: <https://guide.plgrid.pl/en/portal-for-science/grants/plgrid/academic_grant>
+  (retrieved 2026-10-24). `plglscclass26` is the LSC class grant by name and
+  project contents; the bursar API exposes no `type`/`description` field and the
+  project root has no grant/terms file, so the grant-specific contract was not
+  accessible. On the documented academic-grant purpose, research jobs such as
+  **3386582** (Seq-Global tuning) and **3386586** (W1 cap pilot) do **not** fit
+  a teaching/student-class use. **Surprise:** both are now `COMPLETED` on
+  `plglscclass26-gpu-a100`, all tasks exit `0:0` (3386582_1/2 and 3386586_1-5).
+  They were not touched, cancelled, held or migrated, and no result/log was
+  read. This is a compliance question for the author/Cyfronet; no action taken.
+- **Allocation-ID table (check D).**
+
+  | W1 block | Job(s) | Account / allocation | Grant | State |
+  |---|---|---|---|---|
+  | Core | 3387663 | `plgoncotherapy2-gpu-a100` | `plgoncotherapy2` | 36/200 completed |
+  | BP-bestval | 3387664 | `plgoncotherapy2-gpu-a100` | `plgoncotherapy2` | 0/40, pending |
+  | BP-sched tuning | 3388987, 3388988, 3389135 | `plgoncotherapy2-gpu-a100` | `plgoncotherapy2` | pending |
+  | Seq-Global tuning | 3386582 | `plglscclass26-gpu-a100` | `plglscclass26` | 2/2 completed |
+  | W1 cap pilot | 3386586 | `plglscclass26-gpu-a100` | `plglscclass26` | 5/5 completed |
+  | BP-sched confirm, Seq-Global confirm, Protocol B | not submitted | not charged | not charged | gated; no fallback chosen |
+
+  PPAM-era comparison: **PLG/2025/018341** (named in `README.md` and the PPAM
+  acknowledgement). The class allocation is the one whose permitted use is
+  questioned above; do not name it in a JPDC acknowledgement until that is
+  resolved.
+- **SQLite locking (check C).** Both Lustre mounts carry the same options:
+  `rw,nosuid,nodev,checksum,flock,nouser_xattr,lruresize,lazystatfs,nouser_fid2path,verbose,encrypt`.
+  `flock` is enabled and `localflock` is absent, i.e. the distributed flock
+  setting is present, not the node-local-only setting. SQLite's default locking
+  is POSIX `fcntl`, not `flock`, so the mount flag is not by itself a guarantee
+  for SQLite. The current mitigation remains one writer per DB, the
+  `afterany` dependency chain, `PRAGMA integrity_check` after each segment, and
+  a checksummed DB copy. Proposed but **not implemented**: wrap each segment in
+  an `flock` on a lock file, or set `PRAGMA locking_mode=EXCLUSIVE`; either
+  makes the single-writer invariant explicit. No change made.
+- **Archive temporary copy (decision 2).** Copied the archive to
+  `/net/pr2/projects/plgrid/plggfastsim/plgspyra_bbp_archive` (new directory,
+  `rsync -a`, no deletion). Source and destination: **227 files**, apparent
+  size **3.17 GiB**, SHA-256 manifests identical; manifest hash
+  `f6e5772f0103a3e1a379e49976b4de2a567769cec560e4cddd238128f1ed8899`.
+  Class archive remains primary; `plggfastsim` is a temporary extra copy only,
+  ends 2026-11-23, and is not a retention location. Tuning-DB copies stay on
+  the class archive.
+- **Copy-out (check E).** Completed core tasks 1-36 only, copied to
+  `/net/pr2/projects/plgrid/plgglscclass/plgspyra_bbp_archive/w1_copyout/2026-10-24_core_tasks_1-36`
+  with `rsync -a --checksum --relative --files-from`, never `--delete`.
+  **180 files**: 36 run JSON, 36 run logs, 36 `.out`, 36 `.err`, 36 monitoring
+  CSV. Source manifest 180 lines; destination `sha256sum -c` **180/180 OK, 0
+  failed, 0 missing**; destination 372 KiB; manifest SHA-256
+  `a7b415ad92ea1712c507d7f090a70d779d96cad32a8e11fa9231266f1f51ff1d`. No run
+  JSON or trace was opened, parsed or summarised. HOME **6,707 MiB** after the
+  copy. Repeat after each block.
+- **Poll (2026-10-24 daily slot; commands run 2026-10-23 CEST).** Core 3387663:
+  **36 COMPLETED**, 0 FAILED/TIMEOUT/CANCELLED, 0 requeues, array 37-200
+  pending `ReqNodeNotAvail`, max elapsed 19:19, no task over 30 min. BP-bestval
+  3387664: 0/40, all pending. Tuning 3388987 pending `ReqNodeNotAvail`;
+  3388988 and 3389135 pending `Dependency`. Class 3386582 (2 tasks) and
+  3386586 (5 tasks): all `COMPLETED`, exit `0:0`; no result read. No running
+  task. HOME **6,707 MiB** (< 9,000).
+- **Zero-GPU manuscript work (no W1 data).** Added
+  `manuscript/jpdc/jpdc_skeleton.tex` (Elsevier `elsarticle` skeleton; every W1
+  result is a `\wone{...}` placeholder), `theory_cost_model.tex` (cost model
+  with `[Definition]`/`[Derivation]`/`[Conjecture]` labels),
+  `overlap_ledger.md` (section map; target 63.0% new words, above the licence's
+  30% floor), `publication_hygiene.md` (signed Springer licence, JPDC/Elsevier
+  overlap, arXiv versions), and `README.md`. The signed licence
+  (`CP025/CP025_COPYRIGHT.pdf`, clause 4(d)(v)) permits an expanded version with
+  at least 30% new material and an express incremental statement; the skeleton
+  contains that statement. No W1 outcome, trace or contrast was read.
 
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
@@ -186,6 +291,9 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
 - PREREG.md: drafted 2026-10-17 (arms, thresholds A/B/C, seeds 42-61 n=20, ES quantity,
   unit tests, drift controls, amendments log). G1 is complete; verdict B (schedule
   artifact). W1 is pre-registered (`PREREG-phase2.md`) and queued; see below.
+- JPDC manuscript skeleton, theory section, overlap ledger and publication-hygiene
+  notes: DONE as zero-GPU drafts (`manuscript/jpdc/`). Every W1 result slot is a
+  placeholder; no W1 outcome, trace or contrast was read.
 
 ## 2026-10-21 zero-GPU work package (no GPU-hours consumed)
 - **W0b/W0c/W0d/W0e resolved.** M0 is dead compute: 3.99 Wh / 22.9% (C10) and

@@ -3,6 +3,13 @@
 Status: 2026-10-22, **no W1 job submitted**. This document freezes the order of
 operations, not a submission. The author must still say "submit".
 
+**2026-10-24 state update.** The first three blocks were submitted later on
+2026-10-22: core 3387663 (36/200 completed), BP-bestval 3387664 (0/40), tuning
+3388987 → 3388988 → 3389135 (pending). The class-account jobs 3386582 and
+3386586 completed on 2026-10-24, all exit `0:0`, without being touched; their
+permitted-use question is recorded in `HANDOFF.md`. See `HANDOFF.md` for current
+state; the queue-order analysis below is unchanged.
+
 Account decision: new W1 submissions use `plgoncotherapy2-gpu-a100`
 (team `plggfastsim`). Existing jobs 3386582 and 3386586 stay on
 `plglscclass26-gpu-a100`; they are neither cancelled nor migrated.

@@ -1,5 +1,11 @@
 # Cancel-and-resubmit the two pending class-account jobs
 
+> **OBSOLETE — DO NOT EXECUTE (2026-10-24).** Both jobs have since completed
+> on `plglscclass26-gpu-a100`, all tasks exit `0:0`, without being touched.
+> Cancelling or resubmitting them now would be wrong. See `HANDOFF.md` for the
+> current state and the class-account permitted-use question. The text below is
+> retained only as the historical migration draft.
+
 Status: **prepared only, not executed.** Both jobs have consumed **0 GPU-hours**
 and are still `PENDING` on `plglscclass26-gpu-a100` with the A100
 `ReqNodeNotAvail` reason. The author's 2026-10-22 account decision authorizes

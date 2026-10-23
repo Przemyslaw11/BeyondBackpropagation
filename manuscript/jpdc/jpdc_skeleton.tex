@@ -1,0 +1,400 @@
+% ============================================================
+% JPDC extension --- manuscript skeleton (zero-GPU draft).
+%
+% Status: planning skeleton only.  Every W1 result is a placeholder.
+% No W1 outcome, trace value, or contrast has been inserted.
+%
+% Overlap discipline: see overlap_ledger.md.  The signed Springer
+% proceedings licence (CP025/CP025_COPYRIGHT.pdf, clause 4(d)(v))
+% permits an expanded version with at least 30% new material and an
+% express statement of the incremental change.  The target budget in
+% the ledger is deliberately above that floor.
+%
+% Build (once elsarticle.cls is available):
+%   pdflatex jpdc_skeleton
+%   bibtex   jpdc_skeleton
+%   pdflatex jpdc_skeleton
+%   pdflatex jpdc_skeleton
+% ============================================================
+\documentclass[preprint,12pt]{elsarticle}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{siunitx}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{placeins}
+
+% Placeholder used for every W1 result.  Keep it visually obvious in drafts.
+\newcommand{\wone}[1]{\textcolor{red}{[W1 PLACEHOLDER: #1]}}
+\newcommand{\ppam}{the PPAM~2026 paper}
+\newcommand{\mf}{\mathrm{MF}}
+\newcommand{\bp}{\mathrm{BP}}
+
+\journal{Journal of Parallel and Distributed Computing}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{From Per-Pass Savings to End-to-End Energy:\\
+A Pre-Registered Study of Forward-Only Learning}
+
+\author[a]{Przemys{\l}aw Spyra\corref{cor1}}
+\ead{pspyra@agh.edu.pl}
+\author[a]{Witold Dzwinel}
+\affiliation[a]{AGH University of Krakow, Faculty of Computer Science,
+al.~Mickiewicza 30, 30-059 Krak\'ow, Poland}
+\cortext[cor1]{Corresponding author.}
+
+\begin{abstract}
+Backpropagation-free training is often described as energy-efficient because
+it removes the backward sweep, but a per-pass saving does not imply an
+end-to-end saving: a method that needs more passes can consume more energy
+overall.  This paper separates the two effects.  We define the per-pass energy
+advantage $a$ and the pass multiplier $m$, derive the condition $a>m$ under
+which a forward-only method wins end to end, and test that condition in a
+pre-registered, hardware-instrumented family of experiments on NVIDIA A100
+GPUs.  The design covers five training arms, two image-classification
+datasets, twenty paired seeds, tuned BP controls, a scheduled-BP control, and
+budget-matched controls.  \wone{insert the W1 end-to-end result and its
+pre-registered uncertainty statement here; do not insert a number before the
+frozen analysis is complete.}  The contribution is a measurement framework and
+a confirmatory test, not a FLOP-count argument.
+\end{abstract}
+
+\begin{keyword}
+forward-only learning \sep Mono-Forward \sep backpropagation \sep
+energy measurement \sep pre-registration \sep reproducibility
+\end{keyword}
+
+\end{frontmatter}
+
+% ------------------------------------------------------------------
+% Section map (details and word budget: overlap_ledger.md)
+%  1 Introduction                         revised
+%  2 Background and related work          revised
+%  3 End-to-end energy theory             NEW
+%  4 Mono-Forward and the cost hypothesis revised
+%  5 Measuring cost fairly                revised
+%  6 W1 pre-registered design             NEW
+%  7 Results                              mostly NEW
+%  8 Discussion and limitations           revised
+%  9 Conclusion                           revised
+%  Appendices                             NEW
+% ------------------------------------------------------------------
+
+\section{Introduction}
+\label{sec:intro}
+
+Deep neural networks are trained overwhelmingly with backpropagation
+(BP)~\cite{rumelhart1986learning}.  BP is effective, but it couples the layers: the
+backward sweep must retain activations and must wait for the layer above.
+Forward-only algorithms replace the global backward sweep with local learning
+signals.  Hinton's Forward-Forward (FF)~\cite{hinton2022forward}, Cascaded Forward
+(CaFo)~\cite{zhao2023cafo}, and Mono-Forward (MF)~\cite{gong2025mono} are the
+three representatives considered here.  Their appeal is architectural as well
+as numerical: no global backward graph, no activation store for a backward
+sweep, and a natural mapping to pipelined or memory-constrained hardware.
+
+The efficiency case is usually made with operation counts.  That is not
+enough.  A method can execute fewer FLOPs and still consume more energy if it
+runs longer, uses the device poorly, or moves more data.  The PPAM~2026 paper
+measured energy on hardware and found that removing the backward pass is not by itself
+a saving: FF and CaFo consumed more energy than a tuned BP baseline in the
+tested configurations, while MF was the exception in the matched-data-pass
+protocol.  The same study also found that MF needed more passes to reach its
+own convergence, which is exactly the regime in which a per-pass advantage can
+disappear end to end.
+
+This paper extends that work in four ways.  First, it makes the end-to-end
+argument explicit: Section~\ref{sec:theory} defines per-pass energy, pass
+multiplier, and the win condition, including fixed-cost and uncertainty
+corrections.  Second, it reports a pre-registered confirmatory family (W1) with
+five arms, two datasets, twenty paired seeds, tuned BP controls, a scheduled-BP
+control, and budget-matched controls; the protocol was frozen before any W1
+outcome was analysed.  Third, it adds a measurement protocol that separates
+matched-data-pass energy from matched-accuracy energy, so that a per-pass
+result cannot be presented as an end-to-end result.  Fourth, it releases the
+frozen configurations, analysis code, and table shells needed to reproduce the
+comparison.
+
+\textbf{Incremental contribution.}  This manuscript is an expanded version of
+\ppam.  The conference paper established the hardware measurement and the
+matched-data-pass comparison.  The journal version adds the formal cost model
+(Section~\ref{sec:theory}), the pre-registered W1 design
+(Section~\ref{sec:w1}), the end-to-end and control analyses
+(Section~\ref{sec:results}), the budget-matched Protocol~B analysis, and the
+extended discussion of validity.  The exact incremental statement will be
+repeated in the cover letter at submission.
+
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Backpropagation and its cost}
+BP computes a global gradient by a forward sweep followed by a backward sweep.
+The backward sweep requires the activation of each layer to remain available
+until its gradient has been computed.  The resulting memory and synchronisation
+costs are well known; the energy cost is less often measured.  \wone{cite the
+specific BP energy literature used in the final related-work section; do not
+reuse the PPAM bibliography without checking each entry.}
+
+\subsection{Forward-only algorithms}
+FF replaces the global objective with layer-local goodness objectives.
+CaFo cascades local classifiers and trains them sequentially.  MF combines a
+forward stage with an auxiliary objective and a detached path between stages.
+The three methods are not interchangeable: they differ in architecture,
+parameter count, local objective, and the number of forward stages per data
+pass.  A fair comparison therefore has to fix the data-pass definition and the
+tuning budget, not only the nominal FLOP count.
+
+\subsection{Energy measurement}
+Hardware energy is the integral of instantaneous power over time.  NVML
+provides device-level power samples at a fixed interval; the integral is an
+estimate whose error depends on the sampling interval, the clock behaviour, and
+the treatment of idle periods.  The W1 traces retain the raw samples and the
+segment boundaries so that the estimator can be audited.  \wone{add the
+measurement-error discussion and the exact NVML version used in the final
+runs.}
+
+\subsection{Fair tuning and pre-registration}
+A comparison between a tuned baseline and a default-configured alternative is
+not a comparison of algorithms.  The W1 design freezes the search space, the
+trial budget, the sampler, and the stopping rule before the confirmatory runs.
+The BP-bestval control gives BP the best validation-selected configuration from
+its own search; the BP-scheduled control adds a cosine schedule and disables
+early stopping; the budget-matched controls equalise the pass budget using the
+frozen Protocol~B rule.  These controls address different objections and are
+reported separately.
+
+\section{End-to-End Energy of Forward-Only Training}
+\label{sec:theory}
+
+\input{theory_cost_model}
+
+\section{Mono-Forward and the Cost Hypothesis}
+\label{sec:mf}
+
+\subsection{The Mono-Forward update}
+MF trains a stack of stages with a local objective.  In the variant used here,
+each stage produces a representation and a local prediction; the local loss is
+applied at the stage, and the path between stages is detached for the purpose
+of the local update.  The detach is not an implementation detail: it is the
+mechanism that removes the global backward graph.  The W1 ablation includes a
+variant without the M0 stage and variants with joint, simultaneous, and
+sequential training of the stages, so that the cost of the mechanism can be
+separated from the cost of the architecture.
+
+\subsection{Why a per-pass advantage is plausible}
+A forward-only pass avoids the backward sweep and the activation retention it
+requires.  It may also run at a lower power draw because it has fewer
+synchronisation points.  These effects can make $a>1$.  They do not guarantee
+that $m\le a$: local objectives can converge more slowly, and a method that
+needs more passes can lose end to end even with a substantial per-pass
+advantage.  Section~\ref{sec:theory} states the condition; the W1 family
+measures both sides of it.
+
+\subsection{The cost hypothesis}
+\textbf{[Conjecture]} The end-to-end advantage of MF is not a consequence of
+removing the backward pass alone.  It is jointly determined by the per-pass
+energy ratio and the pass multiplier at the target accuracy.  A convincing
+demonstration must report both, with the target and the stopping rule fixed in
+advance.  This is the hypothesis that the W1 design is built to test.
+
+\section{Measuring Cost Fairly: Two Protocols}
+\label{sec:protocols}
+
+\subsection{The matched-data-pass protocol}
+In the matched-data-pass protocol, every arm performs the same number of data
+passes and the comparison asks for the energy per pass and the accuracy reached
+at that budget.  This protocol isolates the cost of the update rule.  It is the
+protocol used in \ppam{} and it is the correct protocol for the question
+``which algorithm is cheaper for the same amount of training data?''  It is not
+an end-to-end protocol, because the arms need not reach the same accuracy.
+
+\subsection{The matched-accuracy protocol}
+In the matched-accuracy protocol, every arm trains until it first reaches the
+pre-registered target $A^\star$, and the comparison asks for cumulative energy
+and passes to that point.  Runs that never reach $A^\star$ are censored, not
+assigned the energy of their last pass.  This protocol answers the end-to-end
+question and is the basis of the win condition in Section~\ref{sec:theory}.
+
+\subsection{Instrumentation boundary}
+Energy is measured at the device level with NVML, using the same start and stop
+events for every arm.  The traces record node identity, GPU UUID, start time,
+per-stage boundaries, and the evaluation segments.  The analysis integrates
+power over the training interval and reports the per-pass and cumulative
+values separately.  \wone{insert the final instrumentation-boundary paragraph
+and the NVML sampling interval; the frozen protocol fixes the boundary, not the
+hardware generation.}
+
+\subsection{Tuning and stopping}
+The tuning budget, search space, sampler, and pruner are fixed per arm.  The
+confirmatory runs use the selected configuration; the BP-bestval control uses
+BP's best validation-selected configuration rather than a default.  The
+BP-scheduled control changes only the schedule and the early-stopping setting,
+so that its difference from BP-bestval is interpretable.  The budget-matched
+controls use the Protocol~B rule, whose per-stage budgets are computed from the
+core BP runs after those runs complete; the rule is frozen before the controls
+are run.
+
+\section{The W1 Pre-Registered Design}
+\label{sec:w1}
+
+\subsection{Questions and family}
+W1 asks whether MF's per-pass advantage survives an end-to-end comparison, and
+whether any advantage is robust to tuned BP, a scheduled BP control, and a
+budget-matched control.  The family has five core arms (BP, MF-Joint, MF-Simul,
+MF-Seq, and MF-Seq-nom0), two datasets (CIFAR-10 and CIFAR-100), and twenty
+paired seeds (42--61), for 200 core runs.  The BP-bestval block adds 40 runs.
+The BP-scheduled block uses 50 tuning trials per dataset followed by a
+confirmatory comparison.  The Seq-Global block and the budget-matched
+Protocol~B block are gated separately; neither is opened by this skeleton.
+
+\subsection{Endpoints and decision rule}
+The primary endpoint is the matched-accuracy end-to-end energy ratio at the
+pre-registered target.  Secondary endpoints are the per-pass energy ratio, the
+pass multiplier, test accuracy at the matched budget, and the stage-wise energy
+decomposition.  The family-wise decision uses the pre-registered Holm
+procedure over the frozen family.  \wone{insert the exact endpoint definitions
+and the family list from PREREG-phase2.md; do not paraphrase the decision rule
+in the final manuscript.}
+
+\subsection{Controls and gates}
+The BP-bestval control asks whether the result survives a properly tuned BP
+baseline.  The BP-scheduled control asks whether a longer, scheduled BP run
+closes the gap.  The budget-matched Protocol~B control asks whether MF's
+advantage survives when both methods receive the same pass budget derived from
+the BP epochs.  Seq-Global is a separate robustness block and remains gated
+until its scheduled date.  The gating is part of the pre-registration, not an
+analysis choice.
+
+\subsection{Deviations and provenance}
+Every deviation is recorded in the dated amendment log before the affected
+analysis is read.  The freeze commit, the analysis-code hash, the configuration
+manifest hash, and the job-account records are retained with the results.  The
+frozen paths are checked against the freeze tag before each block.  No W1
+outcome is inspected during health monitoring.
+
+\section{Results}
+\label{sec:results}
+
+% Every result in this section is a placeholder.  The table shells in
+% analysis/w1_table_shells/ are header-only and contain no W1 outcome.
+
+\subsection{Matched-data-pass energy}
+\wone{populate the matched-data-pass energy table from the frozen analysis;
+report per-pass energy, accuracy at the matched budget, and the paired-seed
+interval.  Do not compare arms on elapsed time alone.}
+
+\subsection{End-to-end energy at the target}
+\wone{populate the matched-accuracy energy table and the win-condition figure;
+report the measured pair $(a,m)$ with uncertainty, the ratio $R=m/a$, and the
+pre-registered decision.}
+
+\subsection{Pass multiplier and convergence}
+\wone{report the pass counts to the target, censored runs, and the
+convergence curves; separate the schedule effect from the algorithm effect.}
+
+\subsection{Tuned BP and scheduled BP controls}
+\wone{report BP-bestval and BP-scheduled results against the same target;
+state whether the control changes the sign or the size of the effect.}
+
+\subsection{Budget-matched Protocol B}
+\wone{report the Protocol B controls only after the core BP block is complete
+and the budget rule has been applied; label every ex-M0 quantity as an
+estimate.}
+
+\subsection{Robustness and heterogeneity}
+\wone{report seed-level heterogeneity, node/GPU checks, and the pre-registered
+sensitivity analyses.  Do not turn health-monitoring elapsed times into an
+outcome table.}
+
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\subsection{What the result would mean}
+A measured $R<1$ with a compatible uncertainty interval would support the
+end-to-end claim at the tested scale.  A measured $a>1$ with $R\ge1$ would show
+that the per-pass advantage is real but insufficient, which is a useful
+negative result rather than a failed experiment.  A measured $a\le1$ would
+reject the per-pass premise for this implementation and would make the
+end-to-end question moot at this scale.
+
+\subsection{Threats to validity}
+The main threats are hardware heterogeneity, instrumentation error, tuning
+budget mismatch, and the fixed architecture.  The design records node and GPU
+identity, retains raw traces, freezes the tuning budget, and pre-registers the
+target.  It cannot eliminate node-to-node variation, and it does not vary
+width, depth, or device generation.  Those are scope limitations, not
+post-hoc excuses.
+
+\subsection{Relation to the conference paper}
+The journal version does not replace the conference result; it re-frames it.
+The matched-data-pass result answers a per-pass question.  The W1 result
+answers the end-to-end question.  Both are reported, with the protocol named
+in every table and figure, so that the two claims cannot be conflated.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Removing the backward pass is a mechanism, not an end-to-end guarantee.  The
+cost model in this paper makes the missing step explicit: a forward-only method
+wins only when its per-pass advantage exceeds its pass multiplier, after fixed
+costs and uncertainty are accounted for.  The W1 family is a pre-registered
+test of that condition on a fixed A100 platform.  \wone{insert the one-sentence
+W1 conclusion after the frozen analysis; do not preview it here.}
+
+\section*{CRediT authorship contribution statement}
+\wone{confirm the final CRediT roles with both authors.}
+
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or
+personal relationships that could have appeared to influence the work reported
+in this paper.
+
+\section*{Data and code availability}
+The frozen configurations, analysis code, table shells, and provenance records
+are available in the project repository.  \wone{insert the repository DOI or
+archive identifier and the JPDC data statement after the W1 analysis.}
+
+\section*{Funding}
+This work was supported by the National Science Centre (NCN), Poland, under
+grant OPUS-29, DEC-2025/57/B/ST6/04377.  \wone{confirm the final funding
+statement and any additional institutional support.}
+
+\section*{Acknowledgements}
+% Allocation IDs for the JPDC acknowledgement.  Confirm the class-account
+% wording before submission; see publication_hygiene.md.
+%   - plgoncotherapy2-gpu-a100  (grant plgoncotherapy2, team plggfastsim)
+%   - plglscclass26-gpu-a100    (grant plglscclass26; academic/class grant)
+%   - PPAM-era allocation PLG/2025/018341
+We thank the PLGrid Infrastructure and ACK Cyfronet AGH for computational
+resources on the Athena cluster under grant PLG/2025/018341 and allocation
+plgoncotherapy2-gpu-a100.  \wone{confirm whether the class-account allocation
+plglscclass26-gpu-a100 may be acknowledged; do not include it until the
+permitted-use question is resolved.}
+
+\bibliographystyle{elsarticle-harv}
+\bibliography{references}
+
+\appendix
+
+\section{Protocol Deviations and Provenance}
+\wone{list every dated deviation from PREREG-phase2.md, the freeze tag, the
+analysis-code hash, and the configuration-manifest hash.  This appendix must
+be generated from the amendment log, not from memory.}
+
+\section{Instrumentation and Measurement Error}
+\wone{describe the NVML sampling interval, integration rule, start/stop
+boundaries, missing-sample handling, and the stage-sum validation.}
+
+\section{Supplementary Tables}
+\wone{place the full per-seed tables and the table-shell schema here; the
+header-only shells in analysis/w1\_table\_shells/ are the starting point.}
+
+\end{document}

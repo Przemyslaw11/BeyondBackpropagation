@@ -6,6 +6,13 @@ below are prepared, not launched. The live jobs remain pending.
 2026-10-22 recheck: both arrays are still `PENDING` with 0 GPU-hours and the same
 `ReqNodeNotAvail` node list; no W1 job was submitted or cancelled.
 
+**2026-10-24 state update.** This memo is a historical snapshot. Jobs 3386582
+(2 tasks) and 3386586 (5 tasks) have since completed on
+`plglscclass26-gpu-a100`, all exit `0:0`; they were not touched. W1 core
+3387663 has 36/200 tasks completed, BP-bestval 3387664 is 0/40, and the tuning
+chain 3388987/3388988/3389135 is pending. See `HANDOFF.md` for current state and
+the class-account permitted-use question. The table below is not current.
+
 ## 1. Current jobs and charge
 
 | job | what | wall | account | state |

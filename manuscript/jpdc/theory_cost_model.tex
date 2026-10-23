@@ -1,0 +1,248 @@
+% ============================================================
+% JPDC extension --- theory section draft.
+% Status labels used throughout:
+%   [Definition]  a quantity or measurement boundary is defined;
+%   [Derivation]  the statement follows algebraically from the definitions;
+%   [Conjecture]  an empirical claim that the W1 design can test only in part.
+% No W1 outcome value appears in this file.  All result slots are symbolic.
+% ============================================================
+
+\section{End-to-End Energy of Forward-Only Training}
+\label{sec:theory}
+
+This section separates the two quantities that are often conflated in
+discussions of backpropagation-free learning: the energy of one training pass
+and the energy needed to reach a specified accuracy.  The distinction is
+elementary, but it is the difference between a per-pass efficiency claim and an
+end-to-end efficiency claim.  The W1 family is designed to measure both
+quantities under one instrumentation boundary.
+
+\noindent\emph{Status labels.}  A statement labelled \textbf{[Definition]}
+fixes a quantity or a measurement boundary; \textbf{[Derivation]} means the
+statement follows algebraically from the definitions; \textbf{[Conjecture]}
+means the statement is an empirical hypothesis that the W1 design can test only
+in part.  Unlabelled sentences are connective exposition and make no
+independent empirical claim.  No W1 outcome value appears in this section.
+
+\subsection{Definitions and measurement boundary}
+
+\textbf{[Definition]} Fix a training set $\mathcal{D}$, a model, an
+optimisation algorithm, and an evaluation metric $A$ (here, test accuracy).
+Let $A^\star$ be a target accuracy fixed before the comparison.  A
+\emph{data pass} is one traversal of $\mathcal{D}$ through the training
+computation that the algorithm actually performs.  For backpropagation (BP),
+one data pass comprises the forward sweep, the backward sweep, and the
+parameter update.  For a forward-only algorithm, one data pass comprises every
+forward stage, local loss, and local update that the algorithm performs during
+that traversal.  This definition deliberately counts the algorithm as
+implemented, not an idealised forward FLOP count.
+
+\textbf{[Definition]} Let $e_f$ and $e_b$ be the mean energy consumed per data
+pass by the forward-only method and by BP, respectively, measured at the same
+device, software stack, batch size, and instrumentation boundary.  Let
+$N_f(A^\star)$ and $N_b(A^\star)$ be the number of data passes each method needs
+to reach $A^\star$ for the first time.  When the target is unambiguous we write
+$N_f$ and $N_b$.
+
+\textbf{[Definition]} The \emph{per-pass energy advantage} of the forward-only
+method is
+\begin{equation}
+  a \;=\; \frac{e_b}{e_f},
+  \label{eq:advantage}
+\end{equation}
+and its \emph{pass multiplier} is
+\begin{equation}
+  m \;=\; \frac{N_f}{N_b}.
+  \label{eq:multiplier}
+\end{equation}
+Both quantities are dimensionless.  $a>1$ means that one forward-only pass is
+cheaper than one BP pass; $m>1$ means that the forward-only method needs more
+passes to reach the same target.  Neither statement alone determines the
+end-to-end comparison.
+
+\textbf{[Definition]} Ignoring fixed start-up and evaluation costs for the
+moment, the end-to-end training energies are
+\begin{equation}
+  E_f \;=\; N_f\,e_f,
+  \qquad
+  E_b \;=\; N_b\,e_b .
+  \label{eq:endtoend}
+\end{equation}
+Equations~\eqref{eq:endtoend} are the formal content of the phrase
+``end-to-end energy is per-pass energy times the number of passes''.  The
+per-pass energies are not assumed equal, and the pass counts are not assumed
+equal.
+
+\subsection{The win condition}
+
+\textbf{[Derivation]} From \eqref{eq:advantage}--\eqref{eq:endtoend}, the ratio
+of end-to-end energies is
+\begin{equation}
+  R \;=\; \frac{E_f}{E_b}
+      \;=\; \frac{N_f}{N_b}\,\frac{e_f}{e_b}
+      \;=\; \frac{m}{a}.
+  \label{eq:ratio}
+\end{equation}
+Therefore, in the no-overhead model,
+\begin{equation}
+  E_f < E_b
+  \quad\Longleftrightarrow\quad
+  a > m .
+  \label{eq:win}
+\end{equation}
+A forward-only method with a per-pass advantage $a$ wins end to end exactly
+when its pass multiplier is smaller than that advantage.  If $a=m$, the two
+methods have equal training energy in this model; if $a<m$, the forward-only
+method is cheaper per pass and more expensive end to end.
+
+\textbf{[Derivation]} The result is not a statement about FLOPs.  The
+quantities $e_f$ and $e_b$ are measured energies, so \eqref{eq:win}
+already includes power draw, achieved clock, memory traffic, and any idle time
+inside the pass.  A method can execute fewer arithmetic operations and still
+have a smaller $a$ if it utilises the device poorly or moves more data.
+
+\textbf{[Derivation]} Fixed costs change the threshold.  Let
+\begin{equation}
+  E_f = c_f + N_f e_f,
+  \qquad
+  E_b = c_b + N_b e_b,
+  \label{eq:overhead}
+\end{equation}
+where $c_f$ and $c_b$ collect start-up, data-loading, evaluation, and other
+run-level costs.  Substituting \eqref{eq:advantage}--\eqref{eq:multiplier} and
+rearranging gives
+\begin{equation}
+  a \;>\; \frac{m}
+  {1 + \dfrac{c_b-c_f}{N_b e_b}} .
+  \label{eq:win-overhead}
+\end{equation}
+When $c_f=c_b$, \eqref{eq:win-overhead} reduces to \eqref{eq:win}.  A
+forward-only method with larger fixed costs must clear a higher per-pass
+advantage; a method with smaller fixed costs can tolerate a larger pass
+multiplier.  The sign of $c_b-c_f$ therefore matters, and the W1 traces retain
+the run boundary and the recorded evaluation timestamps; where a fixed cost
+cannot be separated, it is bounded rather than assumed zero.
+
+\textbf{[Definition]} The \emph{matched-accuracy end-to-end energy} of a method
+is the cumulative energy consumed from the start of training until the first
+pass at which the evaluation metric reaches $A^\star$.  This is the quantity
+compared in \eqref{eq:endtoend}.  If a method never reaches $A^\star$, it has no
+finite matched-accuracy energy and is reported as a censored run rather than
+silently assigned the energy of its last pass.
+
+\textbf{[Conjecture]} Removing the backward sweep is not by itself sufficient
+for an end-to-end gain.  The empirically relevant question is whether the
+measured pair $(a,m)$ satisfies \eqref{eq:win}; a method that is cheaper per
+pass can still lose if its convergence is slow enough.  This conjecture is the
+organising hypothesis of the W1 family, not a result of this section.
+
+\subsection{What the W1 design can test}
+
+The cost model is useful only if its quantities are measurable.  Table
+\ref{tab:cost-assumptions} lists the assumptions behind
+\eqref{eq:win}--\eqref{eq:win-overhead} and the part of the W1 design that can
+test each one.  The table is deliberately explicit about what is direct
+evidence, what is partial evidence, and what is outside the fixed W1
+architecture.
+
+\begin{table}[t]
+\centering
+\caption{Assumptions of the end-to-end cost model and their W1 tests.  ``Direct''
+means the W1 instrumentation records the required quantity; ``partial'' means
+the design constrains the assumption but does not vary it; ``not tested'' means
+the assumption is a scope limitation.  No outcome value is shown.}
+\label{tab:cost-assumptions}
+\small
+\begin{tabular}{@{}p{0.30\linewidth}p{0.20\linewidth}p{0.42\linewidth}@{}}
+\toprule
+Assumption & W1 evidence & Comment \\
+\midrule
+$e_f,e_b$ measured at one boundary
+  & direct
+  & NVML energy integration with the same start/stop rule for every arm. \\
+Same target $A^\star$
+  & direct
+  & Pre-registered target and evaluation protocol; censored runs reported. \\
+$N_f,N_b$ counted as implemented
+  & direct
+  & Epoch/pass counters; no FLOP-based substitution. \\
+Per-pass energy stable over training
+  & partial
+  & Per-stage sums versus total energy; drift check across seeds. \\
+Fixed costs estimated
+  & partial
+  & Run boundary and evaluation timestamps; fixed costs bounded where not separable. \\
+Same data pipeline and batch size
+  & direct (design)
+  & Frozen configs; no per-arm preprocessing. \\
+Same hardware generation
+  & partial
+  & A100 partition, but node-to-node variation is recorded, not eliminated. \\
+Scaling to larger widths/depths
+  & not tested
+  & W1 fixes the $3\times2000$ MLP; scale is a separate conjecture. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{[Definition]} The \emph{measured} per-pass advantage is
+$\hat a=\bar e_b/\bar e_f$, where the bars denote the protocol-level means over
+the pre-registered seeds.  The \emph{measured} pass multiplier is
+$\hat m=\bar N_f/\bar N_b$ at the same target.  These are estimators of
+\eqref{eq:advantage} and \eqref{eq:multiplier}, not definitions of new
+quantities.  Their uncertainty must be propagated: a point estimate
+$\hat a>\hat m$ is not by itself evidence that $a>m$ in the population of
+seeds, because both quantities are measured with run-to-run variation.
+
+\textbf{[Derivation]} If $\hat a$ and $\hat m$ are approximately independent
+with relative standard errors $s_a$ and $s_m$, the relative standard error of
+$\hat R=\hat m/\hat a$ is approximately
+$\sqrt{s_a^2+s_m^2}$.  A decision rule based on \eqref{eq:win} therefore needs
+a confidence interval for $R$, not only a comparison of two point estimates.
+The W1 analysis reports the interval and the paired-seed structure; the theory
+section does not assume that the interval excludes one.
+
+\textbf{[Conjecture]} The pair $(a,m)$ may be architecture-dependent in a way
+that the fixed W1 MLP cannot reveal.  In particular, $a$ may improve with width
+because activation memory and parameter traffic grow differently in the two
+methods, while $m$ may improve with a better local objective or a schedule that
+stops earlier.  A scale-dependent crossover, if it exists, would require a
+separate width/depth study; W1 can falsify the claim that backward removal is
+sufficient at its fixed scale, but it cannot establish a general scaling law.
+
+\subsection{Interpretation rules}
+
+\textbf{[Definition]} We call a result \emph{end-to-end favourable} to the
+forward-only method when the matched-accuracy energy ratio satisfies
+$R<1$ with a pre-registered uncertainty rule.  We call it \emph{per-pass
+favourable} when $a>1$ but make no end-to-end claim from that fact alone.  This
+terminology prevents the common slide from ``cheaper per pass'' to ``cheaper
+overall''.
+
+\textbf{[Derivation]} Three boundary cases follow directly from
+\eqref{eq:ratio}.  First, if $a\le 1$, the forward-only method cannot win end to
+end at any $m\ge 1$ in the no-overhead model.  Second, if $a>1$ but
+$m\ge a$, the per-pass advantage is exhausted by the extra passes.  Third, if
+$m<1$ as well as $a>1$, the forward-only method wins for two independent
+reasons; this is a stronger claim than either effect alone and should be
+reported separately.
+
+\textbf{[Conjecture]} Early stopping and schedule design act primarily on $m$,
+not on $a$.  A fair comparison should therefore report both the stopping rule
+and the realised pass count; comparing a forward-only method at its own
+convergence with a BP baseline at a fixed epoch budget confounds the two.
+The W1 BP-scheduled and budget-matched blocks are designed to separate these
+effects, but the conjecture that schedule improvements generalise across
+datasets remains to be tested.
+
+\subsection{Summary of the testable model}
+
+The model has one definitional identity, \eqref{eq:endtoend}, one algebraic
+win condition, \eqref{eq:win}, and one overhead correction,
+\eqref{eq:win-overhead}.  Its empirical content is the pair $(a,m)$ measured at
+a fixed target.  The W1 design measures $a$ in the matched-data-pass protocol,
+measures $m$ from the pass count to the pre-registered target, retains the
+segments needed for $c_f$ and $c_b$, and records node and GPU identity so that
+hardware variation is visible rather than absorbed into the treatment effect.
+The design does not vary width, depth, or device generation; those remain
+conjectures for a later study.
