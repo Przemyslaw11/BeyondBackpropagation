@@ -61,13 +61,53 @@ echo "GPU UUID: $(nvidia-smi --query-gpu=uuid --format=csv,noheader -i "${CUDA_V
 echo "Host: $(hostname)   GPU: $CUDA_VISIBLE_DEVICES"
 echo "#####################################################################"
 
+DB_PATH="$OPTUNA_DIR/$STUDY_NAME.db"
+RESUME_OUT=$(python scripts/jpdc/optuna_resume.py \
+    --db "$DB_PATH" --study "$STUDY_NAME" --target 50 --shell) || {
+    echo "Resume bookkeeping failed; refusing to start a trial."
+    exit 1
+}
+eval "$RESUME_OUT"
+echo "Resume check: complete=$COMPLETE remaining=$REMAINING failed_stale=$FAILED_STALE"
+if [ "${REMAINING}" -le 0 ]; then
+    echo "Budget already reached (COMPLETE=$COMPLETE >= 50); exiting without GPU work."
+    exit 0
+fi
+
 srun python scripts/run_optuna_search.py \
     --config "$CONFIG_FILE" \
     --output-dir "$OPTUNA_DIR" \
     --study-name "$STUDY_NAME" \
-    --target-trials 50
+    --n-trials "$REMAINING"
 EXIT_CODE=$?
 deactivate
+
+# Rollback-journal integrity check and off-scratch copy, after every segment.
+python - "$DB_PATH" <<'PY'
+import sqlite3
+import sys
+
+con = sqlite3.connect(sys.argv[1])
+result = con.execute("PRAGMA integrity_check").fetchone()[0]
+print(f"PRAGMA integrity_check: {result}")
+raise SystemExit(0 if result == "ok" else 1)
+PY
+INTEGRITY_CODE=$?
+
+DB_ARCHIVE="/net/pr2/projects/plgrid/plgglscclass/plgspyra_bbp_archive/w1_optuna"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+CONTAINER="${STUDY_NAME}_${SLURM_JOB_ID}_${STAMP}.db"
+if mkdir -p "$DB_ARCHIVE" && cp -p "$DB_PATH" "$DB_ARCHIVE/$CONTAINER"; then
+    ( cd "$DB_ARCHIVE" && sha256sum "$CONTAINER" > "$CONTAINER.sha256" )
+    echo "DB archived: $DB_ARCHIVE/$CONTAINER"
+else
+    echo "DB archive failed; the scratch DB is intact."
+    if [ "$EXIT_CODE" -eq 0 ]; then EXIT_CODE=1; fi
+fi
+
+if [ "$INTEGRITY_CODE" -ne 0 ] && [ "$EXIT_CODE" -eq 0 ]; then
+    EXIT_CODE=$INTEGRITY_CODE
+fi
 
 echo "#####################################################################"
 if [ $EXIT_CODE -eq 0 ]; then
