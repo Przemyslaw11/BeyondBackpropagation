@@ -169,37 +169,28 @@ def _finish(fig, out: Path) -> None:
     plt.close(fig)
 
 
-def figure_energy(protocol_a: pd.DataFrame, m0: pd.DataFrame, out: Path) -> None:
+def figure_energy(protocol_a: pd.DataFrame, out: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.7))
     for ax, dataset in zip(axes, ("cifar10", "cifar100")):
         for arm in ARMS:
             row = _row(protocol_a, dataset, arm)
             if row is not None:
                 _errorbar(ax, row, "energy_wh", LABELS[arm])
-        seq = _row(protocol_a, dataset, "mf_seq")
-        if seq is not None:
-            share = float(m0.loc[dataset, "share"])
-            _scaled_errorbar(
-                ax,
-                seq,
-                1.0 - share,
-                f"MF-Seq ex-M0 — ESTIMATE ({100 * share:.1f}% removed)",
-            )
         ax.set_xlabel("Energy per run (Wh, NVML trace)")
         ax.set_ylabel("Test accuracy (%)")
         ax.set_title(DATASET_LABEL[dataset])
         ax.grid(alpha=0.25, lw=0.6)
         ax.legend(fontsize=8, frameon=False, loc="lower right")
     fig.suptitle(
-        "Protocol A (G1, seeds 42–61): accuracy vs energy — ex-M0 is an estimate",
+        "Protocol A (G1, seeds 42–61): accuracy vs energy — measured arms only",
         fontsize=11,
         y=0.98,
     )
     fig.text(
         0.5,
         0.912,
-        "Open diamond: measured MF-Seq energy × (1 − M0 share); accuracy assumed unchanged "
-        "(M0 is dead compute). Protocol A applies the PPAM-era M0 share, so it is era-mixed.",
+        "No ex-M0 estimate in Protocol A (it would mix eras). The ex-M0 estimate is in the "
+        "Protocol B figure.",
         ha="center",
         fontsize=7.8,
         color="0.35",
@@ -227,7 +218,7 @@ def figure_passes(protocol_a: pd.DataFrame, out: Path) -> None:
         0.5,
         0.912,
         "No ex-M0 pass estimate is drawn: G1 did not instrument per-stage epoch counts. "
-        "The ex-M0 energy estimate is in the energy figure.",
+        "The ex-M0 energy estimate is in the Protocol B figure.",
         ha="center",
         fontsize=7.8,
         color="0.35",
@@ -306,7 +297,7 @@ def main() -> None:
 
     out = args.out_dir.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    figure_energy(protocol_a, m0, out / "dss_fig1_protocol_a_energy")
+    figure_energy(protocol_a, out / "dss_fig1_protocol_a_energy")
     figure_passes(protocol_a, out / "dss_fig2_protocol_a_passes")
     figure_protocol_b(protocol_b, m0, out / "dss_fig3_protocol_b_energy")
 
@@ -319,13 +310,13 @@ def main() -> None:
         "",
         "Every ex-M0 number is an **estimate**, marked on the figure:",
         "",
-        "- energy: measured MF-Seq energy × (1 − measured PPAM-era M0 share);",
+        "- energy (Protocol B only): measured MF-Seq energy × (1 − measured PPAM-era M0 share);",
         "- accuracy: assumed unchanged (M0 is dead compute);",
         "- passes: no ex-M0 estimate (G1 has no per-stage epoch counts).",
         "",
         "| figure | content |",
         "|---|---|",
-        "| `dss_fig1_protocol_a_energy` | Protocol A (G1) accuracy vs energy, four arms + ex-M0 estimate |",
+        "| `dss_fig1_protocol_a_energy` | Protocol A (G1) accuracy vs energy, four measured arms (no ex-M0) |",
         "| `dss_fig2_protocol_a_passes` | Protocol A (G1) accuracy vs passes, measured arms only |",
         "| `dss_fig3_protocol_b_energy` | Protocol B (PPAM) accuracy vs energy, BP + MF-Seq + ex-M0 estimate |",
         "",
@@ -355,9 +346,9 @@ def main() -> None:
             "",
             "## Era caveat",
             "",
-            "Protocol A is G1 2026-10; the M0 share comes from the PPAM 2026-09",
-            "trace (W0b). Ex-M0 points in Protocol A are therefore era-mixed and",
-            "indicative only. Protocol B and its M0 share are same-era.",
+            "Protocol B is PPAM 2026-09 and its M0 share is from the same era, so",
+            "the only ex-M0 estimate is drawn there. Protocol A (G1 2026-10) is",
+            "shown as measured arms only, to avoid mixing eras.",
             "",
         ]
     )

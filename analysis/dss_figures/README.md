@@ -6,13 +6,13 @@ or `results/runs`.
 
 Every ex-M0 number is an **estimate**, marked on the figure:
 
-- energy: measured MF-Seq energy × (1 − measured PPAM-era M0 share);
+- energy (Protocol B only): measured MF-Seq energy × (1 − measured PPAM-era M0 share);
 - accuracy: assumed unchanged (M0 is dead compute);
 - passes: no ex-M0 estimate (G1 has no per-stage epoch counts).
 
 | figure | content |
 |---|---|
-| `dss_fig1_protocol_a_energy` | Protocol A (G1) accuracy vs energy, four arms + ex-M0 estimate |
+| `dss_fig1_protocol_a_energy` | Protocol A (G1) accuracy vs energy, four measured arms (no ex-M0) |
 | `dss_fig2_protocol_a_passes` | Protocol A (G1) accuracy vs passes, measured arms only |
 | `dss_fig3_protocol_b_energy` | Protocol B (PPAM) accuracy vs energy, BP + MF-Seq + ex-M0 estimate |
 
@@ -33,6 +33,6 @@ Every ex-M0 number is an **estimate**, marked on the figure:
 
 ## Era caveat
 
-Protocol A is G1 2026-10; the M0 share comes from the PPAM 2026-09
-trace (W0b). Ex-M0 points in Protocol A are therefore era-mixed and
-indicative only. Protocol B and its M0 share are same-era.
+Protocol B is PPAM 2026-09 and its M0 share is from the same era, so
+the only ex-M0 estimate is drawn there. Protocol A (G1 2026-10) is
+shown as measured arms only, to avoid mixing eras.
