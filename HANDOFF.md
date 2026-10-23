@@ -151,15 +151,17 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   tuning 16 h (worst case 32 h with the continuation), BP-sched confirm ~6 h,
   Seq-Global ~4 h, Protocol B ~7 h → **~70 h (worst case ~86 h)**, plus ~20% retries,
   so no GPU-hour shortfall; the **expiry date**, not hours, is the binding constraint.
-- **Archive storage.** `plgglscclass` storage allocation = 100 GB, grant active to
-  2027-03-01; filesystem shows 83 GB used / 18 GB free project-wide; this archive is
-  3.1 GB and the user has no separate quota (default). `hpc-grants` gives no
-  post-expiry retention rule, so the allocation end date must be treated as the
-  retention horizon. There is **no `plgoncotherapy2` project directory** on `/net/pr2`,
-  and the oncology grant itself ends 2026-11-23. Proposal (not executed): request a
-  storage allocation under the oncology grant for the W1 record, or keep the class
-  archive and mirror the final results to local/institutional storage before
-  2027-03-01.
+- **Archive storage.** `hpc-fs`/`hpc-grants`: class `plgglscclass` = **82.20 / 100.00 GiB
+  (82.2%, “almost full” warning)**, persistent, grant active to **2027-03-01**; this
+  archive is 3.1 GB and the user has no separate quota. The oncology grant
+  `plgoncotherapy2` **does** have a storage allocation: **10,000 GB**, group
+  `plggfastsim`, mounted at `/net/pr2/projects/plgrid/plggfastsim` (writable;
+  **5.47 / 9.77 TiB used, 4.3 TiB free**, persistent), but it ends **2026-11-23**.
+  Neither allocation is a permanent archive; the end date is the retention horizon.
+  Proposal (not executed): with approval, copy the 3.1 GB W1 archive to
+  `/net/pr2/projects/plgrid/plggfastsim/plgspyra_bbp_archive` (10 TB pool), keep the
+  class copy as the longer-lived copy to 2027-03-01, and mirror to local/institutional
+  storage before the respective end dates. No files moved.
 - **DSS.** Protocol A energy figure now has measured arms only; the ex-M0 **ESTIMATE**
   remains only in the same-era Protocol B figure. Guard against `w1` paths unchanged.
 - **Poll (2026-10-23).** Core 3387663: **36 COMPLETED**, 0 FAILED/TIMEOUT/CANCELLED,
