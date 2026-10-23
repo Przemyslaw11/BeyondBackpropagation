@@ -122,6 +122,51 @@ Updated: 2026-10-22. Branch: `jpdc-extension` (from `release/canonical-v2` @ `18
   remaining arrays were `PENDING (ReqNodeNotAvail)` at the last check; HOME monitoring
   directory still 94 MiB.
 
+## 2026-10-23 operations and daily poll
+
+- **BP-sched tuning resubmitted.** Verified no `ladder_bp_sched_*` DB on HOME, cancelled
+  3387665, resubmitted **3388987** (same account/partition/8 h/array 1-2) and chained
+  **3388988** with `--dependency=afterany:3388987`. Commit `995b18a` adds
+  `scripts/jpdc/optuna_resume.py`: stale RUNNING trials are failed, only COMPLETE trials
+  count, and the launcher exits before any training when the 50-trial budget is met.
+  The continuation still holds its Slurm GPU allocation for the few seconds of the
+  check, but performs no CUDA work. After each segment: `PRAGMA integrity_check`
+  (rollback journal, no WAL) and a checksummed DB copy to the class archive
+  `w1_optuna/` (destination to be revisited under D below).
+- **Ebar_BP reducer.** `scripts/jpdc/ebar_bp.py`, SHA-256 `4775c2ee…13ccf`; definition
+  `mean(epochs_completed)` per dataset, budgets `ceil(Ebar_BP/4)` and `ceil(Ebar_BP/3)`.
+  Validated on the G1 fixture: 52.95/43.90 and 14/11, 18/15. **Not run on W1.**
+  Frozen hashes re-verified at that point (`git diff w1-freeze` empty; analyze
+  `c424a0ee…a61ff1`).
+- **Reservations.** `scontrol show reservation` = none. `sinfo -R` shows draining/fail
+  nodes with `MP: 8k3 donor`, `JB: 8k3 donor` and reboot reasons. The earlier 1 h tasks
+  ran while the 8 h job waited because short jobs backfill into the available windows;
+  no reservation explains it. The 2 h core array has since completed 36 tasks, so the
+  2 h limit is not blocking tasks a 1 h limit would fit. No limit changed.
+- **Allocation.** `hpc-grants`: `plgoncotherapy2-gpu-a100` has **15,000 h** allocated,
+  **771.19 h consumed → 14,228.81 h remaining**, but the allocation ends
+  **2026-11-23** — before the 25 Nov Seq-Global and 2 Dec BP-sched/BP-fixed branches.
+  Class `plglscclass26-gpu-a100`: 5,000 h, 2,309.47 consumed → 2,690.53 h remaining,
+  active to 2027-03-01. W1 oncology estimate: core ~34 h, BP-bestval ~3 h, BP-sched
+  tuning 16 h (worst case 32 h with the continuation), BP-sched confirm ~6 h,
+  Seq-Global ~4 h, Protocol B ~7 h → **~70 h (worst case ~86 h)**, plus ~20% retries,
+  so no GPU-hour shortfall; the **expiry date**, not hours, is the binding constraint.
+- **Archive storage.** `plgglscclass` storage allocation = 100 GB, grant active to
+  2027-03-01; filesystem shows 83 GB used / 18 GB free project-wide; this archive is
+  3.1 GB and the user has no separate quota (default). `hpc-grants` gives no
+  post-expiry retention rule, so the allocation end date must be treated as the
+  retention horizon. There is **no `plgoncotherapy2` project directory** on `/net/pr2`,
+  and the oncology grant itself ends 2026-11-23. Proposal (not executed): request a
+  storage allocation under the oncology grant for the W1 record, or keep the class
+  archive and mirror the final results to local/institutional storage before
+  2027-03-01.
+- **DSS.** Protocol A energy figure now has measured arms only; the ex-M0 **ESTIMATE**
+  remains only in the same-era Protocol B figure. Guard against `w1` paths unchanged.
+- **Poll (2026-10-23).** Core 3387663: **36 COMPLETED**, 0 FAILED/TIMEOUT/CANCELLED,
+  0 requeues, array 37-200 pending `ReqNodeNotAvail`; BP-bestval 3387664: 0 completed,
+  40 pending; tuning 3388987 pending `Priority`; continuation 3388988 pending
+  `Dependency`. No running task; no task over 30 min. HOME **6,706 MiB** (< 9,000).
+
 ## State
 - Phase 0.2 audit: DONE -> `AUDIT.md` (H1 confirmed and quantified; original-MF schedule
   mismatch documented; fairness matrix; open items).
