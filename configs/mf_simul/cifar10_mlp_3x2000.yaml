@@ -1,0 +1,55 @@
+experiment_name: "mf_simul_cifar10_mlp_3x2000"
+
+algorithm:
+  name: "MF_SIMUL"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "Adam"
+  # Frozen from ladder_mfsimul_cifar10_mlp_3x2000_tune (50 TPE trials, best trial
+  # 21, best val_accuracy 60.02) under the same ladder procedure as MF-Joint.
+  lr: 0.00023382467225130908
+  weight_decay: 2.6599275491929037e-06
+
+algorithm_params:
+  # Tuned by the same ladder procedure as the MF-Joint rung (aux_weight range
+  # 1e-2..1e1). With detached inputs the auxiliary heads no longer carry the
+  # readout gradient, so the search de-weights them; the lambda = 1.0 case (the
+  # objective-identical anchor used by the unit tests) is not the tuned optimum.
+  aux_weight: 0.020691318314831043
+  log_interval: 9999
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
