@@ -1,0 +1,65 @@
+# W1 control (a): BP with a tuned cosine LR schedule and a fixed epoch budget.
+# See configs/bp_sched/cifar10_mlp_3x2000.yaml. Values below are the CIFAR-100
+# core-BP fallback, not MF-Seq's; replace only if the BP-sched study meets the
+# >=20-completed-trials bar. Record the branch in PREREG-phase2.md §9 first.
+
+experiment_name: "bp_sched_cifar100_mlp_3x2000"
+algorithm:
+  name: "BP"
+
+data:
+  name: "CIFAR100"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 100
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "AdamW"
+  # Frozen 2026-11-10: best trial 13 of ladder_bp_sched_cifar100_mlp_3x2000_tune
+  # (50/50 COMPLETE, tuned branch; PREREG-phase2.md section 9).
+  lr: 5.06896308793059e-05
+  weight_decay: 8.309105105665143e-05
+
+training:
+  criterion: "CrossEntropyLoss"
+  log_interval: 100
+  scheduler: "CosineAnnealingLR"
+  scheduler_params: {}
+
+early_stopping:
+  enabled: false
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 20
+  max_epochs: 100
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

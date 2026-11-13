@@ -35,6 +35,7 @@
 
 - [Overview](#overview)
 - [Key Results](#key-results)
+- [Follow-up studies](#follow-up-studies)
 - [Reproducing the Experiments](#reproducing-the-experiments)
 - [Repository Structure](#repository-structure)
 - [Installation](#installation)
@@ -67,8 +68,12 @@ CaFo 3.0× to 7.1×. Mono-Forward is different. Given the same number of data pa
 12.5% to 19.9% less energy and up to 27.5% less memory on the largest MLPs tested, and on CIFAR-100
 its accuracy is statistically equivalent to BP's. Trained to its own convergence, MF exceeds BP's
 test accuracy on CIFAR-10 and CIFAR-100 by 3.90 and 5.04 percentage points, at 3.2× to 4.0× BP's
-energy because it needs 3.5× to 4.5× as many passes. A pre-specified ablation identifies gradient
-detachment, not MF's auxiliary losses, as the dominant factor tested.
+energy because it needs 3.5× to 4.5× as many passes. The conference paper's ablation attributed the
+accuracy gain to gradient detachment. The pre-registered follow-up experiments (G1, W1) attribute it
+to MF's stage-by-stage training schedule instead: detachment alone lands at BP's accuracy, and letting
+the earlier layers keep training preserves the gain. Against a BP given the same compute and a tuned
+cosine schedule, MF's edge is 3.74 pp on CIFAR-100 and 0.78 pp on CIFAR-10
+(see [Follow-up studies](#follow-up-studies)).
 
 Under matched passes, the accuracy costs shown below are −1.11 pp on CIFAR-10, −0.22 pp on MNIST,
 and −0.49 pp on Fashion-MNIST.
@@ -117,7 +122,9 @@ were committed before any ladder result was inspected
 - Deep supervision alone makes BP **worse** on CIFAR-10 and CIFAR-100, by 1.65 and 1.06 pp.
 - MF beats that deep supervision control by 5.56 and 6.10 pp (Holm-corrected p < 10⁻²⁰).
 - The detach step, with the optimiser family held fixed, is the largest single gain
-  (+4.10 and +3.18 pp), and it also carries essentially the whole energy increase.
+  (+4.10 and +3.18 pp), and it also carries essentially the whole energy increase. This step also
+  switches from joint to stage-by-stage training; the follow-up experiments assign the gain to that
+  schedule, not to detachment (see [Follow-up studies](#follow-up-studies)).
 - On the two 2×1000 MLPs, MF and the deep supervision control are equivalent within the margin.
 
 ### Forward-Forward and Cascaded Forward
@@ -129,6 +136,63 @@ were committed before any ladder result was inspected
   8.5 pp at a further 1.5× to 2.6× the energy.
 
 The complete per-configuration FF and CaFo table belongs to the paper archive and is not included in this code-only checkout.
+
+## Follow-up studies
+
+Three pre-registered experiments extend the conference paper. Each was frozen (code, configs,
+seeds, hypotheses and decision rules) before its data were analysed, and each analysis was run
+once. Protocols and dated amendment logs are in [`prereg/`](prereg/); the frozen outputs are in
+[`analysis/`](analysis/). All runs use the 3×2000 MLP on CIFAR-10 and CIFAR-100 with paired seeds
+42–61 on A100-40GB GPUs; CIFAR-100 is the confirmatory dataset and CIFAR-10 the consistency check.
+
+**G1: detachment or staging?** ([`prereg/PREREG.md`](prereg/PREREG.md), 160 runs). MF as its
+authors define it (every layer updated on every mini-batch, detached inputs; *MF-Simul*) lands at
+BP's accuracy: −0.86 pp on CIFAR-10 and −0.27 pp on CIFAR-100. The stage-by-stage schedule used
+in the conference paper (*MF-Seq*) keeps its +3.90 and +5.04 pp at 3.99× and 4.36× BP's passes.
+The accuracy edge and its cost belong to the schedule, not to removing the backward pass.
+
+**W1: which part of the schedule?** ([`prereg/PREREG-phase2.md`](prereg/PREREG-phase2.md),
+440 runs, 11 arms).
+
+- Letting the earlier layers keep training through backpropagation (*Seq-Global*) does not remove
+  the edge: +0.90 pp [+0.69, +1.14] over MF-Seq on CIFAR-100 (−1.17 pp on CIFAR-10). The gain
+  comes from stage-wise training, not from layer-local credit assignment.
+- MF-Seq's first stage (a classifier on the raw input, *M0*) is overhead: removing it changes
+  accuracy by −0.00 pp (CIFAR-100) and +0.06 pp (CIFAR-10) and saves 22–24% of passes and energy.
+- Against BP with a tuned cosine schedule and MF-Seq's pass budget, MF-Seq leads by 3.74 pp on
+  CIFAR-100 and 0.78 pp on CIFAR-10.
+- At BP's own pass budget, MF-Seq matches BP on CIFAR-100 (+0.02 pp) with 0.857× its energy;
+  on CIFAR-10 it trails by 0.81 pp at 0.912×.
+
+**G2: per-pass cost under load and an initialisation control**
+([`prereg/PREREG-G2-DRAFT.md`](prereg/PREREG-G2-DRAFT.md), 80 jobs). Energy is read from the NVML
+energy counter, net of each job's idle power, with every arm of a repeat on the same GPU.
+
+- With the production data loader the GPU is mostly idle: in gross energy an MF-Seq stage pass
+  is 1.16–1.19× cheaper than a BP pass (W1 measured 1.16×), but net of idle it is 2.45–3.06×
+  cheaper. With the input held on the GPU, the stages are 2.1–2.4× cheaper even in gross energy.
+- MF-Simul's per-pass advantage grows with batch × width and reaches 1.44× [1.43, 1.46] at batch
+  8192 and width 8000; at the W1 size it is no cheaper than BP in gross energy.
+- Combining these per-pass energies with W1's pass counts (a projection, not a measurement),
+  staged MF without M0 would still use 1.3–1.6× BP's energy at its own convergence.
+- BP's default initialisation differs from MF's (He-uniform, zero biases). Training BP with MF's
+  initialisation lowers its accuracy by 0.81 pp (CIFAR-100) and 1.08 pp (CIFAR-10), so the
+  BP-versus-MF comparisons above are not inflated in MF's favour by this difference.
+
+**Corrections to the conference paper.** Its measured numbers stand; two readings change. (1) The
+ablation ladder credited the accuracy gain to gradient detachment; G1 and W1 assign it to the
+stage-by-stage schedule. (2) The +3.90 and +5.04 pp edge is relative to an early-stopped BP with
+a constant learning rate; against a scheduled BP with the same compute it is 0.78 and 3.74 pp.
+The Protocol B energy saving is a property of staged MF, not of detachment as such.
+
+Reproducing the analyses (the per-run records are archived separately):
+
+```bash
+PYTHONPATH=. python scripts/jpdc/analyze_g1.py --results-dir <results> --out-dir <out>
+PYTHONPATH=. python scripts/jpdc/analyze_w1.py --results-dir <results> --out-dir <out>
+PYTHONPATH=. python scripts/jpdc/analyze_g2.py --sweep-dir <sweep> --bridge-dir <bridge> \
+    --results-dir <results> --out-dir <out>
+```
 
 ## Reproducing the Experiments
 
@@ -195,13 +259,17 @@ its Optuna environment, so the tuned baseline values are consumed as config data
 |   |-- diagnostics/                   # matched data-pass (equal-epoch) budgets
 |   |-- ff/, cafo/, mf/                # final experiment configs per algorithm
 |   |-- reproduction/                  # reproductions of the published MF setup
-|-- plots/                             # plotting code for generated figures
+|-- analysis/                          # frozen outputs of the G1/W1/G2 analyses, with SHA-256 manifests
+|-- prereg/                            # pre-registrations and amendment logs (G1, W1, G2)
 |-- scripts/
 |   |-- run_experiment.py              # single train-and-test entry point
 |   |-- run_local_array.py             # local sequential batch runner
 |   |-- build_tidy_table.py            # run records -> generated tidy table
 |   |-- analyze_ablation_ladder.py     # pre-specified ladder statistics
 |   |-- check_mf_cache_equivalence.py  # MF activation-cache bit-exactness check
+|   |-- run_optuna_search.py           # hyper-parameter search driver
+|   |-- jpdc/                          # analysis and audit scripts for the follow-up studies
+|   |-- slurm_scripts/                 # SLURM launchers used on Athena
 |   `-- __init__.py                    # package marker for analysis imports
 `-- src/
     |-- algorithms/                    # FF, CaFo and MF training and evaluation loops
@@ -210,6 +278,7 @@ its Optuna environment, so the tuned baseline values are consumed as config data
     |-- data_utils/                    # torchvision datasets, splits, transforms
     |-- plotting/                      # tidy-table construction and plotting helpers
     |-- training/                      # experiment orchestration engine
+    |-- tuning/                        # Optuna objectives per algorithm
     `-- utils/                         # config parsing, logging, NVML monitoring, profiling
 |-- tests/                             # unit and invariant tests
 `-- CITATION.cff                       # PPAM 2026 citation metadata

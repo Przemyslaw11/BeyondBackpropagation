@@ -1,0 +1,69 @@
+# W1 control (b): BP with in-memory best-validation-accuracy restore.
+#
+# Same optimizer, early-stopping policy and seeds as core BP. The only change is
+# that the best val-accuracy state is cloned into host memory and restored before
+# the final test; no checkpoint directory is touched (BBP_DISABLE_CHECKPOINTS=1
+# also applies). This isolates "BP would improve if it selected its best epoch"
+# from the staged-schedule contrast. It is a control, not a W1 primary arm.
+#
+# Tuning disclosure: 0 new trials. It inherits core BP's frozen lr/wd; adding a
+# separate 50-trial study would tune the same algorithm twice.
+
+experiment_name: "bp_bestval_cifar10_mlp_3x2000"
+algorithm:
+  name: "BP"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+optimizer:
+  type: "AdamW"
+  lr: 7.67408805303038e-05
+  weight_decay: 3.67072980229754e-05
+
+training:
+  criterion: "CrossEntropyLoss"
+  log_interval: 100
+
+early_stopping:
+  enabled: true
+  metric: "val_loss"
+  mode: "min"
+  min_delta: 0.0
+  patience: 20
+  max_epochs: 100
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: null
+  restore_best_in_memory: true
+  save_best_metric: "bp_val_accuracy"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false

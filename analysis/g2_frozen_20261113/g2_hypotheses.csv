@@ -1,0 +1,15 @@
+hypothesis,dataset,n,estimate,ci_low,ci_high,p_raw,complete,note,sign,p_holm,verdict
+H-G2a,cifar10,10,0.05218417553620057,0.051165102652760905,0.05306009430288526,1.9400314399345567e-15,True,"slope of log a (MF-Simul) on log(batch x width), per repeat",,,consistent
+H-G2b,cifar10,10,0.3742188736379505,0.36883739324929904,0.3787578852874831,1.1699810613653564e-16,True,"log a (MF-Simul) at batch 8192, width 8000",,,consistent
+H-G2d,cifar10,20,-1.0830000000000015,-1.3020000000000025,-0.8484875000000015,0.9999357894788138,True,BP-MFinit minus BP test accuracy (pp); TOST +-0.5,,,not consistent
+H-G2c,cifar10,10,0.07911017012849755,0.07234261347295129,0.08766500613439934,,True,"mf_simul: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2c,cifar10,10,0.9174786181629273,0.8982359875445324,0.9354039116622068,,True,"mf_stage1: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2c,cifar10,10,1.1193182136727837,1.0840836614517342,1.1447693828793213,,True,"mf_stage2: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2c,cifar10,10,0.9399516439681237,0.9124350341438185,0.9618834359218904,,True,"mf_stage3: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2a,cifar100,10,0.053913933002576755,0.052442328526165975,0.055053768286763574,3.121521036887084e-14,True,"slope of log a (MF-Simul) on log(batch x width), per repeat",,9.364563110661251e-14,supported
+H-G2b,cifar100,10,0.3679760715874224,0.3589179611478679,0.37749336326001004,3.496216216199542e-14,True,"log a (MF-Simul) at batch 8192, width 8000",,9.364563110661251e-14,supported
+H-G2d,cifar100,20,-0.8075000000000013,-0.9630000000000013,-0.6354875000000006,0.9990710869173606,True,BP-MFinit minus BP test accuracy (pp); TOST +-0.5,,0.9990710869173606,not supported
+H-G2c,cifar100,10,0.02855023160548951,0.004733205513001367,0.04538719388869568,,True,"mf_simul: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2c,cifar100,10,0.8948335584927559,0.8638302864389642,0.9242440977832169,,True,"mf_stage1: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2c,cifar100,10,1.1182833804506855,1.0884015158184235,1.1460631468773337,,True,"mf_stage2: host-bridge log a, descriptive",MF cheaper,,descriptive
+H-G2c,cifar100,10,0.9377711103721594,0.9218447766237343,0.9533243486568295,,True,"mf_stage3: host-bridge log a, descriptive",MF cheaper,,descriptive

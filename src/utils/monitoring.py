@@ -212,6 +212,16 @@ def get_gpu_temperature(handle: pynvml.c_nvmlDevice_t) -> Optional[int]:
         return None
 
 
+def get_gpu_energy_counter_j(handle: pynvml.c_nvmlDevice_t) -> Optional[float]:
+    """Driver energy counter in joules since driver load (Volta+); differences give energy."""
+    if not handle or not _nvml_initialized:
+        return None
+    try:
+        return pynvml.nvmlDeviceGetTotalEnergyConsumption(handle) / 1000.0
+    except pynvml.NVMLError:
+        return None
+
+
 def get_gpu_sm_clock_mhz(handle: pynvml.c_nvmlDevice_t) -> Optional[int]:
     """Gets the current SM clock frequency in MHz."""
     if not handle or not _nvml_initialized:

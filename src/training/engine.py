@@ -2,6 +2,7 @@
 """Core training and evaluation engine for experiments."""
 
 import contextlib
+import math
 import json
 import os
 import time
@@ -20,18 +21,37 @@ from src.algorithms import (
 )
 from src.architectures import FF_MLP, MF_MLP, CaFo_CNN
 from src.data_utils.datasets import get_dataloaders
+from src.training.secondary_endpoints import compute_secondary_endpoints
 from src.utils.backend_policy import get_execution_backend
 from src.utils.codecarbon_utils import setup_codecarbon_tracker
 from src.utils.helpers import format_time, set_seed
 from src.utils.logging_utils import log_metrics, logger, setup_wandb
 from src.utils.monitoring import (
     GPUEnergyMonitor,
+    get_gpu_energy_counter_j,
     get_gpu_handle,
     get_gpu_memory_usage,
     init_nvml,
     shutdown_nvml,
 )
 from src.utils.profiling import profile_model_flops
+
+
+def _apply_mf_mlp_init(layers: List[nn.Module], activation_name: str) -> None:
+    """G2 control: gives the BP MLP the hidden-layer init of MF_MLP (src/architectures/mf_mlp.py).
+
+    Hidden weights as MF_MLP's W_i, all biases zero. The output weight keeps
+    PyTorch's default, which has the same distribution as MF_MLP's M_L readout.
+    """
+    linears = [m for m in layers if isinstance(m, nn.Linear)]
+    for linear in linears[:-1]:
+        if activation_name == "relu":
+            nn.init.kaiming_uniform_(linear.weight, a=math.sqrt(5), nonlinearity="relu")
+        elif activation_name == "tanh":
+            nn.init.xavier_uniform_(linear.weight)
+    for linear in linears:
+        if linear.bias is not None:
+            nn.init.zeros_(linear.bias)
 
 
 def _create_mlp_model(
@@ -89,9 +109,11 @@ def _create_mlp_model(
                 layers.append(act_cls())
                 current_dim = h_dim
             layers.append(nn.Linear(current_dim, num_classes, bias=use_bias))
+            if arch_params.get("bp_init") == "mf":
+                _apply_mf_mlp_init(layers, activation_name)
             model = nn.Sequential(*layers)
         else:
-            model = MF_MLP(**arch_params)
+            model = MF_MLP(**{k: v for k, v in arch_params.items() if k != "bp_init"})
             logger.debug("Using native MF_MLP structure.")
     return model
 
@@ -461,6 +483,7 @@ def _finalize_run(
     # CaFo the count is summed over stages, i.e. optimiser epochs of actual work.
     epochs = config.get("_run_stats", {}).get("epochs_completed")
     results["epochs_completed"] = epochs if epochs else float("nan")
+    results["stage_epochs"] = config.get("_run_stats", {}).get("stage_epochs", [])
     if epochs:
         results["gpu_energy_wh_per_epoch"] = (
             results.get("total_gpu_energy_wh", float("nan")) / epochs
@@ -581,6 +604,7 @@ def run_training(
 
         logger.info("Starting training phase...")
         train_loop_start_time = time.time()
+        counter_start_j = get_gpu_energy_counter_j(gpu_handle)
         algo_name = config.get("algorithm", {}).get("name", "").lower()
         training_fn = get_training_function(algo_name)
         if device.type == "cuda":
@@ -609,6 +633,13 @@ def run_training(
             else float("nan")
         )
         results["training_duration_sec"] = time.time() - train_loop_start_time
+        counter_end_j = get_gpu_energy_counter_j(gpu_handle)
+        # G2: driver-counter energy over the same window as training_duration_sec.
+        results["counter_training_energy_j"] = (
+            counter_end_j - counter_start_j
+            if counter_start_j is not None and counter_end_j is not None
+            else float("nan")
+        )
         logger.info(
             f"Training finished in {format_time(results['training_duration_sec'])}."
         )
@@ -644,6 +675,32 @@ def run_training(
             f"Test Set Results: Acc: {results.get('test_accuracy', 'N/A'):.2f}%, "
             f"Loss: {results.get('test_loss', 'N/A'):.4f}"
         )
+
+        # Diagnostic only, and deliberately after the NVML monitor has stopped
+        # (the training context manager closes before the test pass).  A failure
+        # here must never invalidate a completed training run.
+        try:
+            secondary = compute_secondary_endpoints(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
+                config=config,
+                device=device,
+                algo_name=algo_name,
+                input_adapter=input_adapter,
+                test_loss=results.get("test_loss"),
+                test_accuracy=results.get("test_accuracy"),
+            )
+            results.update(secondary)
+        except Exception as secondary_error:
+            logger.warning(
+                "Secondary endpoint evaluation failed; training results remain "
+                "valid: %s",
+                secondary_error,
+                exc_info=True,
+            )
+            results["secondary_eval_error"] = str(secondary_error)
 
     except Exception as e:
         logger.critical(f"Experiment Failed: {e}", exc_info=True)

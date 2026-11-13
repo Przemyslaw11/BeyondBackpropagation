@@ -1,0 +1,55 @@
+# W1 attribution ladder: no-stage-0 control for MF-Seq.
+#
+# Identical to configs/mf/cifar10_mlp_3x2000.yaml except that the M0 stage is off.
+# M0 is dead compute by construction (phase 2 consumes a_i for i>=0 and evaluation
+# reads a_L/M_L; nothing downstream reads M_0), so this arm measures how much of
+# MF-Seq's pass count and wall-clock the dead first stage buys — the control that
+# keeps the "4x epochs" headline honest.
+
+experiment_name: "mf_nom0_cifar10_mlp_3x2000"
+algorithm:
+  name: "MF"
+
+data:
+  name: "CIFAR10"
+  root: "./data"
+  val_split: 0.1
+  num_classes: 10
+  input_channels: 3
+  image_size: 32
+
+data_loader:
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+
+model:
+  name: "MF_MLP"
+  params:
+    hidden_dims: [2000, 2000, 2000]
+    activation: "ReLU"
+    bias: true
+
+algorithm_params:
+  optimizer_type: "Adam"
+  lr: 0.00021536491821693216
+  weight_decay: 1.606438244272842e-06
+  log_interval: 9999
+  activation_cache: recompute
+  mf_train_m0: false
+
+logging:
+  level: "INFO"
+  wandb:
+    use_wandb: true
+
+checkpointing:
+  checkpoint_dir: "checkpoints/mf_nom0_cifar10_mlp_3x2000"
+
+monitoring:
+  enabled: true
+  energy_enabled: true
+  energy_interval_sec: 0.2
+profiling:
+  enabled: true
+  verbose: false
